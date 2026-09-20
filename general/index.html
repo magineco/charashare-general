@@ -2338,7 +2338,6 @@ function renderToolbar(){
   return `<header class="toolbar">
     <input class="tpl-name" type="text" value="${escAttr(state.template.meta && state.template.meta.name || '')}" placeholder="システム名を記述" onchange="updateTemplateName(this.value)">
     <button class="${state.mode === 'edit' ? '' : 'share-btn'}" onclick="toggleMode()">${state.mode === 'edit' ? '確認画面に切替' : '編集画面に戻す'}</button>
-    <button class="${state.colorPanelOpen ? 'share-btn' : ''}" onclick="toggleColorPanel()">色を変更</button>
     <span class="spacer"></span>
     ${statusHtml}
     <button onclick="saveTemplateToDrive()">Driveに保存</button>
@@ -2354,6 +2353,7 @@ function renderToolbar(){
   <div class="toolbar-row">
     <button onclick="toggleDataListModal()">データリストを編集</button>
     <button onclick="toggleRefListModal()">参照を一覧で確認</button>
+    <button class="${state.colorPanelOpen ? 'share-btn' : ''}" onclick="toggleColorPanel()">シートの色を変更</button>
   </div>
   ${renderInlineSharePanel('template')}`;
 }
