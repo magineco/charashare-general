@@ -87,13 +87,18 @@
   textarea{ resize:vertical; overflow:hidden; }
   label{ display:block; }
   label.checkbox{ display:flex; align-items:center; gap:6px; }
-  label.checkbox input{ width:auto; }
   /* 真偽値インプットのチェックボックスは、素の<input type="checkbox">の
      ままだと他の入力欄(枠付きの箱)と違って小さなネイティブ部品だけが
      ぽつんと浮いて見えるため、他の入力欄と揃う箱の見た目(枠線・背景・
      角丸)を明示的に持たせる。設定パネルの「折りたたみ可能にする」等
-     (label.checkbox)にも同じ部品が使われるため、この見た目はチェック
-     ボックス全般に共通で適用する。 */
+     (label.checkbox、`checkboxToggleHtml()`が生成)も内部で同じ
+     `.checkbox-visual`部品を使っている。以前は`label.checkbox input{
+     width:auto}`という個別ルールで素の<input>の幅を上書きしていたが、
+     このルールの詳細度が`input[type="checkbox"]`本体の`width:22px`より
+     高く、チェックボックスが縮んだ状態のままチェックマークだけ22px基準の
+     座標で描かれ、隣接する文字に重なって見える不具合があった
+     (2026-09-20)。`.checkbox-visual`経由にしたことでこの上書き自体が
+     発生しなくなったため、`label.checkbox input`ルールは削除した。 */
   input[type="checkbox"]{
     appearance:none; -webkit-appearance:none;
     width:22px; height:22px; padding:0; flex:0 0 auto; position:relative;
@@ -481,6 +486,9 @@
 
   /* chat palette */
   .chat-palette{ background:var(--surface); border:1px solid var(--line); border-radius:10px; padding:16px; margin-top:14px; }
+  .chat-replace-row{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:14px; }
+  .chat-replace-row input{ flex:1 1 140px; width:auto; min-width:0; }
+  .chat-replace-row span{ color:var(--muted); flex:0 0 auto; }
   .chat-line{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding:6px 0; border-bottom:1px solid var(--line); }
   .chat-line-label{ min-width:100px; color:var(--muted); }
   /* 自由入力行専用: ラベルと削除ボタンを1つの項目としてまとめ、
@@ -2612,6 +2620,44 @@ function chatOrderLines(order){
   });
   return lines;
 }
+// ダイス表記(「NdX」等)を判定システムの変更にあわせて一括で書き換える
+// ための道具。テンプレート作成の初期段階では判定式のダイス部分を仮の
+// プレースホルダー(既定値「NdX」)のまま各項目のチャットテンプレートに
+// 書いておき、実際のダイスシステムが決まった時点でここから一括置換する、
+// という使い方を想定している。対象は全項目(インプットセット内も含む
+// `allFieldsInTemplate()`)の`chatTemplate`と、チャットパレットの自由入力
+// 項目(`chatFreeTexts`)の両方。chatEnabledの有無は問わない(オフの項目に
+// 書いた仮テキストも、後で有効化した時に書き換え漏れが無いようにするため)。
+function renderChatTemplateReplaceRow(){
+  return `<div class="chat-replace-row">
+    <input type="text" id="chat-replace-from" value="NdX" placeholder="置換前">
+    <span>→</span>
+    <input type="text" id="chat-replace-to" placeholder="置換後">
+    <button onclick="replaceChatTemplateText()">一括置換</button>
+  </div>`;
+}
+function replaceChatTemplateText(){
+  const from = document.getElementById('chat-replace-from').value;
+  const to = document.getElementById('chat-replace-to').value;
+  if(!from){ setStatus('置換前の文字列を入力してください。', 'err'); return; }
+  let count = 0;
+  allFieldsInTemplate().forEach(f => {
+    if(typeof f.chatTemplate === 'string' && f.chatTemplate.includes(from)){
+      count += f.chatTemplate.split(from).length - 1;
+      f.chatTemplate = f.chatTemplate.replaceAll(from, to);
+    }
+  });
+  (state.template.chatFreeTexts || []).forEach(ct => {
+    if(typeof ct.text === 'string' && ct.text.includes(from)){
+      count += ct.text.split(from).length - 1;
+      ct.text = ct.text.replaceAll(from, to);
+    }
+  });
+  if(!count){ setStatus(`「${from}」は見つかりませんでした。`, 'err'); return; }
+  state.statusMsg = `${count}件を置換しました。`;
+  state.statusKind = 'ok';
+  render();
+}
 function renderChatPalette(){
   // 存在しない・chatEnabledが外れたIDは描画時に無視するだけにする
   // (壊れたら気付けるようにする、の他の仕組みと同じ事後対応の考え方)。
@@ -2660,7 +2706,7 @@ function renderChatPalette(){
         <div class="chat-line-rows">${rowsHtml}</div>
       </div>`;
     }).join('');
-    return `<section class="chat-palette"><h2>チャットパレット</h2>${groups}<button class="add-frame-btn" onclick="addChatFreeText()">+ 自由入力の項目を追加</button></section>`;
+    return `<section class="chat-palette"><h2>チャットパレット</h2>${renderChatTemplateReplaceRow()}${groups}<button class="add-frame-btn" onclick="addChatFreeText()">+ 自由入力の項目を追加</button></section>`;
   }
   // 入力モードでは、項目ごとの小さなテキストエリアではなく、1つの大きな
   // テキストエリアに全行をまとめて出す(全体をまとめてコピーしたい・
@@ -2983,6 +3029,21 @@ function renderPanel(){
     </div>
   </div>`;
 }
+// 設定パネルの単純なON/OFFトグル行(「折りたたみ可能にする」等)は、
+// 素の<input type="checkbox">1個だけを<label class="checkbox">で包む
+// 形にしていたが、`label.checkbox input{width:auto}`という古い上書き
+// ルールが`input[type="checkbox"]`本体の`width:22px`を打ち消してしまい、
+// 見た目が縮んだ状態のままチェックマーク(::afterで絶対配置)だけが
+// 22px基準の座標で描かれるため、隣接するラベル文字に重なって見える
+// 不具合があった(2026-09-20発見)。シート上のチェックボックスで既に
+// 採用している「隣接する<span>(.checkbox-box)に見た目を描く」方式
+// (`.checkbox-visual`)をここでも使うことで、上記の上書き問題ごと
+// 解消する(`.checkbox-visual input[type="checkbox"]`の方が
+// `label.checkbox input`よりCSS詳細度が高く、確実に22px×22pxで
+// 描画される)。
+function checkboxToggleHtml(checked, changeAttrs, labelHtml){
+  return `<label class="checkbox"><span class="checkbox-visual"><input type="checkbox" ${checked ? 'checked' : ''} ${changeAttrs}><span class="checkbox-box"></span></span> ${labelHtml}</label>`;
+}
 function renderPanelBody(kind, f){
   const labelInput = `<label><span>名称</span><input type="text" value="${escAttr(f.label)}" onchange="applyPatch('${kind}','${f.id}',{label:this.value})"></label>`;
   if(kind === 'section'){
@@ -2994,7 +3055,7 @@ function renderPanelBody(kind, f){
       : '';
     return labelInput
       + `<label><span>一行に並べる列数</span><input type="number" min="1" max="6" value="${f.columns || 2}" onchange="applyPatch('section','${f.id}',{columns:Math.max(1,parseInt(this.value)||1)})"></label>`
-      + `<label class="checkbox"><input type="checkbox" ${f.collapsible ? 'checked' : ''} onchange="applyPatch('section','${f.id}',{collapsible:this.checked})"> 折りたたみ可能にする</label>`
+      + checkboxToggleHtml(f.collapsible, `onchange="applyPatch('section','${f.id}',{collapsible:this.checked})"`, '折りたたみ可能にする')
       + imageAreaWidthInput;
   }
   if(kind === 'set'){
@@ -3031,7 +3092,7 @@ function renderPanelBody(kind, f){
 // 2026-09-19に[#N]へ変更した。
 function renderChatPaletteEditor(f){
   const st = isFieldInsideSet(f.id);
-  const checkbox = `<label class="checkbox"><input type="checkbox" ${f.chatEnabled ? 'checked' : ''} onchange="toggleChatPalette('${f.id}',this.checked)"> チャットパレットに出す</label>`;
+  const checkbox = checkboxToggleHtml(f.chatEnabled, `onchange="toggleChatPalette('${f.id}',this.checked)"`, 'チャットパレットに出す');
   if(!f.chatEnabled) return checkbox;
   const tpl = f.chatTemplate || '';
   // 半角スペース区切り(ダイス+固定値 コメント)が想定書式だが、無くても
@@ -3093,7 +3154,7 @@ function renderFieldTypeEditor(f){
     if(count > 1){
       html += `<p class="muted small">2個以上並べた場合、他の枠から参照された時の値は「チェックが入っている個数」になります。</p>`;
     } else {
-      html += `<label class="checkbox"><input type="checkbox" ${f.defaultValue ? 'checked' : ''} onchange="applyPatch('field','${f.id}',{defaultValue:this.checked})"> 初期状態でチェックを入れる</label>`;
+      html += checkboxToggleHtml(f.defaultValue, `onchange="applyPatch('field','${f.id}',{defaultValue:this.checked})"`, '初期状態でチェックを入れる');
     }
   } else if(f.type === 'list'){
     const isFiltered = f.kind === 'ref' && f.refType === 'listFilter';
@@ -3113,7 +3174,7 @@ function renderFieldTypeEditor(f){
     } else {
       html += renderListFilterEditor(f);
     }
-    html += `<label class="checkbox"><input type="checkbox" ${f.allowCustomInput ? 'checked' : ''} onchange="applyPatch('field','${f.id}',{allowCustomInput:this.checked})"> 選択肢に無い値の自由入力を許可する</label>`;
+    html += checkboxToggleHtml(f.allowCustomInput, `onchange="applyPatch('field','${f.id}',{allowCustomInput:this.checked})"`, '選択肢に無い値の自由入力を許可する');
     if(f.allowCustomInput){
       html += `<label><span>空欄の時に表示する入力例（任意）</span><input type="text" value="${escAttr(f.placeholder ?? '')}" onchange="applyPatch('field','${f.id}',{placeholder:this.value})"></label>`;
     }
@@ -3275,7 +3336,7 @@ function renderListFilterEditor(f){
     const allCols = [...(dl.conditionColumns || []), ...(dl.contentColumns || [])];
     html += `<label><span>選択肢として表示する列</span><select onchange="applyPatch('field','${f.id}',{optionLabel:this.value})"><option value="">(選択)</option>${allCols.map(c => `<option value="${escAttr(c)}" ${f.optionLabel === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select></label>`;
     const hasCustomValue = !!f.optionValue;
-    html += `<label class="checkbox"><input type="checkbox" ${hasCustomValue ? 'checked' : ''} onchange="toggleListFilterCustomValue('${f.id}',this.checked)"> 表示文字と別の値を保存する(通常は不要)</label>`;
+    html += checkboxToggleHtml(hasCustomValue, `onchange="toggleListFilterCustomValue('${f.id}',this.checked)"`, '表示文字と別の値を保存する(通常は不要)');
     if(hasCustomValue){
       html += `<label><span>保存する値の列</span><select onchange="applyPatch('field','${f.id}',{optionValue:this.value})"><option value="">(選択)</option>${allCols.map(c => `<option value="${escAttr(c)}" ${f.optionValue === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select></label>`;
     }
@@ -3310,7 +3371,7 @@ function renderAggregateEditor(f){
     const numFields = st.fields.filter(sf => sf.type === 'number' && sf.id !== f.id);
     html += `<p class="muted small">合計対象(複数選ぶと各行で掛け算してから合計)</p>` + numFields.map(nf => {
       const checked = (f.terms || []).includes(nf.id);
-      return `<label class="checkbox"><input type="checkbox" ${checked ? 'checked' : ''} onchange="toggleAggregateTerm('${f.id}','${nf.id}',this.checked)"> ${esc(nf.label)}</label>`;
+      return checkboxToggleHtml(checked, `onchange="toggleAggregateTerm('${f.id}','${nf.id}',this.checked)"`, esc(nf.label));
     }).join('');
   }
   return html;
