@@ -402,6 +402,12 @@
   /* システム名は作者が自由に付ける文字列で長くなりがちなため、他の列より
      一段階小さいフォントにして折り返し回数を減らす(2026-09-20)。 */
   .char-list-system-name{ font-size:0.85rem; }
+  /* モバイル幅では列(特に見出しの日本語)が窮屈になり、1文字ずつ縦に
+     折り返されて読めなくなっていた(2026-09-21指摘)。インプットセットの
+     表(.set-table-wrap)と同じ「最低幅を確保しつつ横スクロールに任せる」
+     方式を横展開し、table-layout:fixedでも列が潰れすぎないようにする。 */
+  .char-list-table{ min-width:560px; }
+  .tpl-list-table{ min-width:480px; }
   .load-error-banner{
     background:var(--surface); border:1px solid var(--danger); color:var(--danger);
     border-radius:8px; padding:10px 14px; margin-bottom:14px;
@@ -985,7 +991,7 @@ async function openTemplateFromDrive(fileId){
   try{
     const templateObj = await fetchTemplateFileAuthed(fileId);
     const props = await fetchDriveAppProperties(fileId);
-    state.template = templateObj;
+    state.template = assertSafeTemplateIds(templateObj);
     // シートの描画は常にキャラクター側のデータを参照するため、
     // (テンプレートトップ経由等でまだ無い場合に備えて)必ず用意する。
     // 別のテンプレートに切り替えた場合、以前のキャラクターの値は
@@ -1203,7 +1209,7 @@ async function openCharacterFromDrive(fileId){
     if(!res.ok) throw new Error('キャラクターの読み込みに失敗しました。');
     const characterObj = await res.json();
     const props = await fetchDriveAppProperties(fileId);
-    state.template = await resolveCharacterTemplate(characterObj);
+    state.template = assertSafeTemplateIds(await resolveCharacterTemplate(characterObj));
     // 生のDriveファイルIDは分からない(share-proxyのトークン経由でしか
     // テンプレートを解決していないため)。共有トークンだけ引き継ぐ。
     state.templateFileId = null;
@@ -1250,12 +1256,16 @@ async function saveCharacterToDrive(){
   }
 }
 
-/* ---------- 共有: テンプレート(生のDriveファイルIDをそのまま使う) ----------
- * キャラクターと違って所有者情報を隠す必要が無いため、share-proxyの
- * 暗号化トークンは使わず、Drive上のファイルIDをそのまま?tpl=に載せる
- * (general/CLAUDE.md参照)。 */
-function templateShareUrlFor(fileId){
-  return `${location.origin}${location.pathname}?tpl=${encodeURIComponent(fileId)}`;
+/* ---------- 共有: テンプレート(share-proxyの暗号化トークンを使う) ----------
+ * 以前は「テンプレートは著作者が公開するデータなので所有者を隠す必要が
+ * 無い」という判断で生のDriveファイルIDを?tpl=に直接載せていたが、この
+ * 生IDが著作者のGoogleアカウント表示名を露出させうることが判明したため
+ * 2026-09-17にキャラクターと同じ暗号化トークン方式へ統一した
+ * (fetchPublicTemplate()・general/CLAUDE.md参照)。呼び出し側は必ず
+ * fetchShareToken()で発行したトークン(state.templateShareToken)を渡す
+ * こと。 */
+function templateShareUrlFor(token){
+  return `${location.origin}${location.pathname}?tpl=${encodeURIComponent(token)}`;
 }
 // テンプレート・キャラクターの共有どちらからも使う、Drive上のファイルに
 // 「リンクを知っている人は誰でも閲覧可」権限を付与する処理と、その
@@ -1418,6 +1428,39 @@ function esc(s){
 const escAttr = esc;
 function uid(prefix){ return prefix + '_' + Math.random().toString(36).slice(2, 9); }
 function sanitizeDomId(s){ return String(s).replace(/[^a-zA-Z0-9_-]/g, '_'); }
+// テンプレート内の各id(section/field/set/dataList/chatFreeText、および
+// chatOrderが指す先)は、常にuid()が生成する英数字+_-のみの文字列という
+// 前提で、多くの描画箇所が onXXX="fn('${id}')" のようにHTML属性へ
+// エスケープ無しでそのまま埋め込んでいる(内部識別子は人間が入力する値
+// ではないため)。しかしテンプレートJSONは共有リンク・ファイル読み込みで
+// 外部から受け取ることができ、'"を含む細工したidを仕込まれると、共有
+// リンクを開いた閲覧者のブラウザで任意のコードが実行されてしまう
+// (2026-09-21発見)。onXXX=属性は「HTML属性としてデコードしてからJSと
+// して解釈する」という二重の文脈を持つため、個々の埋め込み箇所を
+// esc()/escAttr()するだけでは実は不十分(デコード後に'や"が復元されて
+// しまう)。そのため埋め込み側を直すのではなく、外部から読み込む
+// テンプレート(共有トークン経由・ファイル読み込みのいずれも)は必ず
+// この関数を通し、id形式が不正なら読み込み自体を拒否する
+// (正規のテンプレートのidが弾かれることはない)。
+const SAFE_ID_PATTERN = /^[A-Za-z0-9_-]+$/;
+function assertSafeTemplateIds(tpl){
+  const checkId = (id) => {
+    if(id === undefined || id === null) return;
+    if(!SAFE_ID_PATTERN.test(String(id))) throw new Error('テンプレートの内部データに不正な形式が含まれているため読み込めません。');
+  };
+  (tpl.sections || []).forEach(sec => {
+    checkId(sec.id);
+    (sec.fields || []).forEach(f => checkId(f.id));
+    (sec.sets || []).forEach(st => {
+      checkId(st.id);
+      (st.fields || []).forEach(f => checkId(f.id));
+    });
+  });
+  (tpl.dataLists || []).forEach(dl => checkId(dl.id));
+  (tpl.chatFreeTexts || []).forEach(ct => checkId(ct.id));
+  (tpl.chatOrder || []).forEach(id => checkId(id));
+  return tpl;
+}
 // 削除前の確認ダイアログをここに一本化する(deleteDriveFile/removeSetRow/
 // removeDataList/removeChatFreeText等、削除系の関数はすべてここを通す)。
 // hasContentをfalseで渡すと(実質的に失われる入力が無いと呼び出し側が
@@ -1746,7 +1789,12 @@ function render(opts){
   // 保持・データリスト正規化等)を丸ごとスキップする。
   if(isGateScreen(state.screen)){
     app.className = 'mode-view';
-    app.innerHTML = renderGateScreen();
+    // 共有リンクの読み込み失敗(不正なテンプレートとして拒否された場合
+    // 含む)は、シート描画一式をスキップするゲート画面でも見えないと
+    // 何も表示されないまま原因不明になってしまうため、ここでも出す
+    // (2026-09-21、assertSafeTemplateIds()の拒否メッセージが表示され
+    // ていなかったことをきっかけに発見・修正)。
+    app.innerHTML = renderLoadErrorBanner() + renderGateScreen();
     applyTemplateColors(true);
     return;
   }
@@ -1865,7 +1913,7 @@ function handleImportAnyJsonFile(input){
       if(Array.isArray(parsed.sections)){
         parsed.dataLists = parsed.dataLists || [];
         parsed.chatFreeTexts = parsed.chatFreeTexts || [];
-        state.template = parsed;
+        state.template = assertSafeTemplateIds(parsed);
         state.templateFileId = null;
         state.templateFileMine = false;
         state.templateShared = false;
@@ -1877,7 +1925,7 @@ function handleImportAnyJsonFile(input){
           alert('このキャラクターJSONにはテンプレート情報が含まれていないため開けません。');
           return;
         }
-        state.template = parsed.templateSnapshot;
+        state.template = assertSafeTemplateIds(parsed.templateSnapshot);
         state.templateFileId = null;
         state.templateShareToken = parsed.templateShareToken || '';
         state.templateFileMine = false;
@@ -1926,13 +1974,27 @@ function renderGateBrand(){
     <span class="gate-brand-tag">キャラクターシート設置サービス</span>
   </div>`;
 }
-// 共通トップ(../index.html)の.heroと同じキャッチコピー・説明文
-// (2026-09-20、ユーザー指示)。テンプレート/キャラクターどちらの
-// トップ画面でも、renderGateBrand()の直後・各画面固有の見出し
+// 共通トップ(../index.html)の.heroと同じキャッチコピー(2026-09-20、
+// ユーザー指示)。見出し自体はテンプレート/キャラクターどちらの
+// トップ画面でも共通で、renderGateBrand()の直後・各画面固有の見出し
 // (「テンプレートを作る」「キャラクターを開く」)の前に表示する。
+// 説明文(1行目の下の段落)は画面ごとに内容が違う(テンプレート作成者
+// 向けの機能一覧と、プレイヤー向けの使い方は別物)ため、2026-09-21に
+// テンプレートトップ専用に戻した(以前はここに直接書いていたテンプレート
+// 作成者向けの説明文が、そのままキャラクタートップにも表示されてしまい
+// 「配置の変更・数式の設定」等プレイヤーには無関係な文言が出ていた、との
+// 指摘を受けて分離。キャラクタートップ側はrenderCharacterGateTagline()参照)。
 function renderGateTagline(){
   return `<h2 class="gate-tagline">全てのTRPGにWebキャラシを。</h2>
   <p class="gate-tagline-desc">必要なのは、Googleアカウントでのログイン。サーバー準備不要、コーディング不要で『配置の変更』、『数式の設定』、『カラーリングの調整』、『チャットパレット設定』、そして『Web公開』ができます。</p>`;
+}
+// キャラクタートップ専用の説明文(2026-09-21新設)。見出しはテンプレート
+// トップと共通(ブランドの決まり文句として維持)だが、説明文はプレイヤー
+// 目線(テンプレート作成者が公開したシートを開くだけで使える・
+// ログイン無しでも試せる・ログインすればDriveに保存できる)に差し替えた。
+function renderCharacterGateTagline(){
+  return `<h2 class="gate-tagline">全てのTRPGにWebキャラシを。</h2>
+  <p class="gate-tagline-desc">テンプレート作成者が公開しているキャラクターシートを開くだけで、ログインなしでもすぐにキャラクターを作成できます。Googleアカウントでログインすれば、あなた自身のGoogle Driveに保存・共有もできます。</p>`;
 }
 function renderGateHeroBanner(){
   return `<div class="hero-banner"><img src="${HERO_BANNER_IMAGE}" alt=""></div>`;
@@ -1969,14 +2031,14 @@ function renderTemplateSelectScreen(){
         </select>
       </label>
     </div>`;
-    body = `<table class="dl-tsv-table"><tbody>
+    body = `<div class="set-table-wrap"><table class="dl-tsv-table tpl-list-table"><tbody>
       <tr><th>システム名</th><th>作成日</th><th>更新日時</th></tr>
       ${files.map(f => `<tr onclick="openTemplateFromDrive('${f.id}')" style="cursor:pointer;">
         <td>${esc(f.name)}${(f.appProperties && f.appProperties.shared === 'true') ? '<span class="share-badge">共有中</span>' : ''}</td>
         <td>${esc(new Date(f.createdTime).toLocaleString('ja-JP'))}</td>
         <td>${esc(new Date(f.modifiedTime).toLocaleString('ja-JP'))}</td>
       </tr>`).join('')}
-    </tbody></table>`;
+    </tbody></table></div>`;
   }
   return `<div class="gate-list">
     ${renderGateListAuthBar()}
@@ -1993,7 +2055,7 @@ function renderTemplateSelectScreen(){
 function renderCharacterTopScreen(){
   return `${renderGateHeroBanner()}<div class="gate-page">
     ${renderGateBrand()}
-    ${renderGateTagline()}
+    ${renderCharacterGateTagline()}
     <h2 class="gate-title">キャラクターを開く</h2>
     <p class="gate-lead">キャラシェア・ジェネラルで作成した、またはお手元のファイルのキャラクターを開きます。</p>
     <div class="gate-actions">
@@ -2089,7 +2151,7 @@ function renderCharacterListScreen(){
       </label>
     </div>`;
     body = files.length
-      ? `<table class="dl-tsv-table char-list-table"><colgroup>
+      ? `<div class="set-table-wrap"><table class="dl-tsv-table char-list-table"><colgroup>
           <col style="width:76px"><col style="width:44%"><col style="width:21%">
           <col style="width:17.5%"><col style="width:17.5%">
         </colgroup><tbody>
@@ -2101,7 +2163,7 @@ function renderCharacterListScreen(){
           <td>${esc(new Date(f.createdTime).toLocaleString('ja-JP'))}</td>
           <td>${esc(new Date(f.modifiedTime).toLocaleString('ja-JP'))}</td>
         </tr>`).join('')}
-      </tbody></table>`
+      </tbody></table></div>`
       : `<p class="muted">選択したシステムのキャラクターがありません。</p>`;
   }
   return `<div class="gate-list">
@@ -4185,7 +4247,7 @@ function handleImportTemplateFile(input){
   const reader = new FileReader();
   reader.onload = () => {
     try {
-      state.template = JSON.parse(reader.result);
+      state.template = assertSafeTemplateIds(JSON.parse(reader.result));
       state.template.dataLists = state.template.dataLists || [];
       state.template.chatFreeTexts = state.template.chatFreeTexts || [];
       // シートの描画は常にキャラクター側のデータを参照するため必ず
@@ -4247,7 +4309,7 @@ function handleImportCharacterFile(input){
  *   ?tpl=があればまずDrive上の最新版を試し、無い/失敗したらキャラクター
  *   JSON自身に埋め込まれたtemplateSnapshotにフォールバックする
  *   (resolveCharacterTemplate参照)
- * - ?tpl=<Driveファイル>のみ: 共有されたテンプレートを読み込み、
+ * - ?tpl=<共有トークン>のみ: 共有されたテンプレートを読み込み、
  *   自分のキャラクターをこれから作る(キャラクター編集画面・非ログイン)
  * - パラメータ無し: キャラクタートップ画面(既定)
  */
@@ -4274,7 +4336,7 @@ async function bootstrap(){
       // templateSnapshotだけで表示する。
       const templateObj = characterObj.templateSnapshot;
       if(!templateObj) throw new Error('このキャラクターのテンプレートが見つかりません。');
-      state.template = templateObj;
+      state.template = assertSafeTemplateIds(templateObj);
       state.templateFileId = null;
       state.templateShareToken = '';
       state.templateFileMine = false;
@@ -4304,7 +4366,7 @@ async function bootstrap(){
 
   if(tpl){
     try{
-      state.template = await fetchPublicTemplate(tpl);
+      state.template = assertSafeTemplateIds(await fetchPublicTemplate(tpl));
       state.templateFileId = null;
       state.templateShareToken = tpl;
       state.templateFileMine = false;
