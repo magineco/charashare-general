@@ -181,7 +181,20 @@
   .collapse-btn{ padding:2px 6px; }
   .section-body{ display:flex; flex-direction:column; gap:12px; }
   .group-grid{ display:grid; grid-template-columns:repeat(var(--cols,2),1fr); gap:10px; }
-  .frame-field{ display:flex; flex-direction:column; gap:4px; cursor:default; }
+  /* .group-gridはCSS Gridのため、同じ行の中で最も高さのある欄(長いラベルが
+     折り返した場合など)に合わせて、他の欄も既定でその行の高さまで
+     伸ばされる(align-items:stretchの既定動作)。.frame-field自身は
+     display:flex; flex-direction:columnで、justify-content未指定(既定の
+     flex-start)だと中身(ラベル行+入力欄)が上詰めのまま伸びた分の余白が
+     下に残るだけで、入力欄の縦位置は各欄のラベルの高さに左右されて
+     行内でバラつく(ラベルが2行になった欄だけ入力欄が下がる)。
+     justify-content:flex-endにすると、ラベル行と入力欄がgap:4pxを
+     保ったまま1つのまとまりとして行の下端に揃うため、ラベルの行数に
+     関わらず同じ行の入力欄の縦位置が揃う(2026-09-20、印刷時の見た目が
+     凸凹になるという指摘を受けて追加。画面表示にも適用しているが、
+     狭い画面(760px以下)は.group-gridが1カラムになり行を共有しないため
+     影響が無く、通常時も同じ行の高さが揃っている場合は変化が出ない)。 */
+  .frame-field{ display:flex; flex-direction:column; justify-content:flex-end; gap:4px; cursor:default; }
   /* フィフス版の個々のインプット見出し(.field label{color:var(--muted)})に
      合わせる。見出し・テーブルヘッダーと同じ強さの明るいアクセント色を
      全インプットの名称にまで使うと、画面全体が明るすぎて逆に読みづらく
