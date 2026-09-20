@@ -930,18 +930,23 @@ async function saveTemplateToDrive(){
 }
 async function listMyTemplates(){
   if(!state.accessToken){ loginAndThen('openTemplateBrowser'); return; }
-  state.driveBrowser = { kind: 'template', loading: true, files: [], error: '' };
+  // sortBy('modifiedTime'|'createdTime')はキャラクター一覧と同じく
+  // driveBrowser側だけに持たせるUI状態(general/CLAUDE.md「キャラクター
+  // 一覧の並び替え・絞り込み・作成日列」参照。テンプレート一覧には
+  // システムでの絞り込みに相当する概念(=システム名そのもの)が無いため
+  // 並び替えだけ同様に用意する)。
+  state.driveBrowser = { kind: 'template', loading: true, files: [], error: '', sortBy: 'modifiedTime' };
   state.screen = 'templateSelect';
   render();
   try{
     const q = encodeURIComponent(`appProperties has { key='app' and value='${APP_TAG_TEMPLATE}' } and trashed=false`);
-    const res = await driveFetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,modifiedTime,appProperties)&orderBy=modifiedTime desc`);
+    const res = await driveFetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,createdTime,modifiedTime,appProperties)&orderBy=modifiedTime desc`);
     if(!res.ok) throw new Error('テンプレート一覧の取得に失敗しました。');
     const data = await res.json();
-    state.driveBrowser = { kind: 'template', loading: false, files: data.files || [], error: '' };
+    state.driveBrowser = { kind: 'template', loading: false, files: data.files || [], error: '', sortBy: 'modifiedTime' };
   }catch(e){
     console.error(e);
-    state.driveBrowser = { kind: 'template', loading: false, files: [], error: e.message };
+    state.driveBrowser = { kind: 'template', loading: false, files: [], error: e.message, sortBy: 'modifiedTime' };
   }
   render();
 }
@@ -1908,17 +1913,31 @@ function renderGateListAuthBar(){
 }
 function renderTemplateSelectScreen(){
   const b = state.driveBrowser;
+  let controls = '';
   let body;
   if(!b || b.loading) body = `<p class="muted">読み込み中…</p>`;
   else if(b.error) body = `<p class="muted">${esc(b.error)}</p>`;
   else if(!b.files.length) body = `<p class="muted">Driveに保存されたテンプレートがありません。</p>`;
-  else body = `<table class="dl-tsv-table"><tbody>
-      <tr><th>システム名</th><th>更新日時</th></tr>
-      ${b.files.map(f => `<tr onclick="openTemplateFromDrive('${f.id}')" style="cursor:pointer;">
+  else {
+    const sortBy = b.sortBy || 'modifiedTime';
+    const files = sortFilesByDate(b.files, sortBy);
+    controls = `<div class="char-list-controls">
+      <label><span>並び替え</span>
+        <select onchange="setTemplateListSort(this.value)">
+          <option value="modifiedTime" ${sortBy === 'modifiedTime' ? 'selected' : ''}>更新日時</option>
+          <option value="createdTime" ${sortBy === 'createdTime' ? 'selected' : ''}>作成日</option>
+        </select>
+      </label>
+    </div>`;
+    body = `<table class="dl-tsv-table"><tbody>
+      <tr><th>システム名</th><th>作成日</th><th>更新日時</th></tr>
+      ${files.map(f => `<tr onclick="openTemplateFromDrive('${f.id}')" style="cursor:pointer;">
         <td>${esc(f.name)}${(f.appProperties && f.appProperties.shared === 'true') ? '<span class="share-badge">共有中</span>' : ''}</td>
+        <td>${esc(new Date(f.createdTime).toLocaleString('ja-JP'))}</td>
         <td>${esc(new Date(f.modifiedTime).toLocaleString('ja-JP'))}</td>
       </tr>`).join('')}
     </tbody></table>`;
+  }
   return `<div class="gate-list">
     ${renderGateListAuthBar()}
     <div class="gate-list-head">
@@ -1927,6 +1946,7 @@ function renderTemplateSelectScreen(){
       <input id="tplselect-file" type="file" accept="application/json" style="display:none" onchange="handleImportTemplateFile(this)">
       <button onclick="startNewTemplateNoLogin()">+ 新規に作る</button>
     </div>
+    ${controls}
     ${body}
   </div>`;
 }
@@ -1984,13 +2004,23 @@ function characterListSystemOptions(files){
   });
   return Array.from(names).sort((a, b) => a.localeCompare(b, 'ja'));
 }
+// 更新日時・作成日のどちらでも使う共通の並び替え(新しい順)。
+// テンプレート一覧・キャラクター一覧の両方から呼ぶ。
+function sortFilesByDate(files, sortBy){
+  const sortKey = sortBy === 'createdTime' ? 'createdTime' : 'modifiedTime';
+  return files.slice().sort((a, c) => new Date(c[sortKey]) - new Date(a[sortKey]));
+}
 function visibleCharacterListFiles(b){
   let files = b.files;
   if(b.filterSystem){
     files = files.filter(f => ((f.appProperties && f.appProperties.templateName) || '') === b.filterSystem);
   }
-  const sortKey = b.sortBy === 'createdTime' ? 'createdTime' : 'modifiedTime';
-  return files.slice().sort((a, c) => new Date(c[sortKey]) - new Date(a[sortKey]));
+  return sortFilesByDate(files, b.sortBy);
+}
+function setTemplateListSort(sortBy){
+  if(!state.driveBrowser) return;
+  state.driveBrowser.sortBy = sortBy;
+  render({ skipDirty: true });
 }
 function renderCharacterListScreen(){
   const b = state.driveBrowser;
@@ -2528,7 +2558,11 @@ function renderFieldInput(f, rowScope){
   if(f.type === 'multiline'){
     const minRows = Math.max(1, parseInt(f.minRows) || 3);
     const ph = f.placeholder ? ` placeholder="${escAttr(f.placeholder)}"` : '';
-    return `<textarea rows="${minRows}" oninput="autoResizeTextarea(this)"${ph} ${domAttrs} ${change}>${esc(val ?? '')}</textarea>`;
+    // <textarea>直後の改行1個はHTMLの仕様でブラウザに無視されるため、
+    // 内容が改行から始まる場合に再描画のたびに先頭の改行が消えて見える
+    // (保存データ自体は正しいまま)。身代わりの改行を1つ余分に入れて
+    // 回避する(2026-09-20、他の<textarea>も同様)。
+    return `<textarea rows="${minRows}" oninput="autoResizeTextarea(this)"${ph} ${domAttrs} ${change}>\n${esc(val ?? '')}</textarea>`;
   }
   if(f.type === 'list'){
     let options;
@@ -2551,7 +2585,7 @@ function renderFieldInput(f, rowScope){
     const interactive = state.mode !== 'edit';
     const editing = interactive && !!state.tableEditing[key];
     if(editing){
-      return `<textarea id="table-tsv-${key}" class="dl-tsv-input" onblur="commitTableTsv('${f.id}','${scopeKey}',this)" onkeydown="handleDataListTsvTabKey(event)" placeholder="タブ区切りで入力・貼り付け。1行目は見出し行として表示されます。">${esc(val ?? '')}</textarea>`;
+      return `<textarea id="table-tsv-${key}" class="dl-tsv-input" onblur="commitTableTsv('${f.id}','${scopeKey}',this)" onkeydown="handleDataListTsvTabKey(event)" placeholder="タブ区切りで入力・貼り付け。1行目は見出し行として表示されます。">\n${esc(val ?? '')}</textarea>`;
     }
     const onclickJs = interactive ? `editTableField('${f.id}','${scopeKey}')` : '';
     if(String(val ?? '').trim()) return tsvTableHtml(val, onclickJs);
@@ -2843,7 +2877,7 @@ function renderChatPalette(){
 function renderChatPaletteTextareaBlock(order){
   const text = chatOrderLines(order).join('\n');
   return `<div class="chat-palette-block">
-    <textarea class="chat-palette-textarea" oninput="autoResizeTextarea(this)">${esc(text)}</textarea>
+    <textarea class="chat-palette-textarea" oninput="autoResizeTextarea(this)">\n${esc(text)}</textarea>
     <button onclick="copyChatPaletteAll(this)">コピー</button>
   </div>`;
 }
@@ -2886,7 +2920,7 @@ function resolveChatText(f, rowScope, st){
 // 編集モードでの並べ替え時のプレビュー表示。コピーは入力モードの
 // 統合テキストエリア側でのみ行うため、ここにはコピー機能を置かない。
 function chatLineHtml(f, text){
-  return `<div class="chat-line"><span class="chat-line-label">${esc(f.label)}</span><textarea class="chat-line-text" rows="1" readonly oninput="autoResizeTextarea(this)">${esc(text)}</textarea></div>`;
+  return `<div class="chat-line"><span class="chat-line-label">${esc(f.label)}</span><textarea class="chat-line-text" rows="1" readonly oninput="autoResizeTextarea(this)">\n${esc(text)}</textarea></div>`;
 }
 // インプットに紐付かない自由入力行。フィールドと違い専用の設定パネルが
 // 無いため、この場でそのまま編集・削除できるようにする(空欄のままなら
@@ -2899,7 +2933,7 @@ function chatFreeTextLineHtml(ct){
   // (フィールドのチャット行と行数が揃わなくなる)。ラベル+ボタンを
   // まとめて1つのフレックス項目にすることで、フィールドのチャット行と
   // 同じ「ラベル行→textarea行」の2行構成に揃える。
-  return `<div class="chat-line"><span class="chat-line-label-group"><span class="chat-line-label muted small">自由入力</span><button class="remove-row-btn" onclick="removeChatFreeText('${ct.id}')">−</button></span><textarea class="chat-line-text chat-freetext-input" rows="1" oninput="autoResizeTextarea(this)" onchange="updateChatFreeText('${ct.id}',this.value)" placeholder="空欄のままだと改行だけの行になります">${esc(ct.text || '')}</textarea></div>`;
+  return `<div class="chat-line"><span class="chat-line-label-group"><span class="chat-line-label muted small">自由入力</span><button class="remove-row-btn" onclick="removeChatFreeText('${ct.id}')">−</button></span><textarea class="chat-line-text chat-freetext-input" rows="1" oninput="autoResizeTextarea(this)" onchange="updateChatFreeText('${ct.id}',this.value)" placeholder="空欄のままだと改行だけの行になります">\n${esc(ct.text || '')}</textarea></div>`;
 }
 function copyChatPaletteAll(btn){
   const textarea = btn.parentElement.querySelector('.chat-palette-textarea');
@@ -3302,7 +3336,7 @@ function renderFieldTypeEditor(f){
     }
   } else if(f.type === 'multiline'){
     html += `<label><span>最低行数</span><input type="number" min="1" max="20" value="${Math.max(1, parseInt(f.minRows) || 3)}" onchange="applyPatch('field','${f.id}',{minRows:Math.max(1,parseInt(this.value)||1)})"></label>`;
-    html += `<label><span>初期値</span><textarea rows="2" onchange="applyPatch('field','${f.id}',{defaultValue:this.value})">${esc(f.defaultValue ?? '')}</textarea></label>`;
+    html += `<label><span>初期値</span><textarea rows="2" onchange="applyPatch('field','${f.id}',{defaultValue:this.value})">\n${esc(f.defaultValue ?? '')}</textarea></label>`;
     html += `<label><span>空欄の時に表示する入力例（任意）</span><input type="text" value="${escAttr(f.placeholder ?? '')}" onchange="applyPatch('field','${f.id}',{placeholder:this.value})"></label>`;
   }
   return html;
@@ -3816,7 +3850,7 @@ function renderDataListEditorBlock(dl){
   const tsv = dataListToTsv(dl);
   const editing = !!state.dataListTsvEditing[dl.id];
   const body = editing
-    ? `<textarea id="dl-tsv-${dl.id}" class="dl-tsv-input" onblur="commitDataListTsv('${dl.id}',this)" onkeydown="handleDataListTsvTabKey(event)" placeholder="タブ区切りで入力・貼り付け。1行目は見出し行で、先頭が _ の列名は表示条件列になります。${'\n'}例:${'\n'}_score\tmod${'\n'}10\t0${'\n'}16\t3">${esc(tsv)}</textarea>`
+    ? `<textarea id="dl-tsv-${dl.id}" class="dl-tsv-input" onblur="commitDataListTsv('${dl.id}',this)" onkeydown="handleDataListTsvTabKey(event)" placeholder="タブ区切りで入力・貼り付け。1行目は見出し行で、先頭が _ の列名は表示条件列になります。${'\n'}例:${'\n'}_score\tmod${'\n'}10\t0${'\n'}16\t3">\n${esc(tsv)}</textarea>`
     : (tsv.trim() ? dataListTableHtml(tsv, true, dl.id) : `<p class="muted small dl-tsv-hint" onclick="editDataListTsv('${dl.id}')" style="cursor:pointer;">(クリックして内容を入力)</p>`);
   // 「タブ記号をコピー」は新しい行を作らず、既存の見出し行(名称+削除ボタン)
   // に同居させて縦方向のスペースを増やさないようにする。
