@@ -1,0 +1,3927 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>キャラシェア・ジェネラル — キャラクターシート設置サービス</title>
+<meta name="description" content="TRPGのキャラクターシートを、GoogleアカウントでログインしてあなたのGoogle Driveに保存・共有できるWebツール。任意のTRPGシステムに対応したテンプレートを自分で作成できます。">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="キャラシェア">
+<meta property="og:title" content="キャラシェア・ジェネラル — キャラクターシート設置サービス">
+<meta property="og:description" content="TRPGのキャラクターシートを、GoogleアカウントでログインしてあなたのGoogle Driveに保存・共有できるWebツール。任意のTRPGシステムに対応したテンプレートを自分で作成できます。">
+<meta property="og:url" content="https://magineco.com/charashare/general/">
+<meta property="og:image" content="https://magineco.com/charashare/general/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-SZMJF3B3W0"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'G-SZMJF3B3W0', { page_path: location.pathname });
+</script>
+<script>
+  // 広告(Auto ads)は、テンプレート・キャラクターの内容(利用者が作った
+  // 未審査のUGC)が実際に表示される画面では出さない方針(2026-09-19)。
+  // adsbygoogle.js本体は非同期読み込みのため、それより先にこの初期値を
+  // 確定させておく必要があり、bootstrap()側のURL判定ロジックをここでも
+  // 最小限そのまま繰り返している(char指定、またはtpl指定かつ
+  // 'author'以外は、キャラクター編集/閲覧画面に直接入るURL)。
+  // SPA内でのその後の画面遷移に応じた制御はsyncAdVisibility()が担う。
+  (function(){
+    var params = new URLSearchParams(location.search);
+    var tpl = params.get('tpl');
+    var char = params.get('char');
+    var unsafe = !!char || (!!tpl && tpl !== 'author');
+    (window.adsbygoogle = window.adsbygoogle || []).pauseAdRequests = unsafe ? 1 : 0;
+  })();
+</script>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4438782117486051" crossorigin="anonymous"></script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<style>
+  :root{
+    --bg:#14161b;
+    --surface:#0f1114;
+    --surface-2:#1e2129;
+    --text:#e7e9ed;
+    --muted:#9aa1ac;
+    --accent:#c99a4f;
+    --accent-bright:#e0b568;
+    --line:#2e333e;
+    --danger:#c9584f;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  /* テンプレート/キャラクター表示画面(UGC内容が映る画面)では、
+     pauseAdRequestsだけでは既に挿入済みの広告要素までは消えないため、
+     body側にこのクラスを付けて強制的に隠す(syncAdVisibility()参照)。 */
+  body.ads-hidden .adsbygoogle,
+  body.ads-hidden ins.adsbygoogle{ display:none !important; }
+  html{ font-size:11pt; }
+  body{
+    background:var(--bg);
+    color:var(--text);
+    font-family:'Inter',sans-serif;
+    line-height:1.6;
+    min-height:100vh;
+  }
+  #app{ max-width:1100px; margin:0 auto; padding:16px 16px 80px; }
+  h1,h2,h3,h4{ font-family:'Fraunces',serif; font-weight:600; color:var(--accent-bright); margin:0 0 10px; }
+  h2{ font-size:1.3rem; }
+  h3{ font-size:1.15rem; color:var(--accent); }
+  p{ margin:0 0 10px; }
+  .muted{ color:var(--muted); }
+  .small{ font-size:1rem; }
+  button{
+    background:var(--surface-2); color:var(--text); border:1px solid var(--line);
+    border-radius:5px; padding:5px 9px; font-size:1rem; cursor:pointer;
+  }
+  button:hover{ border-color:var(--accent); }
+  input, select, textarea{
+    background:var(--surface-2); color:var(--text); border:1px solid var(--line);
+    border-radius:5px; padding:5px 7px; font-size:1rem; width:100%; font-family:inherit;
+    line-height:1.5;
+  }
+  textarea{ resize:vertical; overflow:hidden; }
+  label{ display:block; }
+  label.checkbox{ display:flex; align-items:center; gap:6px; }
+  label.checkbox input{ width:auto; }
+  /* 真偽値インプットのチェックボックスは、素の<input type="checkbox">の
+     ままだと他の入力欄(枠付きの箱)と違って小さなネイティブ部品だけが
+     ぽつんと浮いて見えるため、他の入力欄と揃う箱の見た目(枠線・背景・
+     角丸)を明示的に持たせる。設定パネルの「折りたたみ可能にする」等
+     (label.checkbox)にも同じ部品が使われるため、この見た目はチェック
+     ボックス全般に共通で適用する。 */
+  input[type="checkbox"]{
+    appearance:none; -webkit-appearance:none;
+    width:22px; height:22px; padding:0; flex:0 0 auto; position:relative;
+    background:var(--surface-2); border:1px solid var(--line); border-radius:5px;
+    cursor:pointer;
+  }
+  input[type="checkbox"]:checked{ background:var(--accent); border-color:var(--accent); }
+  input[type="checkbox"]:checked::after{
+    content:''; position:absolute; left:7px; top:3px; width:6px; height:11px;
+    border:solid var(--bg); border-width:0 2px 2px 0; transform:rotate(45deg);
+  }
+  /* シート上の真偽値インプット(renderFieldInput、複数個並ぶ場合がある)は、
+     <input>自身への::afterではなく隣接する<span>(.checkbox-box)に見た目を
+     描く方式にしている(2026-09-19)。<input>は「置換要素」の一種で、
+     appearance:noneにしても生成コンテンツ(::after)がブラウザによっては
+     描画されない(チェックマークの「レ」の部分が塗られない)ことがある
+     ため、確実に効く「隣接するふつうの要素に描く」方式に切り替えた。
+     <input>自体は透明化してその場に重ねるだけ(クリック・フォーカス・
+     チェック状態の保持はネイティブの<input>のまま)。 */
+  .checkbox-visual{ position:relative; display:inline-flex; width:22px; height:22px; flex:0 0 auto; cursor:pointer; }
+  .checkbox-visual input[type="checkbox"]{
+    position:absolute; inset:0; width:100%; height:100%; margin:0; opacity:0; cursor:pointer;
+  }
+  .checkbox-box{
+    display:block; width:100%; height:100%; box-sizing:border-box; position:relative;
+    background:var(--surface-2); border:1px solid var(--line); border-radius:5px;
+    pointer-events:none;
+  }
+  .checkbox-visual input[type="checkbox"]:checked + .checkbox-box{
+    background:var(--accent); border-color:var(--accent);
+  }
+  .checkbox-visual input[type="checkbox"]:checked + .checkbox-box::after{
+    content:''; position:absolute; left:7px; top:3px; width:6px; height:11px;
+    border:solid var(--bg); border-width:0 2px 2px 0; transform:rotate(45deg);
+  }
+  /* 真偽値インプットは、他の入力欄(幅いっぱいの箱)と見た目を揃えるため、
+     入力欄と同じ枠線・背景・角丸を持つ<div>(.checkbox-frame)でチェック
+     ボックス(複数個の場合あり、checkboxCount参照)を包む。以前は<label>で
+     包んで枠内のどこをクリックしてもチェックが切り替わる仕様にしていたが、
+     1つの枠に複数のチェックボックスを並べられるようにしたことで
+     「枠のどこでも切り替わる」という挙動自体が成立しなくなったため、
+     2026-09-19に元の「チェックボックス自体をクリックした時だけ切り替わる」
+     という挙動に戻した(<div>にし、クリックハンドラは持たせていない)。 */
+  .checkbox-frame{
+    display:flex; align-items:center; gap:8px; flex-wrap:wrap; width:100%; box-sizing:border-box;
+    min-height:calc(1.5em + 12px); padding:5px 7px;
+    background:var(--surface-2); border:1px solid var(--line); border-radius:5px;
+  }
+  /* 枠(.checkbox-frame)の中に置かれた状態のチェックボックス自体は、
+     背景ではなく枠線を強調カラーにする(2026-09-19)。背景を強調カラー
+     にすると、チェック時の塗りつぶし(同じ強調カラー)と見分けが
+     つかなくなるため、未チェック時は枠線だけ強調し、チェック時は
+     背景ごと塗りつぶす、という段階を付けている。 */
+  .checkbox-frame .checkbox-box{ border-color:var(--accent); }
+
+  /* toolbar */
+  .toolbar{
+    display:flex; flex-wrap:wrap; align-items:center; gap:8px;
+    padding:10px 0; border-bottom:1px solid var(--line); margin-bottom:16px; position:sticky; top:0; background:var(--bg); z-index:100;
+  }
+  .toolbar .tpl-name{ max-width:360px; }
+  .tpl-view-title{ font-family:'Fraunces',serif; font-weight:600; font-size:1.1rem; color:var(--accent-bright); }
+  .toolbar .spacer{ flex:1 1 auto; }
+  /* Drive連携のボタンが増えて1行に収まらないため、上のtoolbar(sticky)とは
+     別に、通常フロー(非sticky)の行としていくつかに分けて並べる。 */
+  .toolbar-row{ display:flex; flex-wrap:wrap; align-items:center; gap:8px; padding:6px 0; }
+  .toolbar-row:last-of-type{ border-bottom:1px solid var(--line); margin-bottom:16px; padding-bottom:12px; }
+  .status-line{ font-size:1rem; color:var(--muted); }
+  .status-line.status-ok{ color:var(--accent-bright); }
+  .status-line.status-err{ color:var(--danger); }
+
+  /* layout: メインカラムは常に中央のまま。編集パネルは右側に固定表示する */
+  .layout{ position:relative; }
+  .sheet{ display:flex; flex-direction:column; gap:14px; }
+  .sheet-author-note{ text-align:right; margin:0; }
+
+  /* frames */
+  .frame-section{ background:var(--surface); border:1px solid var(--line); border-radius:10px; padding:16px; }
+  .section-title{ display:flex; align-items:center; gap:6px; }
+  .collapse-btn{ padding:2px 6px; }
+  .section-body{ display:flex; flex-direction:column; gap:12px; }
+  .group-grid{ display:grid; grid-template-columns:repeat(var(--cols,2),1fr); gap:10px; }
+  .frame-field{ display:flex; flex-direction:column; gap:4px; cursor:default; }
+  /* フィフス版の個々のインプット見出し(.field label{color:var(--muted)})に
+     合わせる。見出し・テーブルヘッダーと同じ強さの明るいアクセント色を
+     全インプットの名称にまで使うと、画面全体が明るすぎて逆に読みづらく
+     なるため、インプット名称は控えめな色にとどめる(セクション見出しや
+     インプットセットの列見出しは引き続きaccent-brightのまま)。 */
+  .field-label{ color:var(--muted); font-weight:400; }
+  /* 「タブ記号をコピー」ボタンをラベルと同じ行に収め、textareaの上に
+     新しい行を追加しないようにする(縦方向のスペースへの配慮)。 */
+  .field-label-row{ display:flex; align-items:center; justify-content:space-between; gap:8px; }
+  .tsv-tab-copy-btn{ flex:0 0 auto; padding:3px 8px; font-size:0.9rem; }
+  /* 読み取り専用の欄(計算式・lookup・集計、および閲覧専用画面での
+     入力枠(renderReadOnlyFieldValue)も同じクラスを使う)は、入力できる
+     欄(surface-2の箱)と同じ箱の形のまま、背景をカテゴリー自体の背景
+     (--surface)に揃える。カテゴリーに溶け込ませることで「ここは
+     カテゴリーの一部であって、入力できる箱ではない」ことを示す
+     (2026-09-19、一時的に専用の「入力不可の背景」という色を新設して
+     いたが、色の数を増やしすぎず、素直にカテゴリー背景を使う方針に
+     戻した)。 */
+  .field-value.ref-value{
+    background:var(--surface); border:1px solid var(--line); border-radius:5px;
+    padding:5px 7px; line-height:1.5;
+    /* 参照が空文字になった場合、中身の無いdivは行ボックス自体が生成
+       されずline-heightが効かないため、min-heightだけで高さを保証する
+       必要がある。padding(5px×2)+border(1px×2)+line-height(1.5em)を
+       calc()で組み合わせ、入力欄と同じ高さになるようにする(1.4emの
+       ようなmin-height単体の指定では、空文字の時に入力欄より低く
+       潰れてしまっていた)。 */
+    min-height:calc(1.5em + 12px);
+  }
+  /* 参照が切れている枠(削除済みのデータリスト・列・入力枠・インプット
+     セットを参照したまま)は、赤で目立たせる。 */
+  .frame-field.is-broken .field-label{ color:var(--danger); }
+  .field-value.ref-value.is-broken-value{ border-color:var(--danger); border-style:solid; color:var(--danger); }
+  .set-schema-field.is-broken{ border-color:var(--danger); color:var(--danger); }
+  .frame-set{ background:var(--surface); border-radius:8px; padding:10px; }
+  .set-header{ display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:8px; }
+  .set-header .set-title{ margin-bottom:0; }
+  .set-schema-row{ display:flex; flex-wrap:wrap; gap:8px; }
+  .set-schema-field{
+    background:var(--surface-2); border:1px dashed var(--line); border-radius:5px;
+    padding:4px 8px; cursor:pointer;
+  }
+  /* インプットセットの行は、行ごとに見出しを繰り返さず1番上に1回だけ
+     出す表形式。.set-tableを1つのCSS Gridにし、見出し行・各データ行
+     (.set-table-header/.set-row)はdisplay:contentsで「透明な行」として
+     同じグリッドに乗せる。こうすると別々のdivに分かれていても列の幅が
+     ぴったり揃う(行ごとに独立したflexコンテナのままだと、行間で列幅が
+     微妙にずれてしまうため)。狭い画面では列が窮屈になるので、
+     .set-table-wrapで横スクロールできるようにしておく。 */
+  .set-table-wrap{ overflow-x:auto; }
+  .set-table{
+    display:grid; gap:6px 10px; align-items:center;
+    grid-template-columns:repeat(var(--set-cols,3), minmax(90px,1fr)) auto;
+  }
+  .set-table-header{ display:contents; }
+  .set-row{ display:contents; }
+  .set-cell{ min-width:0; }
+  .set-table-header .set-cell-label, .set-row .set-cell, .set-row .set-row-actions{
+    padding:6px 0; border-bottom:1px solid var(--line);
+  }
+  .set-table-header .set-cell-label{ border-bottom:2px solid var(--accent); }
+  /* ↑↓−の操作列には見出し文字が無いため、装飾用の下線だけ消す
+     (グリッドの行高さを揃えるため、セル自体は空のまま残す)。 */
+  .set-table-header .set-cell-label.set-cell-label-spacer{ border-bottom-color:transparent; }
+  .set-row-actions{ display:flex; gap:6px; align-items:center; }
+  /* インプットセットの列見出しも、通常のインプット名称(.field-label)と
+     同じ考え方で控えめな色にする(2026-09-17)。 */
+  .set-cell-label{ color:var(--muted); font-weight:400; }
+  .set-cell-label.is-broken{ color:var(--danger); }
+  .add-frame-btn{
+    align-self:flex-start; border-style:dashed; color:var(--accent-bright); background:transparent;
+  }
+  .add-row-btn{
+    border-style:dashed; color:var(--accent-bright); background:transparent;
+    padding:3px 8px; font-size:0.9rem; height:fit-content; flex:0 0 auto;
+  }
+  .category-body-row{ display:flex; gap:10px; align-items:stretch; }
+  .category-body-row .group-grid{ flex:1 1 auto; min-width:0; }
+  .category-image-area{ flex:0 0 20%; display:flex; flex-direction:column; gap:6px; }
+  /* フィフス版のportrait-frameと同じ「枠はoverflow:hidden固定、imgは
+     絶対配置+data-fitに応じて高さ100%/幅auto または 幅100%/高さautoで
+     中央寄せ」方式(はみ出す側は切れる)。クリックで上下/左右フィットを
+     切り替えられる(renderCategoryImageArea参照)。 */
+  .category-image-frame{
+    flex:1 1 auto; width:100%; min-height:120px; position:relative; overflow:hidden; cursor:pointer;
+    border-radius:6px; border:1px solid var(--line); background:var(--surface);
+  }
+  .category-image-frame img{
+    position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); max-width:none;
+  }
+  .category-image-frame[data-fit="height"] img{ height:100%; width:auto; }
+  .category-image-frame[data-fit="width"] img{ width:100%; height:auto; }
+  .remove-row-btn{ color:var(--danger); border-color:var(--danger); background:transparent; height:fit-content; }
+  .row-move-btn{ padding:5px 8px; height:fit-content; }
+  .row-move-btn:disabled{ opacity:0.35; cursor:default; }
+
+  /* 画像型のインプット */
+  .field-image{ display:flex; flex-direction:column; gap:6px; }
+  .field-image-preview{ max-width:100%; max-height:180px; border-radius:6px; border:1px solid var(--line); display:block; object-fit:contain; background:var(--surface); }
+  .field-image-actions{ display:flex; gap:6px; }
+
+  /* edit mode */
+  .mode-edit [data-frame-id]{ cursor:pointer; }
+  .mode-edit [data-frame-id]:hover{ outline:2px dashed var(--accent); outline-offset:2px; }
+  .mode-edit [data-frame-id].is-selected{ outline:2px solid var(--accent-bright); outline-offset:2px; }
+  .mode-edit .frame-field input, .mode-edit .frame-field select, .mode-edit .frame-field textarea{
+    pointer-events:none; opacity:0.8;
+  }
+
+  /* 編集パネル: メインカラムの位置には影響させず、右側に固定表示する */
+  /* 中央カラム(#app、max-width:1100px)のすぐ右にパネルを表示する。
+     画面が広い時は「中央カラムの右端+余白」の位置に、画面がそこまで
+     広くない(パネル分の余地が無い)時は自動的に画面右端に寄せる
+     (従来通りの、右端に張り付いて本文に重なる表示にフォールバックする)。
+     position:fixedとoverflow-y:autoはそのまま維持し、スクロール追従・
+     パネル内スクロールの挙動は変えない。 */
+  .panel-pane{
+    position:fixed; top:0; left:max(0px, min(calc(50vw + 566px), calc(100vw - 360px))); bottom:0; width:360px; max-width:90vw;
+    /* 入力欄(input/select/textarea)はどこでも--surface-2を使っているため、
+       パネル自体の背景もsurface-2のままだと入力欄と同化して見分けが
+       つきにくい。メインシート側で枠(.frame-section=--surface)より
+       入力欄(--surface-2)を明るくしているのと同じ関係をパネルにも
+       適用し、入力欄が自然に浮き上がって見えるようにする。 */
+    background:var(--surface); border-left:1px solid var(--accent);
+    box-shadow:-8px 0 24px rgba(0,0,0,0.5); padding:16px; overflow-y:auto; z-index:200;
+  }
+  .panel-head{ display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; }
+  .panel-body label{ margin-bottom:10px; }
+  .panel-body label > span, .panel-body label > *:first-child{ display:block; margin-bottom:3px; color:var(--muted); }
+  .panel-actions{ display:flex; gap:6px; flex-wrap:wrap; border-top:1px solid var(--line); padding-top:8px; margin-top:8px; }
+  .color-presets{ display:flex; gap:6px; flex-wrap:wrap; margin:10px 0 16px; }
+  .color-row{
+    display:flex !important; align-items:center; justify-content:space-between;
+    gap:10px; margin-bottom:8px !important;
+  }
+  .color-row > span{ margin-bottom:0 !important; color:var(--text) !important; }
+  .color-row input[type="color"]{
+    width:44px; height:32px; padding:2px; flex:0 0 auto; cursor:pointer;
+  }
+  .danger-btn{ color:var(--danger); border-color:var(--danger); }
+  /* 共有は「リンクを知っている人なら誰でも見られる」という特別な操作
+     (取り消しにくい・第三者に影響する)なので、他のボタンとは見た目を
+     はっきり変える。 */
+  .share-btn{ background:var(--accent); color:var(--bg); border-color:var(--accent); font-weight:600; }
+  .share-btn:hover{ background:var(--accent-bright); border-color:var(--accent-bright); }
+  .share-btn:disabled{ background:var(--surface-2); color:var(--muted); border-color:var(--line); font-weight:400; cursor:not-allowed; }
+  .icon-btn{ padding:2px 8px; }
+  /* フィフス版と同じ、常時インライン表示の共有パネル(トグル式モーダルは
+     廃止した)。 */
+  .share-panel{
+    background:var(--surface-2); border:1px solid var(--line); border-radius:8px;
+    padding:12px 14px; margin-bottom:16px;
+  }
+  .share-panel p{ margin:0; }
+  .author-fields-row{ display:flex; gap:12px; margin-top:8px; }
+  .author-fields-row label{ flex:1 1 0; min-width:0; }
+  .share-url{ display:flex; gap:6px; margin:8px 0 0; flex-wrap:wrap; }
+  /* 一覧画面で「共有中」かどうかを示すバッジ(フィフス版と同じ見た目)。 */
+  .share-badge{
+    display:inline-block; font-family:'IBM Plex Mono',monospace; font-size:0.8rem;
+    color:var(--accent-bright); border:1px solid var(--accent); border-radius:3px;
+    padding:1px 6px; margin-left:6px;
+  }
+  .share-url input{ flex:1 1 auto; min-width:0; font-family:'IBM Plex Mono',monospace; }
+  /* キャラクター一覧の行を名前だけで見分けられるよう添える、先頭画像の
+     小さなサムネイルと、先頭の入力済みインプット値のプレビュー。 */
+  .char-list-thumb{
+    display:block; width:40px; height:40px; object-fit:cover;
+    border:1px solid var(--line); border-radius:4px; background:var(--surface);
+  }
+  .char-list-thumb-empty{ background:var(--surface-2); }
+  .char-list-preview{
+    font-family:'IBM Plex Mono',monospace; font-size:0.8rem; color:var(--muted);
+    margin-top:2px;
+  }
+  /* 値そのものは切らずに渡し、長い値はCSSの省略記号(…)に任せる。JS側で
+     文字数判定して"..."を手作りするより、アプリ全体の「処理中…」等と
+     同じ省略記号を使えて見た目が揃う。単位はch(半角の"0"の幅)ではなく
+     emを使う: このフォント(IBM Plex Mono、和文はフォールバック)では
+     全角文字が1文字=1emで描画される(半角基準のchだと全角文字が
+     約2ch分になり、25chでは実質12文字程度しか入らず狙いより早く
+     切れてしまう)。25emで和文25文字相当の幅になる。 */
+  .char-list-preview-item{
+    display:inline-block; max-width:25em; overflow:hidden;
+    text-overflow:ellipsis; white-space:nowrap; vertical-align:bottom;
+  }
+  .load-error-banner{
+    background:var(--surface); border:1px solid var(--danger); color:var(--danger);
+    border-radius:8px; padding:10px 14px; margin-bottom:14px;
+  }
+  /* 1項目が2行以上(演算子行+値欄+警告文)にまたがるため、どこからどこ
+     までが同じ項なのかひと目で分かるよう、項ごとに薄い枠で囲う。 */
+  .term-row{
+    margin-bottom:8px; padding:8px; border:1px solid var(--line); border-radius:6px;
+  }
+  /* 演算子・参照方法の切り替え・削除ボタンを1行目、実際に長くなりがちな
+     参照先/値の欄を2行目に分ける(設定パネルの横幅が狭く、全部を1行に
+     並べると削除ボタン(×)が押し出されて隠れてしまうため)。削除ボタンは
+     flex:0 0 autoで縮まないようにし、常に右端に表示され続ける。 */
+  .term-row-head{ display:flex; gap:6px; align-items:center; }
+  .term-row-head select{ width:auto; flex:0 1 auto; min-width:0; }
+  .term-row-head button{ flex:0 0 auto; margin-left:auto; }
+  .term-row-value{ margin-top:4px; }
+  .term-row-value select, .term-row-value input{ width:100%; }
+  .term-row .term-warning{ margin-bottom:0; }
+
+  /* data frame modal */
+  .modal-backdrop{
+    position:fixed; inset:0; background:rgba(0,0,0,0.6); display:flex; align-items:center; justify-content:center; z-index:300; padding:20px;
+  }
+  .modal-box{
+    background:var(--surface); border:1px solid var(--accent); border-radius:10px; padding:18px;
+    max-width:720px; width:100%; max-height:85vh; overflow:auto;
+  }
+  .modal-head{ display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; }
+  /* ゲート画面(トップ/一覧)。テンプレート編集画面・キャラクター編集画面等の
+     「シート」画面とは別の、ログイン・新規作成・一覧選択だけを行う単純な画面。
+     2026-09-18、フィフス版のログイン画面を参考に全面刷新した。以前は
+     .gate-screen{min-height:100vh}で縦方向に中央寄せしていたが、カード
+     全体の高さが画面より高くなると上下とも見切れて逆にスクロールしにくく
+     なる問題があった(中央寄せは「収まる」前提でないと機能しない)ため、
+     フィフス版と同じ、上から積み上げる通常のドキュメントフローに変更した。
+     囲み枠(旧.gate-card、accent色の1pxボーダー+背景色の箱)も撤廃し、
+     ページの地の上にテキストとボタンを直接置く、フィフス版の
+     .login-hero-rowに近い構成にしている。 */
+  .gate-page{ max-width:640px; margin:0 auto; padding:28px 20px 64px; }
+  /* トップ2画面共通のヒーローバナー(2026-09-18)。#appの幅
+     (max-width:1100px)いっぱいに表示し、下の.gate-topbar/.gate-page
+     (640px幅)よりずっと広く見せることで奥行きを出す。高さは固定して
+     object-fit:coverで上寄りをクロップする(元画像は縦横比1.43:1で
+     横長バナーには収まらないため)。下端にvar(--bg)へのグラデーション
+     をかけ、その下のページ本文へ地続きに見えるようにする。 */
+  .hero-banner{
+    position:relative; width:100%; height:210px; overflow:hidden;
+    border-radius:10px; margin-bottom:22px;
+  }
+  .hero-banner img{
+    width:100%; height:100%; object-fit:cover; object-position:center 30%;
+    display:block;
+  }
+  .hero-banner::after{
+    content:''; position:absolute; left:0; right:0; bottom:0; height:110px;
+    background:linear-gradient(to bottom, transparent, var(--bg));
+    pointer-events:none;
+  }
+  @media (max-width:640px){ .hero-banner{ height:180px; } }
+  /* 縦が短いウィンドウでは、主ボタンまでが画面に収まらずスクロールが
+     必要になってしまう(前回のトップ画面刷新で解消した問題の再発)ため、
+     画面の高さが低い時はバナーをさらに縮める。幅ではなく高さ基準の
+     メディアクエリにしているのは、横長だが縦が短いウィンドウ
+     (例:1024×600)にも対応するため。 */
+  @media (max-height:900px){ .hero-banner{ height:150px; margin-bottom:18px; } }
+  .gate-topbar{
+    display:flex; align-items:baseline; gap:10px; flex-wrap:wrap;
+    padding-bottom:16px; margin-bottom:28px; border-bottom:1px solid var(--line);
+  }
+  .gate-topbar h1{ font-size:1.5rem; margin:0; }
+  .gate-brand-tag{ color:var(--muted); font-size:0.82rem; font-family:'IBM Plex Mono',monospace; }
+  /* トップ画面の主見出し。フィフス版の.login-hero h1(2.4rem)よりは
+     控えめだが、通常のh2(1.3rem)よりはっきり大きくして「この画面の
+     主役」であることを示す。 */
+  .gate-title{ font-size:2.1rem; line-height:1.25; margin-bottom:8px; }
+  .gate-lead{ color:var(--muted); font-size:1.05rem; white-space:nowrap; }
+  @media (max-width:600px){ .gate-lead{ white-space:normal; } }
+  /* ボタンを縦積みフル幅(旧デザイン)ではなく、フィフス版の
+     .login-guest-rowのように横並び・幅は内容なりにすることで、
+     画面の高さを大きく節約する。 */
+  .gate-actions{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-top:16px; }
+  /* ログインを主動線として視覚的に目立たせ、ローカルファイル系の副次的な
+     導線と区別する(共有ボタンのアクセント塗り=.share-btnと同じ考え方)。 */
+  .gate-primary-btn{
+    background:var(--accent); color:var(--bg); border-color:var(--accent);
+    font-weight:600; padding:8px 20px; font-size:1.05rem;
+  }
+  .gate-primary-btn:hover{ background:var(--accent-bright); border-color:var(--accent-bright); }
+  .gate-note{ margin-top:14px; color:var(--muted); font-size:0.85rem; max-width:50ch; }
+  .gate-list{ max-width:760px; margin:40px auto; padding:0 20px 40px; }
+  .gate-list-auth{ display:flex; justify-content:flex-end; align-items:center; gap:10px; margin-bottom:16px; }
+  .gate-list-head{ display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:16px; }
+  .dl-block{
+    background:var(--surface); border:1px solid var(--line); border-radius:10px;
+    padding:12px 14px; margin-bottom:14px;
+  }
+  .dl-block h4{ display:flex; align-items:center; gap:8px; }
+  .dl-label-input{ width:auto; flex:1; font-family:'Fraunces',serif; font-weight:600; color:var(--accent-bright); }
+  /* データリストの行編集: フィフス版の呪文一覧(TSV編集)と同じ方式。
+     タブ区切りで入力・貼り付けし、フォーカスを外すと表として表示する。 */
+  textarea.dl-tsv-input{
+    display:block; width:100%; min-height:80px; box-sizing:border-box;
+    background:var(--surface-2); border:1px solid var(--line); color:var(--text);
+    border-radius:5px; padding:8px 10px; font-family:'IBM Plex Mono',monospace;
+    font-size:1rem; line-height:1.6; white-space:pre; resize:vertical;
+  }
+  textarea.dl-tsv-input:focus{ border-color:var(--accent); }
+  .dl-tsv-table{ width:100%; table-layout:fixed; border-collapse:collapse; font-family:'IBM Plex Mono',monospace; cursor:pointer; margin:8px 0; }
+  .dl-tsv-table td, .dl-tsv-table th{ border:1px solid var(--line); padding:8px 10px; text-align:left; vertical-align:top; white-space:pre-wrap; word-break:break-word; }
+  .dl-tsv-table th{ background:var(--surface); color:var(--accent-bright); border-bottom:2px solid var(--accent); }
+  .dl-tsv-table tbody tr:nth-child(odd){ background:var(--surface); }
+  .dl-tsv-table tbody tr:nth-child(even){ background:var(--surface-2); }
+  .dl-tsv-hint{ margin:4px 0 8px; }
+  .ref-list-error{ color:var(--danger); }
+
+  /* chat palette */
+  .chat-palette{ background:var(--surface); border:1px solid var(--line); border-radius:10px; padding:16px; margin-top:14px; }
+  .chat-line{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding:6px 0; border-bottom:1px solid var(--line); }
+  .chat-line-label{ min-width:100px; color:var(--muted); }
+  /* 自由入力行専用: ラベルと削除ボタンを1つの項目としてまとめ、
+     textarea(幅100%指定で必ず単独行になる)と合わせて2行構成にする。
+     グループ内のラベルは他の項目と幅を揃える必要が無いため詰める。 */
+  .chat-line-label-group{ display:flex; align-items:center; gap:8px; }
+  .chat-line-label-group .chat-line-label{ min-width:0; }
+  .chat-line-label-group .remove-row-btn{ flex:0 0 auto; }
+  .chat-line-text{
+    background:var(--surface); flex:1 1 auto; width:auto; min-height:1.6em; min-width:120px;
+    font-family:'IBM Plex Mono',monospace;
+  }
+  .mode-edit .chat-line-text{ opacity:0.8; }
+  .chat-line-group{ display:flex; align-items:flex-start; gap:8px; }
+  .chat-line-rows{ flex:1 1 auto; min-width:0; }
+  .chat-line-move{ display:flex; gap:4px; flex:0 0 auto; padding-top:6px; }
+  .chat-palette-block{ display:flex; align-items:flex-start; gap:8px; }
+  .chat-palette-textarea{
+    flex:1 1 auto; min-width:0; min-height:6em;
+    background:var(--surface); font-family:'IBM Plex Mono',monospace; line-height:1.6;
+  }
+  .chat-palette-block button{ flex:0 0 auto; white-space:nowrap; }
+
+  /* screenを明示しないと、印刷時のページ幅(A4等)がこの閾値を下回る
+     ことが多く、印刷にもこのモバイル用レイアウトが適用されてしまう
+     (列数を画面表示に合わせる@media printの意図と衝突し、印刷時の
+     列数がずれる原因になっていた)。 */
+  @media screen and (max-width:760px){
+    .toolbar{ position:static; }
+    .group-grid{ grid-template-columns:1fr !important; }
+    /* .frame-fieldは元のカテゴリー列数(--cols)基準で計算した
+       grid-column:span Nをインラインstyleで個別に持っている。上の
+       1列強制だけでは、span 2以上を要求するフィールドがある行で
+       ブラウザが暗黙列を自動生成してしまい、結局複数列のグリッドに
+       戻ってラベルが1文字ずつ縦に折り返される不具合があったため、
+       子要素側のspanも1列に上書きする。 */
+    .group-grid > .frame-field{ grid-column:1 !important; }
+    .category-body-row{ flex-direction:column; }
+    /* 画像エリアの幅(%)は--cols同様インラインstyleで個別指定している
+       ため、group-gridの列数と同じくここも!importantで上書きする。 */
+    .category-image-area{ flex-basis:auto !important; }
+    .category-image-frame{ max-height:240px; }
+  }
+
+  /* 印刷時: 画面表示と同じ横幅・列数で印刷されるようにする。
+     印刷用のスタイルを何も指定していないと、#appのmax-width基準の
+     中央寄せや、position:fixed/stickyの要素(ツールバー・設定パネル)、
+     vw基準の計算(設定パネルの横位置)が印刷時のページ幅とかみ合わず、
+     列(--cols)が本来より大幅に狭い幅に押し込まれて折り返され、結果的に
+     2〜3列に圧縮されたような見た目になっていた。印刷でしか使わない
+     ルールなので、位置指定をリセットして素直に幅いっぱいに流し込む。
+     操作用のボタン・パネル・モーダルは紙面では意味を持たないため非表示にする。 */
+  @media print{
+    .toolbar, .toolbar-row, .panel-pane, .modal-backdrop,
+    .add-frame-btn, .add-row-btn, .remove-row-btn, .row-move-btn,
+    .collapse-btn, .field-image-actions, .chat-palette-block button, .set-row-actions{
+      display:none !important;
+    }
+    #app{ max-width:none; width:100%; margin:0; padding:0; }
+  }
+  /* フィフス版の.legal-footerと同じ構成(免責文→必須表記→連絡先・規約
+     リンク)。General版はSRD等の第三者ライセンス表記が無い代わりに、
+     テンプレート作成者の権利責任についての注記になる
+     (general/CLAUDE.mdの「ライセンス・著作権の方針」参照)。 */
+  .legal-footer{
+    max-width:880px; margin:0 auto; padding:20px 20px 40px;
+    border-top:1px solid var(--line); color:var(--muted);
+    font-size:0.82rem; line-height:1.6;
+  }
+  .legal-footer p{ margin:0 0 8px; }
+  .legal-footer .legal-required{
+    color:var(--muted); font-family:'IBM Plex Mono',monospace; font-size:0.8rem;
+  }
+  .legal-footer a{ color:var(--muted); text-decoration:underline; }
+  .legal-footer a:hover{ color:var(--accent-bright); }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<footer class="legal-footer">
+  <p>
+    キャラシェア・ジェネラルは、利用者自身が任意のTRPGシステム向けの
+    キャラクターシートを作成・共有できるサービスです。
+  </p>
+  <p class="legal-required">
+    テンプレート・データリストの内容(対象システムの名称・ルール・数値・文章等)について、
+    著作権・商標権その他の権利を有すること、または権利者から必要な許諾を得ていることは、
+    各テンプレート作成者の責任となります。運営者による内容の事前審査は行っていません。
+    権利者その他の第三者からの申し立ては、下記の連絡先までお願いします。
+  </p>
+  <p>
+    運営者:キャラシェア運営(maginecotrpg@gmail.com)
+  </p>
+  <p>
+    <a href="./faq.html">よくある質問</a>
+    ・
+    <a href="../privacy-policy.html">プライバシーポリシー</a>
+    ・
+    <a href="../terms-of-service.html">利用規約</a>
+  </p>
+</footer>
+<script>
+/* =========================================================
+   general/ 汎用テンプレートエンジン 試作(EXPERIMENTAL)
+   general/CLAUDE.md の設計方針に基づく、動作検証用のプロトタイプ。
+   ========================================================= */
+
+/* ---------- Google Drive連携の設定 ----------
+ * OAuthクライアントID・トークン交換/共有プロキシのCloud Functionは
+ * フィフス版(../fifthe/index.html)と同じものをそのまま再利用する
+ * (同一オリジン・同一GCPプロジェクトで、新規に発行するメリットが無い)。
+ * 詳細はgeneral/CLAUDE.mdの「Google Drive連携」を参照。 */
+const GOOGLE_CLIENT_ID = "373791663243-329rrjbe7at41rr5ffljkhomp23lnsaq.apps.googleusercontent.com";
+const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file";
+const OAUTH_EXCHANGE_URL = "https://asia-northeast1-chara-share-507105.cloudfunctions.net/charashareExchangeAuthCode";
+const SHARE_ENCRYPT_URL = "https://asia-northeast1-chara-share-507105.cloudfunctions.net/charashareEncryptShareId";
+const SHARE_VIEW_URL = "https://asia-northeast1-chara-share-507105.cloudfunctions.net/charashareViewSharedCharacter";
+// トップ2画面(テンプレート/キャラクター)共通のヒーローバナー画像。
+// 2026-09-18、base64データURIとして直接埋め込んでいたが、閲覧画面
+// (characterView)や編集画面・一覧画面はこの画像を一切使わないにも
+// 関わらず、単一HTMLファイルである以上ファイル全体(埋め込み分込み)を
+// 毎回ダウンロードしてから画面を判定する構成のため、使わない画面まで
+// 重くしてしまっていた。別ファイル(general/hero.jpg)に分離し、
+// <img src>で参照する形に変更した(charashare全体の「単一HTMLファイル
+// 完結」方針からは部分的に外れるが、ユーザー確認の上での判断。
+// deploy.ps1にアップロード対象として追加済み)。
+const HERO_BANNER_IMAGE = "hero.jpg";
+// Driveの一覧取得(appProperties)で、テンプレート/キャラクターを区別する
+// ためのタグ。フィフス版のAPP_TAGとは別の値にして混ざらないようにする。
+const APP_TAG_TEMPLATE = "charashare-general-template";
+const APP_TAG_CHARACTER = "charashare-general-character";
+// テンプレートもキャラクターと同じくSHARE_VIEW_URL(share-proxy)経由で
+// 読むため、ブラウザ側にDrive APIキーを埋め込む必要は無い(2026-09-17、
+// 生IDが作成者の身元に繋がる問題を修正した際に廃止。詳細はgeneral/CLAUDE.md
+// の「Google Drive連携」参照)。サイズ上限のチェックもサーバー側に移した。
+
+// テンプレート単位で見た目の色を変えられる機能(2026-09-19)。
+// state.template.colors(キー→16進カラーコード)に、下記10色のうち
+// テンプレート作成者が変更した分だけを保存する(未設定のキーは
+// DEFAULT_COLORSにフォールバックする)。ゲート画面(トップ・一覧)は
+// キャラシェア・ジェネラル自体のブランドを表すため対象外とし、
+// テンプレート・キャラクターを描画する画面(templateEditor/
+// characterEditor/characterView)だけに適用する。
+const DEFAULT_COLORS = {
+  bg: '#14161b', surface: '#0f1114', surface2: '#1e2129',
+  text: '#e7e9ed', muted: '#9aa1ac', accent: '#c99a4f', accentBright: '#e0b568',
+  line: '#2e333e', danger: '#c9584f',
+};
+const COLOR_VAR_MAP = {
+  bg: '--bg', surface: '--surface', surface2: '--surface-2',
+  text: '--text', muted: '--muted', accent: '--accent', accentBright: '--accent-bright',
+  line: '--line', danger: '--danger',
+};
+// accentBrightは「ターゲティングカラー」という表記にしている(2026-09-19、
+// ユーザー指定)。見出し文字(h1〜h4)・強調表示等、accentよりさらに
+// 目を引かせたい箇所に使う色、という位置づけは変わっていない。
+const COLOR_LABELS = {
+  bg: 'ページ背景', surface: 'カテゴリー背景', surface2: '入力欄の背景',
+  text: '文字色', muted: '控えめな文字色', accent: '強調カラー', accentBright: 'ターゲティングカラー',
+  line: '枠線', danger: '警告・削除色',
+};
+// あらかじめ用意する3パターン。「ダーク+ゴールド」は既定配色そのもの。
+// 白基調の「ホワイト+ブラウン」は、単純に暗い配色の明暗を反転しただけだと
+// コントラストが崩れる(暗背景用に選んだ明るい色は白背景では逆に薄すぎて
+// 読めない、等)ため、白背景側で改めてコントラストを確保できる値を
+// 個別に選び直している。
+const COLOR_PRESETS = {
+  gold: { label: 'ダーク+ゴールド(既定)', colors: { ...DEFAULT_COLORS } },
+  whiteBrown: {
+    label: 'ホワイト+ブラウン',
+    colors: {
+      // ページ背景が純白(#ffffff)だと明るすぎるという指摘を受け、
+      // わずかに沈めた#f8f7f5にした(2026-09-19)。カテゴリー背景
+      // (surface)との差が縮まってしまう分、surfaceも合わせて
+      // #f3efe9→#efe9dfへ少し深くし、「ページ→カテゴリー」の
+      // 沈み込みがちゃんと見えるようにしている。
+      bg: '#f8f7f5', surface: '#efe9df', surface2: '#ffffff',
+      text: '#2a211c', muted: '#7a6b5d', accent: '#8b5a2b', accentBright: '#6e4620',
+      line: '#ddd2c3', danger: '#b23b2f',
+    },
+  },
+  darkCyan: {
+    label: 'ダーク+シアン',
+    colors: {
+      // サイバーパンク風のイメージで配色し直した(2026-09-19)。単なる
+      // 暗いシアンではなく、背景に紫みがかった漆黒(#080b12)、強調カラーは
+      // ネオンサインのような彩度の高いシアン(#22d3ee)、警告色はサイバー
+      // パンク作品でよく使われるホットピンク寄りの赤(#ff3864)にした。
+      // 枠線(line)は、以前は背景とほぼ同化する暗さだったが「もう少し
+      // 強調されていてほしい」という指摘を受け、彩度の高いティール系の
+      // 色(#2f8fa3)まで明るくし、パネルの輪郭がネオンの縁取りのように
+      // はっきり見えるようにした。
+      bg: '#080b12', surface: '#05070c', surface2: '#131b26',
+      text: '#e4f6f8', muted: '#7b96a3', accent: '#22d3ee', accentBright: '#67e8f9',
+      line: '#2f8fa3', danger: '#ff3864',
+    },
+  },
+};
+
+const state = {
+  // 画面遷移(フィフス版のlogin/list/editorのような明示的なルーティング)。
+  // 'templateTop'|'templateSelect'|'templateEditor'|
+  // 'characterTop'|'characterList'|'characterEditor'|'characterView'
+  screen: null,
+  template: null,
+  character: null,
+  mode: 'view',          // 'view' | 'edit'(テンプレート編集画面内でのみ意味を持つ)
+  selection: null,        // {kind:'section'|'set'|'field', id}
+  collapsed: {},
+  dataListModalOpen: false,
+  dataListTsvEditing: {},
+  tableEditing: {},
+  refListModalOpen: false,
+  colorPanelOpen: false, // テンプレート編集画面(確認画面含む)での色調整パネル
+  chatPaletteOpen: false, // キャラクター編集/表示画面でのフローティングチャットパレット
+  dirty: false, // 未保存の変更があるか(beforeunloadの警告判定に使う)
+  // Google Drive連携
+  accessToken: null,        // メモリ上のみ保持(localStorage等には保存しない)
+  pendingLoginAction: null, // ログイン後に自動で行う操作名(未ログイン時に保存/一覧ボタンを押した場合)
+  statusMsg: '', statusKind: '', // Drive操作の進行状況・結果を表示する控えめなステータス行
+  templateFileId: null, templateFileMine: false, templateShared: false, templateShareUrl: '',
+  templateShareToken: '', // share-proxy経由で発行した、公開共有URL(?tpl=)用の暗号化トークン
+  characterFileId: null, characterShared: false, characterShareToken: '',
+  readOnly: false,  // 共有URL(?char=)からの閲覧時のみtrue(state.screen==='characterView'と連動)
+  loadError: '',    // 起動時のURLパラメータ読み込みに失敗した場合のバナー表示用
+  driveBrowser: null, // {kind:'template'|'character', loading, files, error} — テンプレート選択/キャラクター一覧画面のデータ
+};
+
+/* ---------- Google認証(../fifthe/index.html と同じ認可コードフロー) ----------
+ * ブラウザはGoogleから認可コードだけを受け取り、アクセストークンへの交換
+ * (client_secretが必要)はOAUTH_EXCHANGE_URLのCloud Functionに代行させる。
+ * トークンはメモリ上のみで、保存機能ごとに「保留中の操作」を覚えておいて
+ * ログイン完了後に自動実行する(pendingLoginAction)。 */
+function randomHex(byteLength){
+  const arr = new Uint8Array(byteLength);
+  (window.crypto || window.msCrypto).getRandomValues(arr);
+  return Array.from(arr, b => b.toString(16).padStart(2, '0')).join('');
+}
+function setStatus(msg, kind){
+  state.statusMsg = msg; state.statusKind = kind || '';
+  render({ skipDirty: true });
+}
+function initGoogle(){
+  if(!window.google || !google.accounts || !google.accounts.oauth2){
+    setTimeout(initGoogle, 200);
+    return;
+  }
+  render();
+}
+async function exchangeAuthCode(code, redirectUri){
+  const res = await fetch(OAUTH_EXCHANGE_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ code, redirectUri }),
+  });
+  if(!res.ok){
+    let detail = '';
+    try{ const body = await res.json(); detail = body.error || ''; }catch(_e){ /* ignore */ }
+    throw new Error('トークン交換に失敗しました。' + (detail ? `(${detail})` : ''));
+  }
+  return res.json();
+}
+async function handleAuthCodeResponse(resp, expectedState){
+  const pendingAction = state.pendingLoginAction;
+  state.pendingLoginAction = null;
+  if(resp.error){
+    console.error(resp);
+    setStatus('ログインに失敗しました: ' + resp.error, 'err');
+    return;
+  }
+  // CSRF対策: リクエスト時に生成したstateと、応答のstateが一致することを確認する
+  if(!expectedState || resp.state !== expectedState){
+    console.error('OAuth state mismatch', resp.state, expectedState);
+    setStatus('認証の検証に失敗しました。もう一度ログインしてください。', 'err');
+    return;
+  }
+  try{
+    setStatus('ログイン処理中…', '');
+    // initCodeClient({ux_mode:"popup"})では redirect_uri は明示せず、
+    // ページのオリジンが暗黙的に使われる仕様のため、トークン交換時も
+    // 同じ値(location.origin)を渡して一致させる。
+    const tokenData = await exchangeAuthCode(resp.code, location.origin);
+    state.accessToken = tokenData.access_token;
+    setStatus('ログインしました。', 'ok');
+    if(pendingAction === 'saveTemplate') await saveTemplateToDrive();
+    else if(pendingAction === 'openTemplateBrowser') await listMyTemplates();
+    else if(pendingAction === 'saveCharacter') await saveCharacterToDrive();
+    else if(pendingAction === 'openCharacterBrowser') await listMyCharacters();
+    else if(pendingAction === 'shareTemplate') await shareTemplate();
+    else if(pendingAction === 'shareCharacter') await shareCharacter();
+  }catch(e){
+    console.error(e);
+    setStatus(e.message, 'err');
+  }
+}
+function login(){
+  if(!window.google || !google.accounts || !google.accounts.oauth2){ return; }
+  const oauthState = randomHex(16);
+  const codeClient = google.accounts.oauth2.initCodeClient({
+    client_id: GOOGLE_CLIENT_ID,
+    scope: DRIVE_SCOPE,
+    ux_mode: 'popup',
+    // 空文字を明示することで、既に許可済みの利用者には同意画面を省略させる
+    // (未指定だと毎回同意画面が出る挙動になるとの報告があったため)。
+    prompt: '',
+    state: oauthState,
+    callback: (resp) => handleAuthCodeResponse(resp, oauthState),
+  });
+  codeClient.requestCode();
+}
+function loginAndThen(action){
+  if(!window.google || !google.accounts || !google.accounts.oauth2){
+    setStatus('Googleログインの準備中です。少し待ってからもう一度お試しください。', 'err');
+    return;
+  }
+  state.pendingLoginAction = action;
+  login();
+}
+function logout(){
+  if(state.accessToken){
+    google.accounts.oauth2.revoke(state.accessToken, () => {});
+  }
+  state.accessToken = null;
+  // ログアウト後もそのままの画面に留まると、ログイン前提の編集画面や
+  // 一覧画面が中途半端に(ログインボタンだけ出た状態で)表示され続けて
+  // しまうため、テンプレート系/キャラクター系どちらの文脈にいたかに
+  // 応じて、それぞれのトップ画面へ戻す。
+  const isTemplateContext = state.screen === 'templateTop' || state.screen === 'templateSelect' || state.screen === 'templateEditor';
+  state.screen = isTemplateContext ? 'templateTop' : 'characterTop';
+  setStatus('ログアウトしました。', '');
+}
+async function driveFetch(url, options={}){
+  options.headers = Object.assign({}, options.headers, {
+    'Authorization': 'Bearer ' + state.accessToken,
+  });
+  const res = await fetch(url, options);
+  if(res.status === 401){
+    throw new Error('認証の有効期限が切れました。再度ログインしてください。');
+  }
+  return res;
+}
+
+/* ---------- Drive: テンプレートの保存・読み込み(自分のDrive) ---------- */
+async function createTemplateFile(templateObj){
+  const boundary = 'chsg_' + randomHex(16);
+  const metadata = { name: (templateObj.meta && templateObj.meta.name) || 'テンプレート', appProperties: { app: APP_TAG_TEMPLATE, shared: 'false' } };
+  const body =
+    `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n` +
+    `--${boundary}\r\nContent-Type: application/json\r\n\r\n${JSON.stringify(templateObj)}\r\n` +
+    `--${boundary}--`;
+  const res = await driveFetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id', {
+    method: 'POST',
+    headers: { 'Content-Type': `multipart/related; boundary=${boundary}` },
+    body,
+  });
+  if(!res.ok) throw new Error('テンプレートの保存に失敗しました。');
+  const data = await res.json();
+  return data.id;
+}
+async function updateTemplateFile(fileId, templateObj){
+  const contentRes = await driveFetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(templateObj),
+  });
+  if(!contentRes.ok) throw new Error('テンプレートの保存に失敗しました。');
+  await driveFetch(`https://www.googleapis.com/drive/v3/files/${fileId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: (templateObj.meta && templateObj.meta.name) || 'テンプレート' }),
+  });
+}
+async function fetchTemplateFileAuthed(fileId){
+  const res = await driveFetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`);
+  if(!res.ok) throw new Error('テンプレートの読み込みに失敗しました。');
+  return res.json();
+}
+// テンプレート・キャラクターのDriveファイルを開き直す時、共有状態
+// (shared/shareToken)をappPropertiesから復元するための共通ヘルパー。
+// 取得に失敗した場合は「共有されていない」扱いにフォールバックする
+// (以前の、常にリセットしていた挙動と同じ安全側の結果になる)。
+async function fetchDriveAppProperties(fileId){
+  try{
+    const res = await driveFetch(`https://www.googleapis.com/drive/v3/files/${fileId}?fields=appProperties`);
+    if(!res.ok) return {};
+    const data = await res.json();
+    return data.appProperties || {};
+  }catch(e){
+    console.error('appPropertiesの取得に失敗しました', e);
+    return {};
+  }
+}
+async function saveTemplateToDrive(){
+  if(!state.accessToken){ loginAndThen('saveTemplate'); return; }
+  setStatus('テンプレートをDriveに保存中…', '');
+  try{
+    if(state.templateFileId && state.templateFileMine){
+      await updateTemplateFile(state.templateFileId, state.template);
+    } else {
+      state.templateFileId = await createTemplateFile(state.template);
+      state.templateFileMine = true;
+      state.templateShared = false;
+      state.templateShareUrl = '';
+    }
+    state.dirty = false;
+    setStatus('テンプレートをDriveに保存しました。', 'ok');
+  }catch(e){
+    console.error(e);
+    setStatus(e.message, 'err');
+  }
+}
+async function listMyTemplates(){
+  if(!state.accessToken){ loginAndThen('openTemplateBrowser'); return; }
+  state.driveBrowser = { kind: 'template', loading: true, files: [], error: '' };
+  state.screen = 'templateSelect';
+  render();
+  try{
+    const q = encodeURIComponent(`appProperties has { key='app' and value='${APP_TAG_TEMPLATE}' } and trashed=false`);
+    const res = await driveFetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,modifiedTime,appProperties)&orderBy=modifiedTime desc`);
+    if(!res.ok) throw new Error('テンプレート一覧の取得に失敗しました。');
+    const data = await res.json();
+    state.driveBrowser = { kind: 'template', loading: false, files: data.files || [], error: '' };
+  }catch(e){
+    console.error(e);
+    state.driveBrowser = { kind: 'template', loading: false, files: [], error: e.message };
+  }
+  render();
+}
+async function openTemplateFromDrive(fileId){
+  try{
+    const templateObj = await fetchTemplateFileAuthed(fileId);
+    const props = await fetchDriveAppProperties(fileId);
+    state.template = templateObj;
+    // シートの描画は常にキャラクター側のデータを参照するため、
+    // (テンプレートトップ経由等でまだ無い場合に備えて)必ず用意する。
+    // 別のテンプレートに切り替えた場合、以前のキャラクターの値は
+    // フィールドIDが噛み合わなくなるため引き継がず空にする。
+    state.character = blankCharacter();
+    state.templateFileId = fileId;
+    state.templateFileMine = true;
+    // 以前は開き直すたびに無条件でリセットしていたため、既に共有済みの
+    // テンプレートを開き直すと「共有されていない」表示に戻ってしまい、
+    // 次に共有した時にfetchShareToken()が新しいトークンを発行し直して
+    // URLが変わってしまっていた。Driveのappropertiesに保存済みの共有
+    // 状態をここで復元する。
+    state.templateShared = props.shared === 'true';
+    state.templateShareToken = props.shareToken || '';
+    state.templateShareUrl = (state.templateShared && state.templateShareToken)
+      ? templateShareUrlFor(state.templateShareToken) : '';
+    state.characterFileId = null;
+    state.characterShared = false;
+    state.characterShareToken = '';
+    state.selection = null;
+    state.dataListTsvEditing = {};
+    state.driveBrowser = null;
+    state.mode = 'edit';
+    state.screen = 'templateEditor';
+    state.dirty = false;
+    setStatus('テンプレートをDriveから読み込みました。', 'ok');
+  }catch(e){
+    console.error(e);
+    setStatus(e.message, 'err');
+    render();
+  }
+}
+async function deleteDriveFile(fileId, kind){
+  if(!confirmDelete('このファイルをDriveから削除しますか？元に戻せません。')) return;
+  try{
+    const res = await driveFetch(`https://www.googleapis.com/drive/v3/files/${fileId}`, { method: 'DELETE' });
+    if(!res.ok && res.status !== 204) throw new Error('削除に失敗しました。');
+    if(kind === 'template') await listMyTemplates();
+    else await listMyCharacters();
+  }catch(e){
+    console.error(e);
+    setStatus(e.message, 'err');
+    render();
+  }
+}
+/* ---------- Drive: テンプレートの公開読み込み(サインイン不要) ----------
+ * テンプレートもキャラクターと同じくshare-proxy(暗号化トークン)経由で
+ * 読む。以前は「テンプレートは著作者が公開するデータなので所有者を
+ * 隠す必要が無い」という判断でブラウザから生のDriveファイルIDを直接
+ * 使っていたが、この生IDが?tpl=URLやキャラクターJSONへの埋め込みを通じて
+ * 外部に渡ってしまい、受け取った側がDrive本体を直接開くとテンプレート
+ * 作成者のGoogleアカウント表示名が見えてしまう(charashare全体の
+ * 「共有機能の考え方」が本来防ごうとしている事象)ことが判明したため、
+ * 2026-09-17にキャラクターと同じ暗号化トークン方式に統一した。
+ * サイズ上限(3MB)のチェックもサーバー側(viewSharedCharacter)に移した。 */
+async function fetchPublicTemplate(token){
+  const res = await fetch(`${SHARE_VIEW_URL}?token=${encodeURIComponent(token)}`);
+  if(!res.ok){
+    let detail = '';
+    try{ const errBody = await res.json(); detail = (errBody && errBody.error) || ''; }catch(_e){ /* ignore */ }
+    throw new Error(`テンプレートの読み込みに失敗しました。${detail ? '(' + detail + ')' : ''}`);
+  }
+  return res.json();
+}
+// キャラクターJSONからテンプレートを解決する共通ロジック。自分のDriveから
+// 開く(openCharacterFromDrive())時にだけ使う: ログイン済みの本人が
+// 編集する場合は、テンプレートが後から更新されていれば最新版を見たいはず
+// なので、templateShareTokenがあればまずDrive上の最新版を試し、無い/
+// 失敗したらキャラクターJSON自身に埋め込まれたtemplateSnapshotに
+// フォールバックする。共有URL(?char=)からの閲覧(characterView)は
+// これとは別物で、2026-09-18以降テンプレートの取得を一切行わず
+// templateSnapshotだけを使う(bootstrap()参照、general/CLAUDE.md
+// 「Google Drive連携」参照)。
+async function resolveCharacterTemplate(characterObj){
+  if(characterObj.templateShareToken){
+    try{ return await fetchPublicTemplate(characterObj.templateShareToken); }
+    catch(e){ console.error('テンプレートの最新版取得に失敗、埋め込みデータにフォールバックします', e); }
+  }
+  if(characterObj.templateSnapshot) return characterObj.templateSnapshot;
+  throw new Error('このキャラクターのテンプレートが見つかりません。');
+}
+
+/* ---------- Drive: キャラクターの保存・読み込み(自分のDrive) ---------- */
+async function createCharacterFile(characterObj){
+  const boundary = 'chsg_' + randomHex(16);
+  const name = (state.template.meta && state.template.meta.name ? state.template.meta.name + 'のキャラクター' : 'キャラクター');
+  const metadata = { name, appProperties: { app: APP_TAG_CHARACTER, templateFileId: state.templateFileId || '', templateName: (state.template.meta && state.template.meta.name) || '', shared: 'false' } };
+  const body =
+    `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n` +
+    `--${boundary}\r\nContent-Type: application/json\r\n\r\n${JSON.stringify(characterObj)}\r\n` +
+    `--${boundary}--`;
+  const res = await driveFetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id', {
+    method: 'POST',
+    headers: { 'Content-Type': `multipart/related; boundary=${boundary}` },
+    body,
+  });
+  if(!res.ok) throw new Error('キャラクターの保存に失敗しました。');
+  const data = await res.json();
+  return data.id;
+}
+async function updateCharacterFile(fileId, characterObj){
+  const contentRes = await driveFetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(characterObj),
+  });
+  if(!contentRes.ok) throw new Error('キャラクターの保存に失敗しました。');
+  await driveFetch(`https://www.googleapis.com/drive/v3/files/${fileId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ appProperties: { app: APP_TAG_CHARACTER, templateFileId: state.templateFileId || '', templateName: (state.template.meta && state.template.meta.name) || '' } }),
+  });
+}
+async function listMyCharacters(){
+  if(!state.accessToken){ loginAndThen('openCharacterBrowser'); return; }
+  state.driveBrowser = { kind: 'character', loading: true, files: [], error: '' };
+  state.screen = 'characterList';
+  render();
+  try{
+    const q = encodeURIComponent(`appProperties has { key='app' and value='${APP_TAG_CHARACTER}' } and trashed=false`);
+    const res = await driveFetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,modifiedTime,appProperties)&orderBy=modifiedTime desc`);
+    if(!res.ok) throw new Error('キャラクター一覧の取得に失敗しました。');
+    const data = await res.json();
+    state.driveBrowser = { kind: 'character', loading: false, files: data.files || [], error: '' };
+    loadCharacterListPreviews(state.driveBrowser);
+  }catch(e){
+    console.error(e);
+    state.driveBrowser = { kind: 'character', loading: false, files: [], error: e.message };
+  }
+  render();
+}
+// キャラクター一覧は名前だけでは見分けが付きにくいため、各行の先頭画像と
+// 「先頭から3つ見つかった入力済みインプットの値」を軽いプレビューとして
+// 添える。一覧取得(files.list)はファイル内容までは返さないため、行ごとに
+// 追加でalt=media取得が必要になる(=ファイル数だけDrive APIを叩く)。
+// ユーザー本人のDrive・本人のOAuthトークンでの取得なので課金や公開APIの
+// クォータには影響しない。取得は一覧の初期表示をブロックしないよう
+// バックグラウンドで行い、行ごとに届き次第render()し直す(1行ずつでも
+// 個人利用規模の件数なら再描画コストは無視できる)。一覧を開き直す等で
+// `state.driveBrowser`が別オブジェクトに差し替わった後に古い取得が
+// 完了しても、そのdb引数(古いオブジェクト)を見て中断するので、表示中の
+// 一覧を上書きしない。
+async function loadCharacterListPreviews(db){
+  for(const f of db.files){
+    fetchCharacterListPreview(f.id).then(preview => {
+      if(state.driveBrowser !== db) return;
+      f.preview = preview;
+      render();
+    });
+  }
+}
+async function fetchCharacterListPreview(fileId){
+  try{
+    const res = await driveFetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`);
+    if(!res.ok) return null;
+    return buildCharacterPreview(await res.json());
+  }catch(e){
+    console.error(e);
+    return null;
+  }
+}
+// 画像は「テンプレート順で最初に見つかった画像エリアの値」、テキストは
+// 「テンプレート順(カテゴリー→インプントの並び)で、値が入っている
+// インプットを先頭から3つ」。見出し名は使わず値だけを並べる(区別が
+// 目的で、項目名までは要らないという想定)。テーブル型は値が配列で
+// 単純な文字列にならないため対象から除く。
+function buildCharacterPreview(characterObj){
+  const sections = (characterObj.templateSnapshot && characterObj.templateSnapshot.sections) || [];
+  const values = characterObj.values || {};
+  let image = '';
+  const texts = [];
+  for(const sec of sections){
+    if(image && texts.length >= 3) break;
+    if(!image && sec.imageArea && values[sec.imageArea.id]) image = values[sec.imageArea.id];
+    for(const f of (sec.fields || [])){
+      if(texts.length >= 3) break;
+      if(f.kind !== 'input' || f.type === 'table') continue;
+      const v = values[f.id];
+      if(v === undefined || v === null || v === '') continue;
+      texts.push(String(v));
+    }
+  }
+  return { image, texts };
+}
+async function openCharacterFromDrive(fileId){
+  try{
+    const res = await driveFetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`);
+    if(!res.ok) throw new Error('キャラクターの読み込みに失敗しました。');
+    const characterObj = await res.json();
+    const props = await fetchDriveAppProperties(fileId);
+    state.template = await resolveCharacterTemplate(characterObj);
+    // 生のDriveファイルIDは分からない(share-proxyのトークン経由でしか
+    // テンプレートを解決していないため)。共有トークンだけ引き継ぐ。
+    state.templateFileId = null;
+    state.templateShareToken = characterObj.templateShareToken || '';
+    state.templateFileMine = false;
+    state.character = characterObj;
+    state.characterFileId = fileId;
+    // テンプレートと同じ理由(開き直すたびにリセットすると、既に共有済み
+    // でも「共有されていない」表示に戻り、次に共有した時に新しいトークン
+    // が発行されてURLが変わってしまう)で、Driveのappropertiesから
+    // 共有状態を復元する。
+    state.characterShared = props.shared === 'true';
+    state.characterShareToken = props.shareToken || '';
+    state.driveBrowser = null;
+    state.readOnly = false;
+    state.mode = 'view';
+    state.screen = 'characterEditor';
+    state.dirty = false;
+    checkTemplateSnapshotDiff();
+    setStatus('キャラクターをDriveから読み込みました。', 'ok');
+  }catch(e){
+    console.error(e);
+    setStatus(e.message, 'err');
+    render();
+  }
+}
+async function saveCharacterToDrive(){
+  if(!state.accessToken){ loginAndThen('saveCharacter'); return; }
+  setStatus('キャラクターをDriveに保存中…', '');
+  try{
+    embedTemplateSnapshot(state.character);
+    if(state.characterFileId){
+      await updateCharacterFile(state.characterFileId, state.character);
+    } else {
+      state.characterFileId = await createCharacterFile(state.character);
+      state.characterShared = false;
+      state.characterShareToken = '';
+    }
+    state.dirty = false;
+    setStatus('キャラクターをDriveに保存しました。', 'ok');
+  }catch(e){
+    console.error(e);
+    setStatus(e.message, 'err');
+  }
+}
+
+/* ---------- 共有: テンプレート(生のDriveファイルIDをそのまま使う) ----------
+ * キャラクターと違って所有者情報を隠す必要が無いため、share-proxyの
+ * 暗号化トークンは使わず、Drive上のファイルIDをそのまま?tpl=に載せる
+ * (general/CLAUDE.md参照)。 */
+function templateShareUrlFor(fileId){
+  return `${location.origin}${location.pathname}?tpl=${encodeURIComponent(fileId)}`;
+}
+// テンプレート・キャラクターの共有どちらからも使う、Drive上のファイルに
+// 「リンクを知っている人は誰でも閲覧可」権限を付与する処理と、その
+// ファイルIDをshare-proxy(暗号化トークン)に変換する処理。
+async function grantAnyoneReaderPermission(fileId){
+  const res = await driveFetch(`https://www.googleapis.com/drive/v3/files/${fileId}/permissions`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ role: 'reader', type: 'anyone' }),
+  });
+  if(!res.ok) throw new Error('共有設定に失敗しました。');
+}
+async function fetchShareToken(fileId){
+  const res = await fetch(SHARE_ENCRYPT_URL, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ fileId }),
+  });
+  if(!res.ok) throw new Error('共有トークンの発行に失敗しました。');
+  const data = await res.json();
+  return data.token;
+}
+async function shareTemplate(){
+  if(!state.accessToken){ loginAndThen('shareTemplate'); return; }
+  if(!state.templateFileId || !state.templateFileMine){
+    setStatus('先にテンプレートをDriveへ保存してください。', 'err');
+    return;
+  }
+  const meta = state.template.meta || {};
+  if(!meta.author || !meta.contact){
+    setStatus('テンプレート作者名と連絡先を入力してください。', 'err');
+    return;
+  }
+  setStatus('共有リンクを作成中…', '');
+  try{
+    await grantAnyoneReaderPermission(state.templateFileId);
+    // トークンは一度発行したら使い回す(毎回発行し直すと、共有URLの表示が
+    // 開くたびに変わってしまうため)。
+    if(!state.templateShareToken){
+      state.templateShareToken = await fetchShareToken(state.templateFileId);
+    }
+    await driveFetch(`https://www.googleapis.com/drive/v3/files/${state.templateFileId}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ appProperties: { app: APP_TAG_TEMPLATE, shared: 'true', shareToken: state.templateShareToken } }),
+    });
+    state.templateShared = true;
+    state.templateShareUrl = templateShareUrlFor(state.templateShareToken);
+    setStatus('共有リンクを作成しました。', 'ok');
+  }catch(e){
+    console.error(e);
+    setStatus(e.message, 'err');
+  }
+}
+async function revokeTemplateShare(){
+  if(!state.templateFileId) return;
+  setStatus('共有を解除中…', '');
+  try{
+    const listRes = await driveFetch(`https://www.googleapis.com/drive/v3/files/${state.templateFileId}/permissions?fields=permissions(id,type)`);
+    if(!listRes.ok) throw new Error('権限情報の取得に失敗しました。');
+    const data = await listRes.json();
+    const anyonePerm = (data.permissions || []).find(p => p.type === 'anyone');
+    if(anyonePerm){
+      const delRes = await driveFetch(`https://www.googleapis.com/drive/v3/files/${state.templateFileId}/permissions/${anyonePerm.id}`, { method: 'DELETE' });
+      if(!delRes.ok && delRes.status !== 204) throw new Error('共有解除に失敗しました。');
+    }
+    await driveFetch(`https://www.googleapis.com/drive/v3/files/${state.templateFileId}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ appProperties: { app: APP_TAG_TEMPLATE, shared: 'false' } }),
+    });
+    state.templateShared = false;
+    state.templateShareUrl = '';
+    setStatus('共有を解除しました。', 'ok');
+  }catch(e){
+    console.error(e);
+    setStatus(e.message, 'err');
+  }
+}
+function copyTemplateShareLink(){
+  navigator.clipboard.writeText(state.templateShareUrl).then(() => {
+    setStatus('共有URLをコピーしました。', 'ok');
+  }).catch(() => {
+    setStatus('コピーできませんでした。手動でURLを選択してください。', 'err');
+  });
+}
+
+/* ---------- 共有: キャラクター(share-proxyの暗号化トークンをそのまま使う) ---------- */
+// キャラクターの共有URLは?charだけで完結させる(2026-09-18、&tplは
+// 付けない方針に変更)。閲覧側はテンプレートの生存確認・最新版取得を
+// 一切行わず、キャラクターJSONに埋め込まれたtemplateSnapshotだけで
+// 表示する(bootstrap()のchar分岐参照)。これにより閲覧時の通信が
+// 1回で済み、テンプレートが後で削除・改変・共有解除されても表示が
+// 変わらない(共有した瞬間のスナップショットが常に使われる)。
+function characterShareUrlFor(token){
+  return `${location.origin}${location.pathname}?char=${encodeURIComponent(token)}`;
+}
+async function shareCharacter(){
+  if(!state.accessToken){ loginAndThen('shareCharacter'); return; }
+  if(!state.characterFileId){
+    setStatus('先にキャラクターをDriveへ保存してください。', 'err');
+    return;
+  }
+  setStatus('共有リンクを作成中…', '');
+  try{
+    // キャラクターの共有URLは?charだけで完結し、閲覧側はテンプレートを
+    // 一切取得しない(埋め込みのtemplateSnapshotだけを使う)ため、
+    // キャラクターを共有する際にテンプレート側も合わせて共有する必要は
+    // 無い(以前はここでテンプレートのanyone:reader権限を付与していたが、
+    // 2026-09-18の方針変更で不要になった)。
+    await grantAnyoneReaderPermission(state.characterFileId);
+    // トークンは一度発行したら使い回す(毎回発行し直すと、共有URLの表示が
+    // 開くたびに変わってしまうため)。
+    if(!state.characterShareToken){
+      state.characterShareToken = await fetchShareToken(state.characterFileId);
+    }
+    await driveFetch(`https://www.googleapis.com/drive/v3/files/${state.characterFileId}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ appProperties: { app: APP_TAG_CHARACTER, templateFileId: state.templateFileId, shared: 'true', shareToken: state.characterShareToken } }),
+    });
+    state.characterShared = true;
+    setStatus('共有リンクを作成しました。', 'ok');
+  }catch(e){
+    console.error(e);
+    setStatus(e.message, 'err');
+  }
+}
+async function revokeCharacterShare(){
+  if(!state.characterFileId) return;
+  setStatus('共有を解除中…', '');
+  try{
+    const listRes = await driveFetch(`https://www.googleapis.com/drive/v3/files/${state.characterFileId}/permissions?fields=permissions(id,type)`);
+    if(!listRes.ok) throw new Error('権限情報の取得に失敗しました。');
+    const data = await listRes.json();
+    const anyonePerm = (data.permissions || []).find(p => p.type === 'anyone');
+    if(anyonePerm){
+      const delRes = await driveFetch(`https://www.googleapis.com/drive/v3/files/${state.characterFileId}/permissions/${anyonePerm.id}`, { method: 'DELETE' });
+      if(!delRes.ok && delRes.status !== 204) throw new Error('共有解除に失敗しました。');
+    }
+    await driveFetch(`https://www.googleapis.com/drive/v3/files/${state.characterFileId}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ appProperties: { app: APP_TAG_CHARACTER, shared: 'false' } }),
+    });
+    state.characterShared = false;
+    setStatus('共有を解除しました。', 'ok');
+  }catch(e){
+    console.error(e);
+    setStatus(e.message, 'err');
+  }
+}
+function copyCharacterShareLink(){
+  const url = characterShareUrlFor(state.characterShareToken);
+  navigator.clipboard.writeText(url).then(() => {
+    setStatus('共有URLをコピーしました。', 'ok');
+  }).catch(() => {
+    setStatus('コピーできませんでした。手動でURLを選択してください。', 'err');
+  });
+}
+
+/* ---------- 汎用ヘルパー ---------- */
+function esc(s){
+  return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+const escAttr = esc;
+function uid(prefix){ return prefix + '_' + Math.random().toString(36).slice(2, 9); }
+function sanitizeDomId(s){ return String(s).replace(/[^a-zA-Z0-9_-]/g, '_'); }
+// 削除前の確認ダイアログをここに一本化する(deleteDriveFile/removeSetRow/
+// removeDataList/removeChatFreeText等、削除系の関数はすべてここを通す)。
+// hasContentをfalseで渡すと(実質的に失われる入力が無いと呼び出し側が
+// 判断した場合)確認無しでそのまま削除してよいと判断する。省略時(true)は
+// 常に確認する、これまでの挙動をそのまま維持する。
+function confirmDelete(message, hasContent = true){
+  return !hasContent || confirm(message);
+}
+
+/* ---------- テンプレート内の枠を探す ---------- */
+function findFrame(kind, id){
+  const t = state.template;
+  if(kind === 'section') return t.sections.find(s => s.id === id) || null;
+  if(kind === 'set'){
+    for(const s of t.sections) for(const st of s.sets) if(st.id === id) return st;
+    return null;
+  }
+  if(kind === 'field'){
+    for(const s of t.sections){
+      for(const f of s.fields) if(f.id === id) return f;
+      for(const st of s.sets) for(const f of st.fields) if(f.id === id) return f;
+    }
+    return null;
+  }
+  return null;
+}
+function findContainer(kind, id){
+  const t = state.template;
+  if(kind === 'section') return { arr: t.sections, idx: t.sections.findIndex(s => s.id === id) };
+  if(kind === 'set'){
+    for(const s of t.sections){ const idx = s.sets.findIndex(x => x.id === id); if(idx > -1) return { arr: s.sets, idx }; }
+    return null;
+  }
+  if(kind === 'field'){
+    for(const s of t.sections){
+      const idx = s.fields.findIndex(f => f.id === id); if(idx > -1) return { arr: s.fields, idx };
+      for(const st of s.sets){ const idx2 = st.fields.findIndex(f => f.id === id); if(idx2 > -1) return { arr: st.fields, idx: idx2 }; }
+    }
+    return null;
+  }
+  return null;
+}
+function findDataList(id){ return (state.template.dataLists || []).find(d => d.id === id) || null; }
+function isFieldInsideSet(fieldId){
+  for(const s of state.template.sections) for(const st of s.sets) if(st.fields.some(f => f.id === fieldId)) return st;
+  return null;
+}
+function findFieldSection(fieldId){
+  for(const s of state.template.sections){
+    if(s.fields.some(f => f.id === fieldId)) return s;
+    for(const st of s.sets) if(st.fields.some(f => f.id === fieldId)) return s;
+  }
+  return null;
+}
+// 参照先として選べる枠の種類に制限は設けない(入力枠・計算式・lookup・
+// listFilter・集計のどれでも参照できる)。その代わり、循環参照は
+// isFieldInCycle()で検出し、参照エラーとして表示する(下記参照)。
+// セット内部のスコープ制限(別行・セット外からセット内へは直接参照
+// できない等)は、この関数とは別の話として引き続き適用される。
+function fieldMatchesTypeFilter(f, typeFilter){
+  if(!typeFilter) return true;
+  return Array.isArray(typeFilter) ? typeFilter.includes(f.type) : f.type === typeFilter;
+}
+function globalInputFields(typeFilter){
+  const out = [];
+  for(const s of state.template.sections) for(const f of s.fields)
+    if(fieldMatchesTypeFilter(f, typeFilter)) out.push(f);
+  return out;
+}
+function setInputFields(setId, typeFilter){
+  const st = findFrame('set', setId);
+  if(!st) return [];
+  return st.fields.filter(f => fieldMatchesTypeFilter(f, typeFilter));
+}
+function referenceableFieldsFor(fieldId, typeFilter){
+  const parentSet = isFieldInsideSet(fieldId);
+  const globals = globalInputFields(typeFilter);
+  if(parentSet) return [...setInputFields(parentSet.id, typeFilter), ...globals];
+  return globals;
+}
+// fが直接参照している他のインプットのIDの一覧を返す。キャラクターの
+// 実データには依存しない、テンプレートの構造だけを見た静的な情報。
+function fieldDirectRefs(f){
+  if(!f) return [];
+  const refs = [];
+  if(f.kind === 'ref'){
+    if(f.refType === 'formula') refs.push(...(f.terms || []).map(t => t.field).filter(Boolean));
+    if(f.refType === 'lookup' || f.refType === 'listFilter') refs.push(...(f.match || []).map(m => m.field).filter(Boolean));
+    if(f.refType === 'aggregateSum') refs.push(...(f.terms || []));
+  }
+  return refs;
+}
+// fieldIdから参照を辿っていくと、いつか自分自身に戻ってくるか(循環参照
+// になっているか)を判定する。参照先の種類に制限を設けない代わりに、
+// 「参照ごとに」この静的チェックを行い、循環していれば参照エラーとして
+// 表示する(getFieldReferenceErrors参照)。値の計算経路(resolveTermValue
+// のvisitingガード)とは別に、こちらは表示専用の独立したチェック。
+function isFieldInCycle(fieldId, visiting){
+  visiting = visiting || new Set();
+  if(visiting.has(fieldId)) return true;
+  const f = findFrame('field', fieldId);
+  if(!f) return false;
+  const nextVisiting = new Set(visiting);
+  nextVisiting.add(fieldId);
+  return fieldDirectRefs(f).some(depId => isFieldInCycle(depId, nextVisiting));
+}
+
+/* ---------- 値の取得・計算エンジン ---------- */
+function getInputValue(fieldId, rowScope){
+  if(rowScope && rowScope.row && Object.prototype.hasOwnProperty.call(rowScope.row, fieldId)) return rowScope.row[fieldId];
+  return state.character.values[fieldId];
+}
+function getFieldDisplayValue(f, rowScope){
+  if(f.kind === 'input') return getInputValue(f.id, rowScope);
+  if(f.refType === 'listFilter') return getInputValue(f.id, rowScope);
+  return resolveRefValue(f, rowScope);
+}
+// 真偽値インプットは、1つの枠の中に複数のチェックボックスを並べられる
+// (f.checkboxCount、既定1=従来通りの単一チェックボックス)。2個以上の
+// 場合、保存される値は単一のtrue/falseではなく真偽値の配列になる。
+// このヘルパーは表示用に「必ずcheckboxCount個ぶんのbooleanの配列」を
+// 返す(保存済みの値が配列でない・短い等でも壊れないよう正規化する)。
+function checkboxCountOf(f){ return Math.max(1, parseInt(f.checkboxCount) || 1); }
+function getCheckboxStates(f, rowScope){
+  const raw = getFieldDisplayValue(f, rowScope);
+  const count = checkboxCountOf(f);
+  const arr = Array.isArray(raw) ? raw : [];
+  return Array.from({ length: count }, (_, i) => !!arr[i]);
+}
+// 値がまだ一度も入力されていない(undefined/null)場合のみ、テンプレート
+// 側で設定された初期値にフォールバックする。空文字・0・falseのような
+// 「利用者が意図的に空にした値」を初期値で上書きしないようにするため。
+// 表示(renderFieldInput)と計算式・lookup・集計の参照解決(resolveTermValue)
+// の両方が、「実際に効いている値」として同じこの関数を使う必要がある。
+// 真偽値インプットでcheckboxCountが2以上の場合だけは例外で、他の枠から
+// 参照された時の値は「チェックが入っている個数」という数値にする
+// (チェックボックスを複数並べて使う場面(死亡セーヴ等)では、1個1個の
+// on/offより合計何個チェックされているかの方が意味を持つため)。
+function getEffectiveValue(f, rowScope){
+  if(f.type === 'boolean' && checkboxCountOf(f) > 1){
+    return getCheckboxStates(f, rowScope).filter(Boolean).length;
+  }
+  const raw = getFieldDisplayValue(f, rowScope);
+  return (raw === undefined || raw === null) ? f.defaultValue : raw;
+}
+// インプットが「入力枠」か「lookupで参照している枠」かを見て値を取り出す。
+// lookup枠は値を保存せず毎回計算するため、他の枠から参照されたときは
+// ここで再帰的に計算する。visitingは循環参照(作者の設定ミス)を検出する
+// ためのガードで、検出したらundefinedを返す(0や空欄として扱われる)。
+function resolveTermValue(fieldId, rowScope, visiting){
+  if(!fieldId) return undefined;
+  const f = findFrame('field', fieldId);
+  if(!f) return undefined;
+  if(f.kind === 'input') return getEffectiveValue(f, rowScope);
+  if(f.kind === 'ref' && f.refType === 'listFilter') return getEffectiveValue(f, rowScope);
+  if(f.kind === 'ref'){
+    visiting = visiting || new Set();
+    if(visiting.has(fieldId)) return undefined;
+    const nextVisiting = new Set(visiting);
+    nextVisiting.add(fieldId);
+    if(f.refType === 'lookup') return evalLookup(f, rowScope, nextVisiting);
+    if(f.refType === 'formula') return evalFormula(f, rowScope, nextVisiting);
+    if(f.refType === 'aggregateSum') return evalAggregateSum(f, nextVisiting);
+  }
+  return undefined;
+}
+function resolveRefValue(f, rowScope, visiting){
+  if(f.refType === 'formula') return evalFormula(f, rowScope, visiting);
+  if(f.refType === 'lookup') return evalLookup(f, rowScope, visiting);
+  if(f.refType === 'aggregateSum') return evalAggregateSum(f, visiting);
+  return '';
+}
+// ゼロ除算(÷・%でv===0)を示す番兵オブジェクト。数値ではなくこの
+// オブジェクトが混ざっていること自体を目印にする(Number()に渡っても
+// 例外を投げずNaNになるだけなので、想定外の参照元でも描画がクラッシュ
+// しない)。計算式が他の計算式を参照している場合は、この番兵をそのまま
+// 上位へ伝播させ、鎖のどこでゼロ除算が起きても最終的な表示側
+// (renderFieldInput/renderChatPalette)で検出できるようにしている。
+const DIV_BY_ZERO_ERROR = { divByZero: true };
+// 数式の一般的な優先順位(×÷%を+-より先に計算する)に合わせるため、
+// 単純な左から右への逐次計算ではなく2段階で評価する。まず×÷%を前から
+// 順にたたみ込んで+-だけの列にし、それから+-を合算する(掛け算・割り算
+// が連続する場合はそのまま左から右へたたみ込まれるので、2×3÷4のような
+// 式も正しく評価される)。
+function evalFormula(f, rowScope, visiting){
+  const terms = f.terms || [];
+  if(!terms.length) return 0;
+  const values = [];
+  for(const t of terms){
+    const raw = t.field ? resolveTermValue(t.field, rowScope, visiting) : t.value;
+    if(raw === DIV_BY_ZERO_ERROR) return DIV_BY_ZERO_ERROR;
+    values.push(Number(raw) || 0);
+  }
+  const reducedValues = [values[0]];
+  const reducedOps = [];
+  for(let i = 1; i < terms.length; i++){
+    const op = terms[i].op;
+    const v = values[i];
+    if(op === '×' || op === '*'){
+      reducedValues[reducedValues.length - 1] *= v;
+    } else if(op === '÷↑' || op === '÷↓'){
+      if(v === 0) return DIV_BY_ZERO_ERROR;
+      const divided = reducedValues[reducedValues.length - 1] / v;
+      reducedValues[reducedValues.length - 1] = op === '÷↑' ? Math.ceil(divided) : Math.floor(divided);
+    } else if(op === '%'){
+      if(v === 0) return DIV_BY_ZERO_ERROR;
+      reducedValues[reducedValues.length - 1] %= v;
+    } else {
+      reducedOps.push(op);
+      reducedValues.push(v);
+    }
+  }
+  let acc = reducedValues[0];
+  for(let i = 0; i < reducedOps.length; i++){
+    const v = reducedValues[i + 1];
+    if(reducedOps[i] === '+') acc += v;
+    else if(reducedOps[i] === '-') acc -= v;
+  }
+  return acc;
+}
+function evalLookup(f, rowScope, visiting){
+  const dl = findDataList(f.dataList);
+  if(!dl) return '';
+  const matches = f.match || [];
+  const row = dl.rows.find(r => matches.every(m => String(r[m.key]) === String(resolveTermValue(m.field, rowScope, visiting))));
+  return row ? row[f.output] : '';
+}
+function evalListFilter(f, rowScope, visiting){
+  const dl = findDataList(f.dataList);
+  if(!dl) return [];
+  const matches = f.match || [];
+  // 「保存する値の列」を明示していない場合は、表示列の値をそのまま
+  // 保存する値としても使う(通常はこれで十分なため、省略可能にしている)。
+  const valueCol = f.optionValue || f.optionLabel;
+  return dl.rows
+    .filter(r => matches.every(m => String(r[m.key]) === String(resolveTermValue(m.field, rowScope, visiting))))
+    .map(r => ({ value: r[valueCol], label: r[f.optionLabel] }));
+}
+// データリストで絞り込まれるリスト型インプット(listFilter)の値を、レンダリング
+// の直前に補正する。候補が1件だけに絞り込まれた場合は自動的にそれを
+// 選択し、逆に(条件が変わる等で)選択済みの値が候補から外れた場合は
+// 未選択に戻す。この補正が書き換えるのは「保存されている入力値」のみで、
+// 計算式・lookup・集計は毎回その場で計算し直すだけなので、補正結果を
+// 見て連鎖的に再計算し直す必要はない(全体を1回なめるだけで済む)。
+function setInputValueQuiet(fieldId, value, rowScope){
+  if(rowScope) rowScope.row[fieldId] = value;
+  else state.character.values[fieldId] = value;
+}
+function normalizeListFilterField(f, rowScope){
+  if(!(f.type === 'list' && f.kind === 'ref' && f.refType === 'listFilter')) return;
+  const options = evalListFilter(f, rowScope);
+  const currentValue = getInputValue(f.id, rowScope);
+  const hasValue = currentValue !== '' && currentValue != null;
+  if(f.allowCustomInput){
+    // 自由入力を許可している場合、既に何か値が入っていれば(候補に無い
+    // 値=自由入力かもしれないため)絶対に上書き・リセットしない。
+    // 空欄の時に1件だけへ絞り込まれた場合のみ、補助的に自動選択する。
+    if(!hasValue && options.length === 1) setInputValueQuiet(f.id, options[0].value, rowScope);
+    return;
+  }
+  const stillValid = hasValue && options.some(o => String(o.value) === String(currentValue));
+  if(options.length === 1){
+    if(String(options[0].value) !== String(currentValue)) setInputValueQuiet(f.id, options[0].value, rowScope);
+  } else if(hasValue && !stillValid){
+    setInputValueQuiet(f.id, '', rowScope);
+  }
+}
+function normalizeListFilterValues(){
+  for(const s of state.template.sections){
+    for(const f of s.fields){ normalizeListFilterField(f, null); }
+    for(const st of s.sets){
+      const rows = state.character.sets[st.id] || [];
+      rows.forEach((row, idx) => {
+        const rowScope = { setId: st.id, rowIndex: idx, row };
+        for(const f of st.fields){ normalizeListFilterField(f, rowScope); }
+      });
+    }
+  }
+}
+function evalAggregateSum(f, visiting){
+  const rows = (state.character.sets && state.character.sets[f.set]) || [];
+  let total = 0;
+  rows.forEach((row, idx) => {
+    const rowScope = { setId: f.set, rowIndex: idx, row };
+    let product = null;
+    for(const termId of (f.terms || [])){
+      const v = Number(resolveTermValue(termId, rowScope, visiting)) || 0;
+      product = product === null ? v : product * v;
+    }
+    total += (product === null ? 0 : product);
+  });
+  return total;
+}
+
+/* ---------- 描画: 全体 ---------- */
+function isGateScreen(screen){
+  return screen === 'templateTop' || screen === 'templateSelect' || screen === 'characterTop' || screen === 'characterList';
+}
+function renderGateScreen(){
+  if(state.screen === 'templateTop') return renderTemplateTopScreen();
+  if(state.screen === 'templateSelect') return renderTemplateSelectScreen();
+  if(state.screen === 'characterTop') return renderCharacterTopScreen();
+  if(state.screen === 'characterList') return renderCharacterListScreen();
+  return '';
+}
+// render()はテンプレート・キャラクターの編集からUIの単純な開閉(モーダル・
+// 設定パネル・チャットパレット等)まで、あらゆる操作の後に呼ばれる唯一の
+// 再描画経路。render()を呼ぶ関数一つ一つに「これは編集操作か」を
+// 判定させるのではなく、逆に「編集操作ではない(ナビゲーション・UI開閉
+// だけの)呼び出し側」に`skipDirty:true`を渡させることで、
+// beforeunloadの警告漏れ(=気付かず未保存の変更を失う)より
+// 過剰検知(=何もしていないのに聞かれる)の方を安全側として選んでいる。
+// 広告(Auto ads)の表示可否を、SPA内の画面遷移(ページ再読み込みを
+// 伴わない)に追従させる。<head>側の初期pauseAdRequests設定は初回読込
+// 時点のURLしか見られないため、その後ログイン後に一覧経由でキャラクター
+// 編集画面を開く、といったクライアント側だけの遷移はここで拾う。
+// pauseAdRequestsは「これ以降の新規広告リクエスト」を止めるだけで
+// 既に挿入済みの広告要素は消さないため、body.ads-hiddenクラス
+// (前述のCSS参照)による強制非表示と併用している。unsafe→safeに
+// 戻った場合にAuto adsが新たに広告を挿入し直すかどうかはGoogle側の
+// 挙動次第で保証できないが、「安全側に倒す(出るべきでない所には
+// 絶対に出さない)」ことを優先し、この非対称は許容している。
+function syncAdVisibility(){
+  const adsAllowed = isGateScreen(state.screen);
+  document.body.classList.toggle('ads-hidden', !adsAllowed);
+  (window.adsbygoogle = window.adsbygoogle || []).pauseAdRequests = adsAllowed ? 0 : 1;
+}
+function render(opts){
+  syncAdVisibility();
+  const app = document.getElementById('app');
+  // ゲート画面(トップ/一覧)はテンプレート・キャラクターのデータを
+  // 一切必要としないシンプルな画面のため、シート描画一式(フォーカス
+  // 保持・データリスト正規化等)を丸ごとスキップする。
+  if(isGateScreen(state.screen)){
+    app.className = 'mode-view';
+    app.innerHTML = renderGateScreen();
+    applyTemplateColors(true);
+    return;
+  }
+  // 編集可能な画面(テンプレート編集・キャラクター編集)でのみ未保存
+  // 判定を行う。閲覧専用のキャラクター表示画面は編集できないため対象外。
+  if(!(opts && opts.skipDirty) && (state.screen === 'templateEditor' || state.screen === 'characterEditor')){
+    state.dirty = true;
+  }
+  normalizeListFilterValues();
+  const scrollY = window.scrollY;
+  const restoreFocus = captureActiveFieldFocus(app);
+  app.className = state.mode === 'edit' ? 'mode-edit' : 'mode-view';
+  // チャットパレットは、テンプレート編集画面では従来通りシート内に
+  // インライン表示するが、キャラクター編集/表示画面ではフローティング
+  // 表示に統一する(ボタンで開閉、枠外クリックで閉じる)。
+  const isCharacterScreen = state.screen === 'characterEditor' || state.screen === 'characterView';
+  const inlineChatPalette = isCharacterScreen ? '' : renderChatPalette();
+  app.innerHTML =
+    renderToolbar() +
+    renderLoadErrorBanner() +
+    `<div class="layout">` +
+      `<div class="sheet-pane">${renderSheet()}${inlineChatPalette}</div>` +
+    `</div>` +
+    (state.colorPanelOpen ? renderColorPanel() : renderPanel()) +
+    renderDataListModal() +
+    renderRefListModal() +
+    (isCharacterScreen ? renderFloatingChatPalette() : '');
+  applyTemplateColors(false);
+  app.querySelectorAll('textarea').forEach(autoResizeTextarea);
+  restoreFocus();
+  window.scrollTo(0, scrollY);
+}
+function goToScreen(screen){ state.screen = screen; render({ skipDirty: true }); }
+// 新規テンプレート作成時の初期状態。空のテンプレートではなく、実際に
+// 動くサンプル(画像エリア・lookup・インプットセット・集計を一通り
+// 含む)を最初から表示することで、作者がゼロから組み立てなくても
+// 「これを見ながら書き換える」形で始められるようにする。「サンプルに
+// 戻す」ボタンは廃止したため、これが唯一のサンプル参照経路になる。
+function sampleTemplateScaffold(){
+  return {
+    meta: { name: 'サンプルシステム' },
+    dataLists: [],
+    sections: [
+      {
+        id: 'sec_basic', label: '基本情報', collapsible: false, columns: 4,
+        imageArea: { id: 'img_basic' },
+        fields: [
+          { id: 'f_charName', label: 'キャラクター名', type: 'string', kind: 'input', span: 2, defaultValue: 'サンプルキャラクター' },
+          { id: 'f_playerName', label: 'プレイヤー名', type: 'string', kind: 'input', span: 2, defaultValue: '' },
+          { id: 'f_race', label: '種族', type: 'list', kind: 'input', span: 1, options: ['人間', 'エルフ', 'ドワーフ'], allowCustomInput: true },
+          { id: 'f_level', label: 'レベル', type: 'string', kind: 'input', span: 1, defaultValue: '', placeholder: 'ファイター1' },
+          { id: 'f_hpCurrent', label: '現在HP', type: 'number', kind: 'input', span: 1, defaultValue: 10 },
+          { id: 'f_hpMax', label: '最大HP', type: 'number', kind: 'input', span: 1, defaultValue: 10, chatEnabled: true, chatTemplate: '[ラベル名]：[この値]' },
+          { id: 'f_bodyBase', label: '肉体基本値', type: 'number', kind: 'input', span: 1, defaultValue: 10 },
+          // 「3で割って切り上げ」を計算式の÷切り上げ演算子でそのまま表現する。
+          { id: 'f_bodyMod', label: '肉体修正値', type: 'number', kind: 'ref', refType: 'formula', terms: [{ op: null, field: 'f_bodyBase' }, { op: '÷↑', value: 3 }], span: 1, chatEnabled: true, chatTemplate: '2d6+[この値] 肉体判定' },
+          { id: 'f_memo', label: 'メモ', type: 'multiline', kind: 'input', span: 4, minRows: 3, defaultValue: '' },
+          { id: 'f_freeTable', label: '自由入力表', type: 'table', kind: 'input', span: 4 },
+        ],
+        sets: [],
+      },
+      {
+        id: 'sec_items', label: '所持品', collapsible: true, columns: 1,
+        fields: [
+          { id: 'f_totalWeight', label: '重量総計', type: 'number', kind: 'ref', refType: 'aggregateSum', set: 'set_items', terms: ['it_weight', 'it_count'], span: 1 },
+        ],
+        sets: [
+          { id: 'set_items', label: '所持品リスト', fields: [
+            { id: 'it_name', label: '品名', type: 'string', kind: 'input' },
+            { id: 'it_weight', label: '重量', type: 'number', kind: 'input' },
+            { id: 'it_count', label: '個数', type: 'number', kind: 'input' },
+          ]},
+        ],
+      },
+    ],
+    chatOrder: ['f_hpMax', 'f_bodyMod'],
+    chatFreeTexts: [],
+  };
+}
+function sampleCharacterScaffold(){
+  return {
+    values: {},
+    sets: { set_items: [
+      { it_name: '探索セット', it_weight: 5, it_count: 1 },
+      { it_name: '空きビン', it_weight: 0.1, it_count: 3 },
+    ]},
+  };
+}
+function startNewTemplateNoLogin(){
+  state.template = sampleTemplateScaffold();
+  state.character = sampleCharacterScaffold();
+  state.templateFileId = null;
+  state.templateFileMine = false;
+  state.templateShared = false;
+  state.templateShareUrl = '';
+  state.templateShareToken = '';
+  state.characterFileId = null;
+  state.characterShared = false;
+  state.characterShareToken = '';
+  state.selection = null;
+  state.dataListTsvEditing = {};
+  state.mode = 'edit';
+  state.screen = 'templateEditor';
+  state.dirty = false;
+  render({ skipDirty: true });
+}
+// キャラクタートップの「読み込みして開く」用。テンプレートJSON
+// (sectionsを持つ)なら新規キャラクターの開始、キャラクターJSON
+// (valuesを持つ)ならその埋め込みtemplateSnapshotを使って表示する。
+function handleImportAnyJsonFile(input){
+  const file = input.files[0]; if(!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try{
+      const parsed = JSON.parse(reader.result);
+      if(Array.isArray(parsed.sections)){
+        parsed.dataLists = parsed.dataLists || [];
+        parsed.chatFreeTexts = parsed.chatFreeTexts || [];
+        state.template = parsed;
+        state.templateFileId = null;
+        state.templateFileMine = false;
+        state.templateShared = false;
+        state.templateShareUrl = '';
+        state.templateShareToken = '';
+        state.character = blankCharacter();
+      } else if(parsed.values !== undefined){
+        if(!parsed.templateSnapshot){
+          alert('このキャラクターJSONにはテンプレート情報が含まれていないため開けません。');
+          return;
+        }
+        state.template = parsed.templateSnapshot;
+        state.templateFileId = null;
+        state.templateShareToken = parsed.templateShareToken || '';
+        state.templateFileMine = false;
+        state.templateShared = false;
+        state.templateShareUrl = '';
+        parsed.values = parsed.values || {};
+        parsed.sets = parsed.sets || {};
+        state.character = parsed;
+      } else {
+        alert('テンプレート・キャラクターのどちらのJSONとしても認識できませんでした。');
+        return;
+      }
+      state.characterFileId = null;
+      state.characterShared = false;
+      state.characterShareToken = '';
+      state.selection = null;
+      state.dataListTsvEditing = {};
+      state.readOnly = false;
+      state.mode = 'view';
+      state.screen = 'characterEditor';
+      state.dirty = false;
+      render({ skipDirty: true });
+    }catch(e){ alert('JSONの読み込みに失敗しました: ' + e.message); }
+  };
+  reader.readAsText(file);
+  input.value = '';
+}
+function renderTemplateTopScreen(){
+  return `${renderGateHeroBanner()}<div class="gate-page">
+    ${renderGateBrand()}
+    <h2 class="gate-title">テンプレートを作る</h2>
+    <p class="gate-lead">TRPGシステム向けキャラクターシートのテンプレートを作り、公開できます。</p>
+    <div class="gate-actions">
+      <button class="gate-primary-btn" onclick="loginAndThen('openTemplateBrowser')">Googleでログイン</button>
+      <button onclick="startNewTemplateNoLogin()">ログインなしで作る</button>
+      <button onclick="document.getElementById('gate-tpl-file').click()">読み込みして開く</button>
+      <input id="gate-tpl-file" type="file" accept="application/json" style="display:none" onchange="handleImportTemplateFile(this)">
+    </div>
+    ${renderGateDataNote()}
+  </div>`;
+}
+function renderGateBrand(){
+  return `<div class="gate-topbar">
+    <h1>キャラシェア・ジェネラル</h1>
+    <span class="gate-brand-tag">キャラクターシート設置サービス</span>
+  </div>`;
+}
+function renderGateHeroBanner(){
+  return `<div class="hero-banner"><img src="${HERO_BANNER_IMAGE}" alt=""></div>`;
+}
+// トップ2画面共通の安心材料の注記。以前は画面ごとに少し違う3文目
+// (テンプレートトップは「共有できます」、キャラクタートップは
+// 「アカウント名は伝わらない」)だったが、2026-09-18にどちらも
+// 同じ3文に揃えたため、テキストが完全一致するようになった時点で
+// renderGateBrand()/renderGateHeroBanner()と同じ共通ヘルパーに切り出した。
+function renderGateDataNote(){
+  return `<p class="gate-note">データはすべて、あなたのGoogle Driveに置かれます。<br>キャラシェアのサーバーには保存されません。<br>Googleアカウントのお名前は、共有相手には伝わりません。</p>`;
+}
+function renderGateListAuthBar(){
+  return `<div class="gate-list-auth">
+    <span class="muted">Google Drive に接続済み</span>
+    <button onclick="logout()">ログアウト</button>
+  </div>`;
+}
+function renderTemplateSelectScreen(){
+  const b = state.driveBrowser;
+  let body;
+  if(!b || b.loading) body = `<p class="muted">読み込み中…</p>`;
+  else if(b.error) body = `<p class="muted">${esc(b.error)}</p>`;
+  else if(!b.files.length) body = `<p class="muted">Driveに保存されたテンプレートがありません。</p>`;
+  else body = `<table class="dl-tsv-table"><tbody>
+      <tr><th>システム名</th><th>更新日時</th></tr>
+      ${b.files.map(f => `<tr onclick="openTemplateFromDrive('${f.id}')" style="cursor:pointer;">
+        <td>${esc(f.name)}${(f.appProperties && f.appProperties.shared === 'true') ? '<span class="share-badge">共有中</span>' : ''}</td>
+        <td>${esc(new Date(f.modifiedTime).toLocaleString('ja-JP'))}</td>
+      </tr>`).join('')}
+    </tbody></table>`;
+  return `<div class="gate-list">
+    ${renderGateListAuthBar()}
+    <div class="gate-list-head">
+      <h1>テンプレート一覧</h1>
+      <button onclick="document.getElementById('tplselect-file').click()">テンプレートを読み込み</button>
+      <input id="tplselect-file" type="file" accept="application/json" style="display:none" onchange="handleImportTemplateFile(this)">
+      <button onclick="startNewTemplateNoLogin()">+ 新規に作る</button>
+    </div>
+    ${body}
+  </div>`;
+}
+function renderCharacterTopScreen(){
+  return `${renderGateHeroBanner()}<div class="gate-page">
+    ${renderGateBrand()}
+    <h2 class="gate-title">キャラクターを開く</h2>
+    <p class="gate-lead">キャラシェア・ジェネラルで作成した、またはお手元のファイルのキャラクターを開きます。</p>
+    <div class="gate-actions">
+      <button class="gate-primary-btn" onclick="loginAndThen('openCharacterBrowser')">Googleでログイン</button>
+      <button onclick="document.getElementById('gate-char-file').click()">読み込みして開く</button>
+      <input id="gate-char-file" type="file" accept="application/json" style="display:none" onchange="handleImportAnyJsonFile(this)">
+    </div>
+    ${renderGateDataNote()}
+  </div>`;
+}
+function renderCharacterListThumb(f){
+  const img = f.preview && f.preview.image;
+  return img
+    ? `<img class="char-list-thumb" src="${escAttr(img)}" alt="">`
+    : `<span class="char-list-thumb char-list-thumb-empty"></span>`;
+}
+function renderCharacterListPreviewText(f){
+  const texts = f.preview && f.preview.texts;
+  if(!texts || !texts.length) return '';
+  return `<div class="char-list-preview">${texts.map(t => `[<span class="char-list-preview-item">${esc(t)}</span>]`).join(' ')}</div>`;
+}
+function renderCharacterListScreen(){
+  const b = state.driveBrowser;
+  let body;
+  if(!b || b.loading) body = `<p class="muted">読み込み中…</p>`;
+  else if(b.error) body = `<p class="muted">${esc(b.error)}</p>`;
+  else if(!b.files.length) body = `<p class="muted">Driveに保存されたキャラクターがありません。</p>`;
+  else body = `<table class="dl-tsv-table"><tbody>
+      <tr><th>画像</th><th>名前</th><th>システム名</th><th>更新日時</th></tr>
+      ${b.files.map(f => `<tr onclick="openCharacterFromDrive('${f.id}')" style="cursor:pointer;">
+        <td>${renderCharacterListThumb(f)}</td>
+        <td>${esc(f.name)}${(f.appProperties && f.appProperties.shared === 'true') ? '<span class="share-badge">共有中</span>' : ''}${renderCharacterListPreviewText(f)}</td>
+        <td>${esc((f.appProperties && f.appProperties.templateName) || '')}</td>
+        <td>${esc(new Date(f.modifiedTime).toLocaleString('ja-JP'))}</td>
+      </tr>`).join('')}
+    </tbody></table>`;
+  return `<div class="gate-list">
+    ${renderGateListAuthBar()}
+    <div class="gate-list-head">
+      <h1>キャラクター一覧</h1>
+      <button onclick="document.getElementById('gate-char-list-file').click()">キャラクターを読み込み</button>
+      <input id="gate-char-list-file" type="file" accept="application/json" style="display:none" onchange="handleImportCharacterFile(this)">
+    </div>
+    ${body}
+  </div>`;
+}
+// 値を1つ変えるだけでrender()がDOM全体を作り直すため、何もしなければ
+// 入力欄はフォーカスを失って<body>に落ちる。フォーカスが外れると
+// (特にモバイルでは仮想キーボードの開閉のたびに)ブラウザが勝手に
+// スクロール位置を調整し、「操作するたびに少しずつスクロールする」
+// 原因になる。再描画の前後でフォーカス位置・カーソル位置・スクロール
+// 位置を明示的に保存/復元することで、DOMを丸ごと作り直す設計は変えずに
+// この副作用だけを消す。
+// Tabキーで次の入力欄に移ろうとした瞬間も、今の入力欄がDOMごと
+// 作り直されてしまうため、ブラウザ標準の「次へ移動」が迷子になり
+// body、さらには次のTabでページ先頭に飛んでしまう。keydownの時点で
+// Tab/Shift+Tabの方向だけ覚えておき、再描画後は同じ欄ではなく
+// data-field-id順で1つ隣の欄へ明示的にフォーカスを移すことで、
+// 標準のTab移動を代わりに再現する。
+let pendingTabStep = 0;
+document.addEventListener('keydown', function(e){
+  if(e.key === 'Tab') pendingTabStep = e.shiftKey ? -1 : 1;
+}, true);
+function fieldElSelector(el){
+  return el.dataset.rowIndex !== undefined
+    ? `[data-field-id="${CSS.escape(el.dataset.fieldId)}"][data-set-id="${CSS.escape(el.dataset.setId)}"][data-row-index="${CSS.escape(el.dataset.rowIndex)}"]`
+    : `[data-field-id="${CSS.escape(el.dataset.fieldId)}"]`;
+}
+function captureActiveFieldFocus(app){
+  const el = document.activeElement;
+  const step = pendingTabStep;
+  pendingTabStep = 0;
+  if(!el || !app.contains(el) || !el.dataset || !el.dataset.fieldId) return () => {};
+  let targetEl = el;
+  let restoreSelection = true;
+  if(step !== 0){
+    const focusable = Array.from(app.querySelectorAll('[data-field-id]'));
+    const idx = focusable.indexOf(el);
+    const target = idx === -1 ? null : focusable[idx + step];
+    if(!target) return () => {}; // 先頭/末尾を超えたらブラウザの既定動作に任せる
+    targetEl = target;
+    restoreSelection = false;
+  }
+  const selector = fieldElSelector(targetEl);
+  const selStart = (restoreSelection && typeof el.selectionStart === 'number') ? el.selectionStart : null;
+  const selEnd = (restoreSelection && typeof el.selectionEnd === 'number') ? el.selectionEnd : null;
+  return () => {
+    const next = app.querySelector(selector);
+    if(!next) return;
+    next.focus({ preventScroll: true });
+    if(selStart !== null && typeof next.setSelectionRange === 'function'){
+      try{ next.setSelectionRange(selStart, selEnd); }catch(e){}
+    }
+  };
+}
+function autoResizeTextarea(el){
+  el.style.height = 'auto';
+  el.style.height = el.scrollHeight + 'px';
+}
+
+// テンプレート作者が「作者情報」パネルで入力した作者名・連絡先を、
+// プレイヤーが実際に触るキャラクター編集/表示画面に読み取り専用で
+// 表示する(誰が作ったテンプレートか、権利者以外の一般的な問い合わせを
+// どこにすればよいかが分かるように)。どちらも未入力なら何も出さない。
+// シートの一番下・右端に表示する(2026-09-19、ツールバーから移動)。
+function renderTemplateAuthorNote(){
+  const meta = (state.template && state.template.meta) || {};
+  const parts = [];
+  if(meta.author) parts.push(`作者:${meta.author}`);
+  if(meta.contact) parts.push(`連絡先:${meta.contact}`);
+  if(!parts.length) return '';
+  return `<p class="sheet-author-note muted small">${esc(parts.join(' / '))}</p>`;
+}
+function renderToolbar(){
+  const statusHtml = state.statusMsg
+    ? `<span class="status-line status-${esc(state.statusKind)}">${esc(state.statusMsg)}</span>` : '';
+  // 共有URL(?char=、任意で&tpl=)からの閲覧時は、編集・保存・ログインの導線を
+  // 出さず、フローティングチャットパレットだけを見せる。
+  if(state.screen === 'characterView'){
+    const chatBtn = ensureChatOrder().length
+      ? `<button onclick="toggleFloatingChatPalette()">チャットパレットを表示</button>` : '';
+    const tplName = (state.template.meta && state.template.meta.name) || '(名称未設定のテンプレート)';
+    const titleHtml = `<span class="tpl-view-title">${esc(tplName)}</span>`;
+    return `<header class="toolbar">
+      ${titleHtml}
+      <span class="muted">これは共有された閲覧専用のキャラクターです。</span>
+      <span class="spacer"></span>
+      ${statusHtml}
+      ${chatBtn}
+    </header>`;
+  }
+  const authHtml = state.accessToken
+    ? `<button onclick="logout()">ログアウト</button>`
+    : `<button onclick="login()">Googleでログイン</button>`;
+  if(state.screen === 'characterEditor'){
+    // キャラクター編集画面には、テンプレートの構造編集に関わるボタンは
+    // 一切出さない(プレイヤーが誤ってテンプレート構造を触れないように)。
+    const deleteBtn = state.characterFileId
+      ? `<button class="danger-btn" onclick="deleteDriveFile(state.characterFileId,'character')">削除</button>` : '';
+    const chatBtn = ensureChatOrder().length
+      ? `<button onclick="toggleFloatingChatPalette()">チャットパレットを表示</button>` : '';
+    return `<header class="toolbar">
+      <span class="spacer"></span>
+      ${statusHtml}
+      <button onclick="saveCharacterToDrive()">Driveに保存</button>
+      ${authHtml}
+    </header>
+    <div class="toolbar-row">
+      ${chatBtn}
+      <button onclick="document.getElementById('char-file').click()">キャラクターを読み込み</button>
+      <input id="char-file" type="file" accept="application/json" style="display:none" onchange="handleImportCharacterFile(this)">
+      <button onclick="exportCharacter()">キャラクターをダウンロード</button>
+      <button onclick="listMyCharacters()">Driveの一覧を開く</button>
+      ${deleteBtn}
+    </div>
+    ${renderInlineSharePanel('character')}`;
+  }
+  // templateEditor(既定)
+  const templateDeleteBtn = (state.templateFileId && state.templateFileMine)
+    ? `<button class="danger-btn" onclick="deleteDriveFile(state.templateFileId,'template')">削除</button>` : '';
+  return `<header class="toolbar">
+    <input class="tpl-name" type="text" value="${escAttr(state.template.meta && state.template.meta.name || '')}" placeholder="システム名を記述" onchange="updateTemplateName(this.value)">
+    <button class="${state.mode === 'edit' ? '' : 'share-btn'}" onclick="toggleMode()">${state.mode === 'edit' ? '確認画面に切替' : '編集モードに切替'}</button>
+    <button class="${state.colorPanelOpen ? 'share-btn' : ''}" onclick="toggleColorPanel()">色を変更</button>
+    <span class="spacer"></span>
+    ${statusHtml}
+    <button onclick="saveTemplateToDrive()">Driveに保存</button>
+    ${authHtml}
+  </header>
+  <div class="toolbar-row">
+    <button onclick="document.getElementById('tpl-file').click()">テンプレートを読み込み</button>
+    <input id="tpl-file" type="file" accept="application/json" style="display:none" onchange="handleImportTemplateFile(this)">
+    <button onclick="exportTemplate()">テンプレートをダウンロード</button>
+    <button onclick="listMyTemplates()">Driveの一覧を開く</button>
+    ${templateDeleteBtn}
+  </div>
+  <div class="toolbar-row">
+    <button onclick="toggleDataListModal()">データリストを編集</button>
+    <button onclick="toggleRefListModal()">参照を一覧で確認</button>
+  </div>
+  ${renderInlineSharePanel('template')}`;
+}
+function toggleFloatingChatPalette(){
+  state.chatPaletteOpen = !state.chatPaletteOpen;
+  render({ skipDirty: true });
+}
+function updateTemplateName(v){
+  state.template.meta = state.template.meta || {};
+  state.template.meta.name = v;
+  render();
+}
+// テンプレート作者名・連絡先。第三者(利用者・権利者からの申し立て等)が
+// 「誰が作ったテンプレートか」「どう連絡すればよいか」を確認できるように
+// するための欄で、システム名と同じくtemplate.meta配下に保存する。
+// 権利侵害の申し立て自体は引き続き運営者(第11条の連絡先)が窓口になる
+// ため、この欄はそれとは別の、作者自身が公開する一般的な連絡先という
+// 位置づけだが、共有リンクを作成する際は必須にしている(下記
+// renderInlineSharePanel()/shareTemplate()参照)。
+function updateTemplateAuthor(v){
+  state.template.meta = state.template.meta || {};
+  state.template.meta.author = v;
+  render();
+}
+function updateTemplateContact(v){
+  state.template.meta = state.template.meta || {};
+  state.template.meta.contact = v;
+  render();
+}
+// 起動時のURLパラメータ(?tpl=/?char=)読み込みに失敗した場合のバナー。
+// エラーで即座に行き詰まらせず、サンプルへのフォールバック状態のまま
+// 問題点だけを伝える(参照エラー表示などと同じ「壊れたら気付けるように
+// する」事後対応の考え方)。
+function renderLoadErrorBanner(){
+  if(!state.loadError) return '';
+  return `<div class="load-error-banner">⚠ ${esc(state.loadError)}</div>`;
+}
+// フィフス版と同じ「トグルで開閉するモーダル」ではなく、常にインライン
+// 表示する方式にした(2026-09-18)。状態に応じて中身だけが変わる:
+// 未保存→保存を促す、未共有→作成ボタン、共有済み→リンクを直接表示。
+// 「共有リンクを作成」ボタンを押すまでは何も作られないので、開閉の
+// 概念自体が不要になる。
+// テンプレートの共有だけ、作者名・連絡先の入力欄を「共有リンクを作成」の
+// 直前に並べる(テンプレート作者名→連絡先→共有リンクを作成、の順)。
+// 権利者・利用者からの問い合わせ先が分からないまま公開されるのを防ぐため、
+// どちらかが空欄の間は共有リンクを作成できないようにする(shareTemplate()
+// 側でも同じ条件を再チェックする、二重の安全策)。
+function renderTemplateAuthorFieldsHtml(){
+  const meta = state.template.meta || {};
+  return `
+    <p class="muted small">テンプレート作者名・連絡先はシートの右下端に表示されます。</p>
+    <div class="author-fields-row">
+      <label><span>テンプレート作者名</span><input type="text" value="${escAttr(meta.author || '')}" onchange="updateTemplateAuthor(this.value)"></label>
+      <label><span>連絡先</span><input type="text" placeholder="メールアドレス、SNSアカウント等" value="${escAttr(meta.contact || '')}" onchange="updateTemplateContact(this.value)"></label>
+    </div>
+  `;
+}
+function renderInlineSharePanel(kind){
+  const isTemplate = kind === 'template';
+  const fileId = isTemplate ? state.templateFileId : state.characterFileId;
+  const fileMine = isTemplate ? state.templateFileMine : true;
+  const shared = isTemplate ? state.templateShared : state.characterShared;
+  const token = isTemplate ? state.templateShareToken : state.characterShareToken;
+  const url = isTemplate
+    ? state.templateShareUrl
+    : (token ? characterShareUrlFor(token) : '');
+  const shareFn = isTemplate ? 'shareTemplate' : 'shareCharacter';
+  const revokeFn = isTemplate ? 'revokeTemplateShare' : 'revokeCharacterShare';
+  const copyFn = isTemplate ? 'copyTemplateShareLink' : 'copyCharacterShareLink';
+  const authorFieldsHtml = isTemplate ? renderTemplateAuthorFieldsHtml() : '';
+
+  if(!fileId || !fileMine){
+    return `<div class="share-panel"><p class="muted">共有リンクを作るには、先にDriveへ保存してください。</p></div>`;
+  }
+  if(shared && url){
+    return `<div class="share-panel">
+      ${authorFieldsHtml}
+      <p>リンクを知っている人に共有されています。</p>
+      <div class="share-url">
+        <input type="text" readonly value="${escAttr(url)}" onclick="this.select()">
+        <button onclick="${copyFn}()">URLをコピー</button>
+        <button class="danger-btn" onclick="${revokeFn}()">共有を解除</button>
+      </div>
+    </div>`;
+  }
+  const meta = state.template.meta || {};
+  const canShare = !isTemplate || (meta.author && meta.contact);
+  const shareBtnAttrs = canShare ? '' : 'disabled title="テンプレート作者名と連絡先を入力してください"';
+  return `<div class="share-panel">
+    ${authorFieldsHtml}
+    <p class="muted">共有されていません。</p>
+    <button class="share-btn" ${shareBtnAttrs} onclick="${shareFn}()">共有リンクを作成</button>
+  </div>`;
+}
+/* ---------- 描画: シート ---------- */
+function frameAttrs(kind, id){
+  if(state.mode !== 'edit') return '';
+  return `data-frame-id="${id}" onclick="selectFrame(event,'${kind}','${id}')"`;
+}
+function renderSheet(){
+  const sections = state.template.sections.map(renderSectionFrame).join('');
+  const addBtn = state.mode === 'edit' ? `<button class="add-frame-btn" onclick="addSection()">+ カテゴリーを追加</button>` : '';
+  const isCharacterScreen = state.screen === 'characterEditor' || state.screen === 'characterView';
+  const authorNote = isCharacterScreen ? renderTemplateAuthorNote() : '';
+  return `<div class="sheet">${sections}${addBtn}${authorNote}</div>`;
+}
+// カテゴリー(旧:大枠)は、指定した列数のグリッドにインプット(小枠)を
+// 直接並べる。以前あった「中枠」による入れ子は廃止し、代わりに
+// インプット1つ1つが1〜3列分の幅(span)を持てるようにすることで、
+// 同じ表現力(部分的に幅を変えたい)をより単純な仕組みで実現する。
+function renderSectionFrame(sec){
+  const selected = state.selection && state.selection.kind === 'section' && state.selection.id === sec.id;
+  const isCollapsed = state.mode === 'view' && sec.collapsible && state.collapsed[sec.id];
+  const toggleBtn = (state.mode === 'view' && sec.collapsible)
+    ? `<button class="collapse-btn" onclick="toggleCollapse('${sec.id}')">${isCollapsed ? '▶' : '▼'}</button>`
+    : '';
+  const cols = sec.columns || 2;
+  const fields = (sec.fields || []).map(f => renderFieldFrame(f, null, cols)).join('');
+  const imageAreaHtml = renderCategoryImageArea(sec);
+  const sets = sec.sets.map(renderSetFrame).join('');
+  const addFieldBtn = state.mode === 'edit' ? `<button class="add-frame-btn small" onclick="event.stopPropagation();addFieldToSection('${sec.id}')">+ インプットを追加</button>` : '';
+  const addImageAreaBtn = (state.mode === 'edit' && !sec.imageArea) ? `<button class="add-frame-btn small" onclick="event.stopPropagation();addCategoryImageArea('${sec.id}')">+ 画像エリアを追加</button>` : '';
+  const addSetBtn = state.mode === 'edit' ? `<button class="add-frame-btn small" onclick="event.stopPropagation();addSetDef('${sec.id}')">+ インプットセットを追加</button>` : '';
+  return `<section class="frame-section ${selected ? 'is-selected' : ''}" ${frameAttrs('section', sec.id)}>
+    <h2 class="section-title">${toggleBtn}${esc(sec.label)}${sec.collapsible ? ' <span class="muted small">(折りたたみ可)</span>' : ''}</h2>
+    <div class="section-body" ${isCollapsed ? 'style="display:none"' : ''}>
+      <div class="category-body-row">
+        ${imageAreaHtml}
+        <div class="group-grid" style="--cols:${cols}">${fields}</div>
+      </div>
+      ${sets}${addFieldBtn}${addSetBtn}${addImageAreaBtn}
+    </div>
+  </section>`;
+}
+// カテゴリーに1つだけ持てる「画像エリア」。通常のインプットと違い、
+// 列グリッドのセルを奪い合わず、カテゴリーの左側に縦1列で専有表示する
+// (画像は縦長になりがちで、他の短い入力欄と同じ行に混ぜるとCSS Gridの
+// 行揃え(stretch)でその行全体が間延びしてしまうため。1カテゴリーに
+// 1つまでという制限も、複数画像で高さがバラバラになり表示が崩れるのを
+// 避けるための単純化)。値の保存先は通常の画像型インプットと同じ
+// `state.character.values[id]`なので、handleFieldImageFile/clearFieldImage
+// をそのまま再利用できる(scopeKeyは常に空文字)。
+// フィット方向(上下切れ/左右切れ)は`state.character.values[id + ':fit']`
+// という別キーに保持する(フィフス版のportraitFitと同じ考え方。画像本体の
+// 値とは別キーにすることで、handleFieldImageFile/clearFieldImageに一切
+// 手を入れずに済む)。
+function getCategoryImageFit(id){
+  return state.character.values[id + ':fit'] === 'width' ? 'width' : 'height';
+}
+function toggleCategoryImageFit(id){
+  state.character.values[id + ':fit'] = getCategoryImageFit(id) === 'width' ? 'height' : 'width';
+  render();
+}
+function renderCategoryImageArea(sec){
+  if(!sec.imageArea) return '';
+  const id = sec.imageArea.id;
+  const width = sec.imageArea.width || 20;
+  const areaStyle = ` style="flex-basis:${width}%"`;
+  const val = state.character.values[id];
+  // フィフス版のportrait-frameと同じ「枠はoverflow:hidden固定、imgは
+  // data-fitに応じて高さ100%/幅auto または 幅100%/高さautoで中央寄せ」
+  // 方式。クリックでの切り替えは、実際に触って確かめられる場面
+  // (キャラクター編集画面)だけに絞る(構造編集中のプレビューや
+  // 閲覧専用画面では、クリックしても意味のある操作先が無いため)。
+  const interactive = state.mode !== 'edit' && !state.readOnly;
+  const preview = val
+    ? `<div class="category-image-frame" data-fit="${getCategoryImageFit(id)}" ${interactive ? `onclick="toggleCategoryImageFit('${id}')"` : ''} title="クリックで上下/左右フィットを切り替え"><img src="${escAttr(val)}" alt=""></div>`
+    : `<p class="muted small">(画像未設定)</p>`;
+  if(state.mode === 'edit'){
+    return `<div class="category-image-area"${areaStyle}>${preview}<button class="danger-btn" onclick="event.stopPropagation();removeCategoryImageArea('${sec.id}')">画像エリアを削除</button></div>`;
+  }
+  if(state.readOnly){
+    return `<div class="category-image-area"${areaStyle}>${preview}</div>`;
+  }
+  const inputId = 'catimg-file-' + sanitizeDomId(id);
+  const fileInput = `<input type="file" accept="image/*" id="${inputId}" style="display:none" onchange="handleFieldImageFile(this,'${id}','')">`;
+  const changeBtn = `<button type="button" onclick="document.getElementById('${inputId}').click()">${val ? '画像を変更' : '画像を選択'}</button>`;
+  const clearBtn = val ? `<button type="button" onclick="clearFieldImage('${id}','')">削除</button>` : '';
+  return `<div class="category-image-area"${areaStyle}>${preview}${fileInput}<div class="field-image-actions">${changeBtn}${clearBtn}</div></div>`;
+}
+function addCategoryImageArea(sectionId){
+  const s = findFrame('section', sectionId); if(!s || s.imageArea) return;
+  s.imageArea = { id: uid('imgarea'), width: 20 };
+  render();
+}
+function removeCategoryImageArea(sectionId){
+  const s = findFrame('section', sectionId); if(!s) return;
+  delete s.imageArea;
+  render();
+}
+function updateImageAreaWidth(sectionId, width){
+  const s = findFrame('section', sectionId); if(!s || !s.imageArea) return;
+  s.imageArea.width = Math.max(1, Math.min(50, parseInt(width) || 1));
+  render();
+}
+// 参照先(入力枠・データリスト・列・インプットセット)が削除等で無くなって
+// いる場合に、その枠を「参照が切れている」として検出する。
+function isValidReferenceTarget(fieldId){
+  if(!fieldId) return false;
+  return !!findFrame('field', fieldId);
+}
+// 参照エラーの内容を「参照先[名前]が不明です」という文字列のリストとして
+// 返す(空配列=正常)。[名前]には実際に設定されている参照先の識別子
+// (列名や、削除済みの場合はそのインプット/データリスト/インプット
+// セットのID)を使う。
+function getFieldReferenceErrors(f){
+  const errors = [];
+  const missing = (name) => errors.push(`参照先[${name}]が不明です`);
+  // 参照先の種類には制限を設けていないため、代わりに「参照ごとに」循環
+  // していないかを静的にチェックする(実際の値計算とは独立)。
+  if(isFieldInCycle(f.id)) errors.push('循環参照になっています');
+  if(f.kind === 'input'){
+    return errors;
+  }
+  if(f.refType === 'formula'){
+    (f.terms || []).forEach(t => {
+      if(t.field && !isValidReferenceTarget(t.field)) missing(t.field);
+    });
+    return errors;
+  }
+  if(f.refType === 'lookup' || f.refType === 'listFilter'){
+    const dl = findDataList(f.dataList);
+    if(!dl){ missing(f.dataList); return errors; }
+    const allCols = [...(dl.conditionColumns || []), ...(dl.contentColumns || [])];
+    if(f.refType === 'lookup' && f.output && !allCols.includes(f.output)) missing(f.output);
+    if(f.refType === 'listFilter' && f.optionLabel && !allCols.includes(f.optionLabel)) missing(f.optionLabel);
+    if(f.refType === 'listFilter' && f.optionValue && !allCols.includes(f.optionValue)) missing(f.optionValue);
+    (f.match || []).forEach(m => {
+      if(!isValidReferenceTarget(m.field)) missing(m.field);
+      if(!(dl.conditionColumns || []).includes(m.key)) missing(m.key);
+    });
+    return errors;
+  }
+  if(f.refType === 'aggregateSum'){
+    const st = findFrame('set', f.set);
+    if(!st){ missing(f.set); return errors; }
+    (f.terms || []).forEach(t => {
+      const sf = st.fields.find(x => x.id === t);
+      if(!sf) missing(t);
+    });
+    return errors;
+  }
+  return errors;
+}
+function isFieldReferenceBroken(f){
+  return getFieldReferenceErrors(f).length > 0;
+}
+function renderFieldFrame(f, rowScope, containerCols){
+  const selected = state.selection && state.selection.kind === 'field' && state.selection.id === f.id;
+  const broken = isFieldReferenceBroken(f);
+  const span = Math.max(1, Math.min(parseInt(f.span) || 1, containerCols || 3));
+  const spanStyle = span > 1 ? ` style="grid-column:span ${span}"` : '';
+  // 「タブ記号をコピー」ボタンはtextareaの上に新しい行を作らず、ラベル行に
+  // 同居させることで縦方向のスペースを増やさないようにしている。
+  const tsvCopyBtn = isTableFieldEditing(f, rowScope) ? tsvTabCopyButtonHtml() : '';
+  // 真偽値インプットだけは外枠を<label>ではなく<div>にする。<label>の
+  // ままだと、素のHTMLの挙動として枠内のどこ(見出しのラベル文字も含む)
+  // をクリックしても中の<input type="checkbox">がトグルされてしまう
+  // (.checkbox-frame/.checkbox-visual側だけ<div>にしても、この外側の
+  // <label>が生きている限り「枠をクリックするとチェックが切り替わる」
+  // 挙動は残ってしまっていた、2026-09-19に発見・修正)。他の入力型は
+  // 「ラベル文字をクリックすると入力欄にフォーカスが移る」という一般的な
+  // 挙動を活かすため、<label>のままにしている。
+  const tag = f.type === 'boolean' ? 'div' : 'label';
+  return `<${tag} class="frame-field ${selected ? 'is-selected' : ''} ${broken ? 'is-broken' : ''}" ${frameAttrs('field', f.id)}${spanStyle}>
+    <span class="field-label-row"><span class="field-label">${esc(f.label)}</span>${tsvCopyBtn}</span>
+    ${renderFieldInput(f, rowScope)}
+  </${tag}>`;
+}
+function inputChangeAttr(f, rowScope){
+  if(rowScope){
+    return `onchange="updateSetRowValue('${rowScope.setId}',${rowScope.rowIndex},'${f.id}',this.type==='checkbox'?this.checked:this.value)"`;
+  }
+  return `onchange="updateValue('${f.id}',this.type==='checkbox'?this.checked:this.value)"`;
+}
+// render()は値が変わるたびにDOM全体を作り直すため、入力欄の要素そのものは
+// 毎回別物になる。再描画後に「同じ入力欄」を探して手を返せるよう、識別用の
+// data属性を振っておく(renderで使うfocus復元とセットで機能する)。
+function fieldDomAttrs(f, rowScope){
+  return rowScope
+    ? `data-field-id="${escAttr(f.id)}" data-set-id="${escAttr(rowScope.setId)}" data-row-index="${rowScope.rowIndex}"`
+    : `data-field-id="${escAttr(f.id)}"`;
+}
+function renderFieldInput(f, rowScope){
+  if(f.kind === 'ref' && (f.refType === 'formula' || f.refType === 'lookup' || f.refType === 'aggregateSum')){
+    const errors = getFieldReferenceErrors(f);
+    if(errors.length){
+      return `<div class="field-value ref-value is-broken-value">⚠ ${errors.map(e => esc(e)).join('<br>⚠ ')}</div>`;
+    }
+    const val = getFieldDisplayValue(f, rowScope);
+    if(val === DIV_BY_ZERO_ERROR){
+      return `<div class="field-value ref-value is-broken-value">⚠ ゼロで割っています</div>`;
+    }
+    return `<div class="field-value ref-value">${esc(String(val ?? ''))}</div>`;
+  }
+  // 共有URL(?tpl=&char=)からの閲覧時は、入力枠であっても編集できない
+  // ただの読み取り専用表示にする(値を書き換えられても保存先が無いため、
+  // 編集可能に見せること自体が誤解を招く)。
+  if(state.readOnly) return renderReadOnlyFieldValue(f, rowScope);
+  const val = getEffectiveValue(f, rowScope);
+  const change = inputChangeAttr(f, rowScope);
+  const domAttrs = fieldDomAttrs(f, rowScope);
+  if(f.type === 'number'){
+    return `<input type="number" step="any" value="${escAttr(val ?? 0)}" ${domAttrs} ${change}>`;
+  }
+  if(f.type === 'boolean'){
+    const count = checkboxCountOf(f);
+    // checkboxCountが1(既定)の場合は、保存形式・参照値ともに従来通り
+    // 単一のtrue/falseのまま変えない(見た目だけ.checkbox-frameで
+    // 包む)。2以上の場合だけ、1つの枠の中にその数だけチェックボックスを
+    // 並べ、保存形式を真偽値の配列に切り替える(死亡セーヴのような
+    // 「いくつチェックが入っているか」を数える用途、getEffectiveValue
+    // 参照)。枠自体はクリックに反応しない<div>で、個々のチェックボックス
+    // (.checkbox-visual)だけがクリック対象になる。
+    if(count === 1){
+      return `<div class="checkbox-frame"><label class="checkbox-visual"><input type="checkbox" ${val ? 'checked' : ''} ${domAttrs} ${change}><span class="checkbox-box"></span></label></div>`;
+    }
+    const states = getCheckboxStates(f, rowScope);
+    const boxes = states.map((checked, i) => {
+      const onchange = rowScope
+        ? `onchange="updateSetRowCheckboxValue('${rowScope.setId}',${rowScope.rowIndex},'${f.id}',${i},this.checked)"`
+        : `onchange="updateCheckboxValue('${f.id}',${i},this.checked)"`;
+      return `<label class="checkbox-visual"><input type="checkbox" ${checked ? 'checked' : ''} ${domAttrs} ${onchange}><span class="checkbox-box"></span></label>`;
+    }).join('');
+    return `<div class="checkbox-frame">${boxes}</div>`;
+  }
+  if(f.type === 'multiline'){
+    const minRows = Math.max(1, parseInt(f.minRows) || 3);
+    const ph = f.placeholder ? ` placeholder="${escAttr(f.placeholder)}"` : '';
+    return `<textarea rows="${minRows}" oninput="autoResizeTextarea(this)"${ph} ${domAttrs} ${change}>${esc(val ?? '')}</textarea>`;
+  }
+  if(f.type === 'list'){
+    let options;
+    if(f.kind === 'ref' && f.refType === 'listFilter') options = evalListFilter(f, rowScope);
+    else options = (f.options || []).map(o => ({ value: o, label: o }));
+    if(f.allowCustomInput){
+      const listId = 'dl-opts-' + f.id + (rowScope ? '-' + rowScope.rowIndex : '');
+      const datalistOptions = options.map(o => `<option value="${escAttr(o.value)}">${esc(o.label)}</option>`).join('');
+      const ph = f.placeholder ? ` placeholder="${escAttr(f.placeholder)}"` : '';
+      return `<input type="text" list="${listId}" value="${escAttr(val ?? '')}"${ph} ${domAttrs} ${change}><datalist id="${listId}">${datalistOptions}</datalist>`;
+    }
+    const opts = [`<option value="">(未選択)</option>`]
+      .concat(options.map(o => `<option value="${escAttr(o.value)}" ${String(val) === String(o.value) ? 'selected' : ''}>${esc(o.label)}</option>`))
+      .join('');
+    return `<select ${domAttrs} ${change}>${opts}</select>`;
+  }
+  if(f.type === 'table'){
+    const scopeKey = fieldScopeKey(rowScope);
+    const key = tableEditKey(f.id, scopeKey);
+    const interactive = state.mode !== 'edit';
+    const editing = interactive && !!state.tableEditing[key];
+    if(editing){
+      return `<textarea id="table-tsv-${key}" class="dl-tsv-input" onblur="commitTableTsv('${f.id}','${scopeKey}',this)" onkeydown="handleDataListTsvTabKey(event)" placeholder="タブ区切りで入力・貼り付け。1行目は見出し行として表示されます。">${esc(val ?? '')}</textarea>`;
+    }
+    const onclickJs = interactive ? `editTableField('${f.id}','${scopeKey}')` : '';
+    if(String(val ?? '').trim()) return tsvTableHtml(val, onclickJs);
+    return interactive
+      ? `<p class="muted small dl-tsv-hint" onclick="${onclickJs}" style="cursor:pointer;">(クリックして表を入力)</p>`
+      : `<p class="muted small dl-tsv-hint">(表が空です)</p>`;
+  }
+  if(f.type === 'image'){
+    const scopeKey = fieldScopeKey(rowScope);
+    const interactive = state.mode !== 'edit';
+    const preview = val ? `<img src="${escAttr(val)}" class="field-image-preview" alt="">` : `<p class="muted small">(画像未設定)</p>`;
+    if(!interactive) return `<div class="field-image">${preview}</div>`;
+    const inputId = 'img-file-' + sanitizeDomId(f.id + (scopeKey ? '-' + scopeKey : ''));
+    const fileInput = `<input type="file" accept="image/*" id="${inputId}" style="display:none" onchange="handleFieldImageFile(this,'${f.id}','${scopeKey}')">`;
+    const changeBtn = `<button type="button" onclick="document.getElementById('${inputId}').click()">${val ? '画像を変更' : '画像を選択'}</button>`;
+    const clearBtn = val ? `<button type="button" onclick="clearFieldImage('${f.id}','${scopeKey}')">削除</button>` : '';
+    return `<div class="field-image">${preview}${fileInput}<div class="field-image-actions">${changeBtn}${clearBtn}</div></div>`;
+  }
+  const ph = f.placeholder ? ` placeholder="${escAttr(f.placeholder)}"` : '';
+  return `<input type="text" value="${escAttr(val ?? '')}"${ph} ${domAttrs} ${change}>`;
+}
+function renderReadOnlyFieldValue(f, rowScope){
+  const val = getEffectiveValue(f, rowScope);
+  if(f.type === 'boolean'){
+    const count = checkboxCountOf(f);
+    const text = count > 1 ? `${val}/${count}` : (val ? 'チェック済み' : '未チェック');
+    return `<div class="field-value ref-value">${text}</div>`;
+  }
+  if(f.type === 'image'){
+    return val ? `<div class="field-image"><img src="${escAttr(val)}" class="field-image-preview" alt=""></div>` : `<div class="field-image"><p class="muted small">(画像未設定)</p></div>`;
+  }
+  if(f.type === 'table'){
+    return String(val ?? '').trim() ? tsvTableHtml(val, '') : `<p class="muted small dl-tsv-hint">(表が空です)</p>`;
+  }
+  if(f.type === 'multiline'){
+    return `<div class="field-value ref-value" style="white-space:pre-wrap;">${esc(String(val ?? ''))}</div>`;
+  }
+  return `<div class="field-value ref-value">${esc(String(val ?? ''))}</div>`;
+}
+function renderSetFrame(set){
+  const selected = state.selection && state.selection.kind === 'set' && state.selection.id === set.id;
+  let body;
+  let addRowBtn = '';
+  if(state.mode === 'edit'){
+    body = `<div class="set-schema-row">${set.fields.map(f =>
+      `<span class="set-schema-field ${isFieldReferenceBroken(f) ? 'is-broken' : ''}" data-frame-id="${f.id}" onclick="selectFrame(event,'field','${f.id}')">${esc(f.label)}</span>`
+    ).join('')}</div>`;
+  } else {
+    // 行ごとに見出し(品名・重量…)を繰り返さず、1番上に1回だけ出す。
+    // .set-table全体を1つのCSS Gridにし、見出し行・各データ行は
+    // display:contentsで「透明な行」として同じグリッドに乗せることで、
+    // 別々のdivに分かれていても列の幅がぴったり揃うようにしている
+    // (行ごとに独立したflexコンテナのままだと、行間で列幅が微妙に
+    // ずれてしまうため)。
+    const rows = (state.character.sets[set.id] || []);
+    const headerCells = set.fields.map(f =>
+      `<span class="set-cell-label${isFieldReferenceBroken(f) ? ' is-broken' : ''}">${esc(f.label)}</span>`
+    ).join('') + '<span class="set-cell-label set-cell-label-spacer"></span>';
+    const header = rows.length ? `<div class="set-table-header">${headerCells}</div>` : '';
+    const rowsHtml = rows.map((row, idx) => renderSetRow(set, row, idx, rows.length)).join('');
+    body = `<div class="set-table-wrap"><div class="set-table" style="--set-cols:${set.fields.length}">${header}${rowsHtml}</div></div>`;
+    if(!state.readOnly) addRowBtn = `<button class="add-row-btn" onclick="addSetRow('${set.id}')">+ 行を追加</button>`;
+  }
+  return `<div class="frame-set ${selected ? 'is-selected' : ''}" ${frameAttrs('set', set.id)}>
+    <div class="set-header">
+      <h3 class="set-title">${esc(set.label)}</h3>
+      ${addRowBtn}
+    </div>
+    ${body}
+  </div>`;
+}
+function renderSetRow(set, row, idx, rowCount){
+  const cells = set.fields.map(f => {
+    const rowScope = { setId: set.id, rowIndex: idx, row };
+    return `<div class="set-cell">${renderFieldInput(f, rowScope)}</div>`;
+  }).join('');
+  const upDisabled = idx === 0 ? 'disabled' : '';
+  const downDisabled = idx === rowCount - 1 ? 'disabled' : '';
+  // display:contentsで全行を1つのCSS Gridにたたみ込んでいるため、
+  // 各行が寄与するグリッドアイテム数(セル数+1)を必ず揃える必要がある。
+  // 読み取り専用でボタンを消す場合も、空のプレースホルダーとして
+  // .set-row-actions自体は残す(無くすと後続の行がずれて詰まってしまう)。
+  const actions = state.readOnly ? `<div class="set-row-actions"></div>` : `<div class="set-row-actions">
+      <button class="row-move-btn" ${upDisabled} onclick="moveSetRow('${set.id}',${idx},-1)">↑</button>
+      <button class="row-move-btn" ${downDisabled} onclick="moveSetRow('${set.id}',${idx},1)">↓</button>
+      <button class="remove-row-btn" onclick="removeSetRow('${set.id}',${idx})">−</button>
+    </div>`;
+  return `<div class="set-row">${cells}${actions}</div>`;
+}
+
+/* ---------- チャットパレット ----------
+ * 各インプット自身が「チャットパレットに出す」(chatEnabled)かどうかと、
+ * 出力フォーマット(chatTemplate)を持つ(設定は renderChatPaletteEditor 側)。
+ * chatTemplate内の[この値]は、その項目自身の現在の表示値に、
+ * [ラベル名]は自身の現在のラベルに置き換わる(他の項目のIDを書かせる
+ * 必要がない)。
+ * インプットセットの中の項目は、行(rowScope)ごとに繰り返し1行ずつ出力
+ * される(攻撃セットなら武器の行数だけ命中・ダメージ行が並ぶ)。この場合
+ * だけ[#N]という追加トークンが使え、「同じ行の先頭からN番目の項目の値」
+ * に置き換わる(内部IDではなく列の並び順で指定させることで、既存の参照
+ * ルールと同様に非技術者でも扱える形にしている。出てくるのはラベル名
+ * ではなく値そのものなので、2026-09-19に[ラベル名#N]から[#N]という
+ * 表記に変更した)。
+ *
+ * チャットパレットの並び順は、テンプレート内の枠の並び順(カテゴリー→
+ * インプットセットの順)から独立させ、state.template.chatOrder(対象
+ * インプットIDの配列)で管理する。カテゴリー・インプットセットをまたいで
+ * 好きな順に並べ替えたいという要望に応えるため。chatOrderが未設定の
+ * 既存テンプレートは、初回描画時に現在のchatEnabled項目から自動生成する
+ * (ensureChatOrder)。
+ */
+function ensureChatOrder(){
+  if(!Array.isArray(state.template.chatOrder)) state.template.chatOrder = [];
+  const order = state.template.chatOrder;
+  allFieldsInTemplate().forEach(f => {
+    if(f.chatEnabled && !order.includes(f.id)) order.push(f.id);
+  });
+  return order;
+}
+// インプットに紐付かない自由入力行(空白行・区切り・ダイス例・固定文言等)。
+// state.template.chatFreeTexts([{id,text}])に実体を持ち、chatOrderには
+// フィールドIDと同列にこのidを並べる(chatOrderLines/renderChatPalette側で
+// findFrame('field',id)が見つからない時はこちらを見る、という単純な
+// フォールバックで済ませ、専用のtype判別は導入しない)。
+function findChatFreeText(id){
+  return (state.template.chatFreeTexts || []).find(ct => ct.id === id);
+}
+function addChatFreeText(){
+  if(!Array.isArray(state.template.chatFreeTexts)) state.template.chatFreeTexts = [];
+  const ct = { id: uid('ct'), text: '' };
+  state.template.chatFreeTexts.push(ct);
+  ensureChatOrder().push(ct.id);
+  render();
+}
+function removeChatFreeText(id){
+  const ct = findChatFreeText(id);
+  const hasContent = !!(ct && ct.text && ct.text.trim());
+  if(!confirmDelete('この自由入力の内容を削除しますか？元に戻せません。', hasContent)) return;
+  state.template.chatFreeTexts = (state.template.chatFreeTexts || []).filter(c => c.id !== id);
+  const order = ensureChatOrder();
+  const idx = order.indexOf(id);
+  if(idx > -1) order.splice(idx, 1);
+  render();
+}
+function updateChatFreeText(id, value){
+  const ct = findChatFreeText(id); if(!ct) return;
+  ct.text = value;
+  render();
+}
+function moveChatOrder(fieldId, dir){
+  const order = ensureChatOrder();
+  const idx = order.indexOf(fieldId);
+  if(idx < 0) return;
+  const j = idx + dir;
+  if(j < 0 || j >= order.length) return;
+  const [item] = order.splice(idx, 1);
+  order.splice(j, 0, item);
+  render();
+}
+function chatOrderLines(order){
+  // カテゴリー(セクション)が切り替わるタイミングで「//---カテゴリー名」
+  // という区切り行を挟む。ユドナリウムのチャットパレットで「//---」から
+  // 始まる行が見出しとして扱われる仕様に倣った。インプットセットの中の
+  // 項目は、行(rowScope)ごとに1行ずつ展開する(攻撃セットなら武器の
+  // 行数だけ命中・ダメージ行が並ぶ)。
+  const lines = [];
+  let lastSectionId = null;
+  const pushSectionHeaderIfNeeded = (id) => {
+    const sec = findFieldSection(id);
+    if(sec && sec.id !== lastSectionId){
+      lines.push(`//---${sec.label}`);
+      lastSectionId = sec.id;
+    }
+  };
+  order.forEach(id => {
+    const f = findFrame('field', id);
+    if(!f){
+      // フィールドが見つからなければ自由入力行として扱う(無ければ
+      // 描画時に無視するだけの、他の壊れたID参照と同じ事後対応)。
+      const ct = findChatFreeText(id);
+      if(ct) lines.push(ct.text || '');
+      return;
+    }
+    const st = isFieldInsideSet(id);
+    if(st){
+      const rows = (state.character.sets && state.character.sets[st.id]) || [];
+      // 行が1つも無い(インプットセットが空の)場合、区切り見出しだけが
+      // 中身無しで残ってしまうのを防ぐため、見出しごと何も出力しない。
+      if(!rows.length) return;
+      pushSectionHeaderIfNeeded(id);
+      rows.forEach((row, rowIndex) => {
+        const rowScope = { setId: st.id, rowIndex, row };
+        lines.push(resolveChatText(f, rowScope, st));
+      });
+    } else {
+      pushSectionHeaderIfNeeded(id);
+      lines.push(resolveChatText(f, null));
+    }
+  });
+  return lines;
+}
+function renderChatPalette(){
+  // 存在しない・chatEnabledが外れたIDは描画時に無視するだけにする
+  // (壊れたら気付けるようにする、の他の仕組みと同じ事後対応の考え方)。
+  // 自由入力行(findFrame('field',...)には無い)はfindChatFreeTextで拾う。
+  const order = ensureChatOrder().filter(id => {
+    const f = findFrame('field', id);
+    if(f) return f.chatEnabled;
+    return !!findChatFreeText(id);
+  });
+  if(state.mode === 'edit'){
+    // 編集モードは、カテゴリー・インプットセットをまたいだ並べ替えの
+    // ためだけに項目ごとの↑↓ボタンを添える(テキスト自体は入力モードで
+    // 扱う)。1つの大きなテキストエリアにまとめてしまうと個々の項目を
+    // 並べ替えられなくなるため、編集モードだけは従来通り項目単位で出す。
+    // 空でも「+自由入力の項目を追加」ボタンは出したいので、他の画面と
+    // 違い空チェックでの早期returnはしない。
+    const groups = order.map((id, idx) => {
+      const f = findFrame('field', id);
+      let rowsHtml;
+      if(f){
+        const st = isFieldInsideSet(id);
+        if(st){
+          const rows = (state.character.sets && state.character.sets[st.id]) || [];
+          // 行が無いと中身が完全に空になり、移動ボタンだけの壊れた行に
+          // 見えてしまうため、プレビュー用データに行を追加すれば表示
+          // されることが分かるヒントを出す。
+          rowsHtml = rows.length
+            ? rows.map((row, rowIndex) => {
+                const rowScope = { setId: st.id, rowIndex, row };
+                return chatLineHtml(f, resolveChatText(f, rowScope, st));
+              }).join('')
+            : `<p class="muted small">「${esc(isFieldInsideSet(id).label)}」に行が無いため、プレビューには表示されません(行を追加すると表示されます)</p>`;
+        } else {
+          rowsHtml = chatLineHtml(f, resolveChatText(f, null));
+        }
+      } else {
+        rowsHtml = chatFreeTextLineHtml(findChatFreeText(id));
+      }
+      const upDisabled = idx === 0 ? 'disabled' : '';
+      const downDisabled = idx === order.length - 1 ? 'disabled' : '';
+      return `<div class="chat-line-group">
+        <div class="chat-line-move">
+          <button class="row-move-btn" ${upDisabled} onclick="moveChatOrder('${id}',-1)">↑</button>
+          <button class="row-move-btn" ${downDisabled} onclick="moveChatOrder('${id}',1)">↓</button>
+        </div>
+        <div class="chat-line-rows">${rowsHtml}</div>
+      </div>`;
+    }).join('');
+    return `<section class="chat-palette"><h2>チャットパレット</h2>${groups}<button class="add-frame-btn" onclick="addChatFreeText()">+ 自由入力の項目を追加</button></section>`;
+  }
+  // 入力モードでは、項目ごとの小さなテキストエリアではなく、1つの大きな
+  // テキストエリアに全行をまとめて出す(全体をまとめてコピーしたい・
+  // 自由に選択してコピーしたい、という要望に応えるため)。
+  if(!order.length) return '';
+  return `<section class="chat-palette"><h2>チャットパレット</h2>${renderChatPaletteTextareaBlock(order)}</section>`;
+}
+// 「1つの大きなテキストエリア+コピー」というチャットパレットの本体部分。
+// テンプレート編集画面の入力モード時はインラインで(renderChatPalette)、
+// キャラクター編集/表示画面ではフローティングオーバーレイで
+// (renderFloatingChatPalette)、それぞれの入れ物から呼ばれる共通部品。
+function renderChatPaletteTextareaBlock(order){
+  const text = chatOrderLines(order).join('\n');
+  return `<div class="chat-palette-block">
+    <textarea class="chat-palette-textarea" oninput="autoResizeTextarea(this)">${esc(text)}</textarea>
+    <button onclick="copyChatPaletteAll(this)">コピー</button>
+  </div>`;
+}
+// キャラクター編集画面・キャラクター表示画面向けのフローティング表示。
+// ツールバーの「チャットパレットを表示」で開閉し、枠外クリック
+// (.modal-backdrop)で閉じる、既存モーダルと同じパターンを流用する。
+function renderFloatingChatPalette(){
+  if(!state.chatPaletteOpen) return '';
+  const order = ensureChatOrder().filter(id => {
+    const f = findFrame('field', id);
+    if(f) return f.chatEnabled;
+    return !!findChatFreeText(id);
+  });
+  const body = order.length
+    ? renderChatPaletteTextareaBlock(order)
+    : `<p class="muted">チャットパレットに出す項目がありません。</p>`;
+  return `<div class="modal-backdrop" onclick="toggleFloatingChatPalette()">
+    <div class="modal-box" onclick="event.stopPropagation()">
+      <div class="modal-head"><strong>チャットパレット</strong><button class="icon-btn" onclick="toggleFloatingChatPalette()">×</button></div>
+      <div class="modal-body">${body}</div>
+    </div>
+  </div>`;
+}
+function resolveChatText(f, rowScope, st){
+  const v = getEffectiveValue(f, rowScope);
+  const valueText = v === DIV_BY_ZERO_ERROR ? 'ゼロで割っています' : String(v ?? '');
+  let text = String(f.chatTemplate || '')
+    .replaceAll('[この値]', valueText)
+    .replaceAll('[ラベル名]', f.label);
+  if(rowScope){
+    text = text.replace(/\[#(\d+)\]/g, (m, n) => {
+      const target = st.fields[parseInt(n, 10) - 1];
+      if(!target) return '';
+      const tv = getEffectiveValue(target, rowScope);
+      return tv === DIV_BY_ZERO_ERROR ? 'ゼロで割っています' : String(tv ?? '');
+    });
+  }
+  return text;
+}
+// 編集モードでの並べ替え時のプレビュー表示。コピーは入力モードの
+// 統合テキストエリア側でのみ行うため、ここにはコピー機能を置かない。
+function chatLineHtml(f, text){
+  return `<div class="chat-line"><span class="chat-line-label">${esc(f.label)}</span><textarea class="chat-line-text" rows="1" readonly oninput="autoResizeTextarea(this)">${esc(text)}</textarea></div>`;
+}
+// インプットに紐付かない自由入力行。フィールドと違い専用の設定パネルが
+// 無いため、この場でそのまま編集・削除できるようにする(空欄のままなら
+// 改行だけの行になり、区切り線や見出しコメント等はここに直接書く)。
+function chatFreeTextLineHtml(ct){
+  if(!ct) return '';
+  // ラベルと削除ボタンを1つのグループにまとめておく。textarea側は他の
+  // 入力欄と同じ幅100%指定のため必ず単独の行になるので、削除ボタンを
+  // textareaと同じ行の子にすると入る場所が無く3行目にあふれてしまう
+  // (フィールドのチャット行と行数が揃わなくなる)。ラベル+ボタンを
+  // まとめて1つのフレックス項目にすることで、フィールドのチャット行と
+  // 同じ「ラベル行→textarea行」の2行構成に揃える。
+  return `<div class="chat-line"><span class="chat-line-label-group"><span class="chat-line-label muted small">自由入力</span><button class="remove-row-btn" onclick="removeChatFreeText('${ct.id}')">−</button></span><textarea class="chat-line-text" rows="2" oninput="autoResizeTextarea(this)" onchange="updateChatFreeText('${ct.id}',this.value)" placeholder="空欄のままだと改行だけの行になります">${esc(ct.text || '')}</textarea></div>`;
+}
+function copyChatPaletteAll(btn){
+  const textarea = btn.parentElement.querySelector('.chat-palette-textarea');
+  navigator.clipboard.writeText(textarea.value).then(() => {
+    const old = btn.textContent;
+    btn.textContent = 'コピーしました';
+    setTimeout(() => { btn.textContent = old; }, 1200);
+  }).catch(() => { alert('コピーできませんでした。手動でテキストエリアから選択してコピーしてください。'); });
+}
+
+/* ---------- 値の更新(入力モード) ---------- */
+function updateValue(fieldId, raw){
+  const f = findFrame('field', fieldId);
+  let v = raw;
+  if(f && f.type === 'number') v = Number(raw) || 0;
+  if(f && f.type === 'boolean') v = !!raw;
+  state.character.values[fieldId] = v;
+  render();
+}
+function updateSetRowValue(setId, rowIndex, fieldId, raw){
+  const st = findFrame('set', setId);
+  const f = st && st.fields.find(x => x.id === fieldId);
+  let v = raw;
+  if(f && f.type === 'number') v = Number(raw) || 0;
+  if(f && f.type === 'boolean') v = !!raw;
+  if(!state.character.sets[setId]) state.character.sets[setId] = [];
+  if(!state.character.sets[setId][rowIndex]) state.character.sets[setId][rowIndex] = {};
+  state.character.sets[setId][rowIndex][fieldId] = v;
+  render();
+}
+// 真偽値インプットでcheckboxCountが2以上の場合の、チェックボックス1個
+// 分の更新(updateValue/updateSetRowValueは単一のtrue/falseしか
+// 扱えないため専用の関数にした)。既存の値が配列でなくても(未入力・
+// 旧データ等)壊れないよう、その場合は空配列から組み立て直す。
+function updateCheckboxValue(fieldId, index, checked){
+  const arr = Array.isArray(state.character.values[fieldId]) ? state.character.values[fieldId].slice() : [];
+  arr[index] = checked;
+  state.character.values[fieldId] = arr;
+  render();
+}
+function updateSetRowCheckboxValue(setId, rowIndex, fieldId, index, checked){
+  if(!state.character.sets[setId]) state.character.sets[setId] = [];
+  if(!state.character.sets[setId][rowIndex]) state.character.sets[setId][rowIndex] = {};
+  const row = state.character.sets[setId][rowIndex];
+  const arr = Array.isArray(row[fieldId]) ? row[fieldId].slice() : [];
+  arr[index] = checked;
+  row[fieldId] = arr;
+  render();
+}
+// 表(TSV)・画像型のインプットは、確定済みの<input>のonchangeではなく
+// (TSVのblur確定・ファイル選択という)別経路で値を書き込むため、
+// updateValue/updateSetRowValueと同じ書き込み先を「スコープキー」
+// (インプットセットの行なら"setId|rowIndex"、それ以外は空文字)経由で
+// 共有する専用のヘルパーを用意する。
+function fieldScopeKey(rowScope){ return rowScope ? (rowScope.setId + '|' + rowScope.rowIndex) : ''; }
+function setFieldValueByScope(fieldId, scopeKey, value){
+  if(scopeKey){
+    const [setId, rowIndexStr] = scopeKey.split('|');
+    const rowIndex = Number(rowIndexStr);
+    if(!state.character.sets[setId]) state.character.sets[setId] = [];
+    if(!state.character.sets[setId][rowIndex]) state.character.sets[setId][rowIndex] = {};
+    state.character.sets[setId][rowIndex][fieldId] = value;
+  } else {
+    state.character.values[fieldId] = value;
+  }
+}
+function addSetRow(setId){
+  const st = findFrame('set', setId);
+  if(!st) return;
+  if(!state.character.sets[setId]) state.character.sets[setId] = [];
+  const row = {};
+  st.fields.forEach(f => {
+    row[f.id] = f.defaultValue !== undefined
+      ? f.defaultValue
+      : (f.type === 'number' ? 0 : f.type === 'boolean' ? false : '');
+  });
+  state.character.sets[setId].push(row);
+  render();
+}
+function moveSetRow(setId, idx, dir){
+  const rows = state.character.sets[setId];
+  if(!rows) return;
+  const j = idx + dir;
+  if(j < 0 || j >= rows.length) return;
+  const [item] = rows.splice(idx, 1);
+  rows.splice(j, 0, item);
+  render();
+}
+function removeSetRow(setId, idx){
+  if(!confirmDelete('この行を削除しますか？入力した内容は元に戻せません。')) return;
+  if(state.character.sets[setId]) state.character.sets[setId].splice(idx, 1);
+  render();
+}
+function toggleCollapse(id){ state.collapsed[id] = !state.collapsed[id]; render({ skipDirty: true }); }
+
+/* ---------- モード切替・選択 ---------- */
+function toggleMode(){
+  state.mode = state.mode === 'edit' ? 'view' : 'edit';
+  state.selection = null;
+  render({ skipDirty: true });
+}
+function selectFrame(ev, kind, id){
+  ev.stopPropagation();
+  if(state.mode !== 'edit') return;
+  state.selection = { kind, id };
+  state.colorPanelOpen = false;
+  render({ skipDirty: true });
+}
+function closePanel(){ state.selection = null; render({ skipDirty: true }); }
+function toggleColorPanel(){
+  state.colorPanelOpen = !state.colorPanelOpen;
+  if(state.colorPanelOpen) state.selection = null;
+  render({ skipDirty: true });
+}
+
+/* ---------- テンプレートの配色 ---------- */
+// 現在有効な色を1つずつ解決する(未カスタマイズのキーは既定値)。
+function resolveTemplateColors(){
+  const custom = (state.template && state.template.colors) || {};
+  const out = {};
+  Object.keys(DEFAULT_COLORS).forEach(key => { out[key] = custom[key] || DEFAULT_COLORS[key]; });
+  return out;
+}
+// document.body自体に対してCSS変数を上書きする。#app要素だけに
+// 上書きすると、#appのpadding部分や.toolbar-row等の背景を持たない
+// 要素はbody(のさらに外側、:rootの既定値のまま)が透けて見えてしまい、
+// 一部だけ配色が変わらない不具合になっていた(2026-09-19に発見・修正)。
+// bodyに上書きすることで、SPA内のどの画面でも矛盾なく反映される。
+// ゲート画面(トップ・一覧)はキャラシェア・ジェネラル自体のブランド
+// 表示なので、テンプレートの配色を引きずらないよう`forceDefaults=true`
+// で明示的に既定色へ戻す(bodyへの上書きはSPA内で画面をまたいで残る
+// ため、テンプレート編集→ログアウトしてトップに戻る、のような遷移でも
+// 前のテンプレートの色が残ってしまわないようにするため)。
+function applyTemplateColors(forceDefaults){
+  const colors = forceDefaults ? DEFAULT_COLORS : resolveTemplateColors();
+  Object.keys(colors).forEach(key => { document.body.style.setProperty(COLOR_VAR_MAP[key], colors[key]); });
+}
+function applyColorPreset(presetKey){
+  const preset = COLOR_PRESETS[presetKey];
+  if(!preset) return;
+  state.template.colors = { ...preset.colors };
+  render();
+}
+function updateTemplateColor(key, value){
+  if(!state.template.colors) state.template.colors = {};
+  state.template.colors[key] = value;
+  render();
+}
+function resetTemplateColors(){
+  delete state.template.colors;
+  render();
+}
+function renderColorPanel(){
+  const colors = resolveTemplateColors();
+  const presetButtons = Object.entries(COLOR_PRESETS).map(([key, preset]) =>
+    `<button onclick="applyColorPreset('${key}')">${esc(preset.label)}</button>`
+  ).join('');
+  const colorRows = Object.keys(DEFAULT_COLORS).map(key => `
+    <label class="color-row">
+      <span>${esc(COLOR_LABELS[key])}</span>
+      <input type="color" value="${escAttr(colors[key])}" onchange="updateTemplateColor('${key}',this.value)">
+    </label>
+  `).join('');
+  return `<div class="panel-pane">
+    <div class="panel-head"><strong>色を変更</strong><button class="icon-btn" onclick="toggleColorPanel()">×</button></div>
+    <div class="panel-body">
+      <p class="muted small">用意されたパターンから選ぶか、下の各項目を個別に調整できます。</p>
+      <div class="color-presets">${presetButtons}</div>
+      <div class="color-rows">${colorRows}</div>
+    </div>
+    <div class="panel-actions">
+      <button onclick="resetTemplateColors()">既定の色に戻す</button>
+    </div>
+  </div>`;
+}
+
+/* ---------- 構造編集: 追加・削除・並べ替え ---------- */
+function addSection(){
+  const sec = { id: uid('sec'), label: '新しいカテゴリー', collapsible: false, columns: 2, fields: [], sets: [] };
+  state.template.sections.push(sec);
+  // 他に設定パネルを開いていなければ、追加した枠の設定パネルをそのまま
+  // 開く(名前を付ける等、追加直後にまず行いたい操作に直行できるため)。
+  // 何か他の枠を編集中であれば、その邪魔をしないよう選択状態を変えない。
+  if(!state.selection) state.selection = { kind: 'section', id: sec.id };
+  render();
+}
+function addSetDef(sectionId){
+  const s = findFrame('section', sectionId); if(!s) return;
+  s.sets.push({ id: uid('set'), label: '新しいインプットセット', fields: [] });
+  render();
+}
+function addFieldToSection(sectionId){
+  const s = findFrame('section', sectionId); if(!s) return;
+  if(!s.fields) s.fields = [];
+  const f = { id: uid('f'), label: '新しいインプット', type: 'string', kind: 'input', span: 1 };
+  s.fields.push(f);
+  if(!state.selection) state.selection = { kind: 'field', id: f.id };
+  render();
+}
+function addFieldToSet(setId){
+  const st = findFrame('set', setId); if(!st) return;
+  const f = { id: uid('f'), label: '新しいインプット', type: 'string', kind: 'input' };
+  st.fields.push(f);
+  if(!state.selection) state.selection = { kind: 'field', id: f.id };
+  render();
+}
+function removeFrame(kind, id){
+  const c = findContainer(kind, id);
+  if(!c || c.idx < 0) return;
+  c.arr.splice(c.idx, 1);
+  if(state.selection && state.selection.id === id) state.selection = null;
+  render();
+}
+function moveFrame(kind, id, dir){
+  const c = findContainer(kind, id);
+  if(!c || c.idx < 0) return;
+  const j = c.idx + dir;
+  if(j < 0 || j >= c.arr.length) return;
+  const [item] = c.arr.splice(c.idx, 1);
+  c.arr.splice(j, 0, item);
+  render();
+}
+function applyPatch(kind, id, patch){
+  const f = findFrame(kind, id);
+  if(f) Object.assign(f, patch);
+  render();
+}
+
+/* ---------- 設定パネル ---------- */
+function panelTitle(kind){
+  return { section: 'カテゴリーの設定', set: 'インプットセットの設定', field: 'インプットの設定' }[kind] || '設定';
+}
+function fieldTypeLabel(t){
+  return { number: '数値', string: '文字列', multiline: '複数行テキスト', boolean: 'チェックボックス', list: 'リストから選ぶ', table: '表(TSV)', image: '画像' }[t] || t;
+}
+function renderPanel(){
+  if(!state.selection) return '';
+  const { kind, id } = state.selection;
+  const f = findFrame(kind, id);
+  if(!f){ state.selection = null; return ''; }
+  const delLabel = panelTitle(kind).replace('の設定', '');
+  return `<div class="panel-pane">
+    <div class="panel-head"><strong>${esc(panelTitle(kind))}</strong><button class="icon-btn" onclick="closePanel()">×</button></div>
+    <div class="panel-body">${renderPanelBody(kind, f)}</div>
+    <div class="panel-actions">
+      <button onclick="moveFrame('${kind}','${id}',-1)">↑ 上へ</button>
+      <button onclick="moveFrame('${kind}','${id}',1)">↓ 下へ</button>
+      <button class="danger-btn" onclick="removeFrame('${kind}','${id}')">この${esc(delLabel)}を削除</button>
+    </div>
+  </div>`;
+}
+function renderPanelBody(kind, f){
+  const labelInput = `<label><span>名称</span><input type="text" value="${escAttr(f.label)}" onchange="applyPatch('${kind}','${f.id}',{label:this.value})"></label>`;
+  if(kind === 'section'){
+    // 画像エリアの幅は1〜50(%)。50が上限なのは、それ以上にすると入力欄側の
+    // 幅が半分未満に押し込まれてしまうため(50なら画像エリアと入力欄が
+    // ちょうど五分五分になる)。
+    const imageAreaWidthInput = f.imageArea
+      ? `<label><span>画像エリアの幅(1〜50、カテゴリー幅に対する割合)</span><input type="number" min="1" max="50" value="${f.imageArea.width || 20}" onchange="updateImageAreaWidth('${f.id}',this.value)"></label>`
+      : '';
+    return labelInput
+      + `<label><span>一行に並べる列数</span><input type="number" min="1" max="6" value="${f.columns || 2}" onchange="applyPatch('section','${f.id}',{columns:Math.max(1,parseInt(this.value)||1)})"></label>`
+      + `<label class="checkbox"><input type="checkbox" ${f.collapsible ? 'checked' : ''} onchange="applyPatch('section','${f.id}',{collapsible:this.checked})"> 折りたたみ可能にする</label>`
+      + imageAreaWidthInput;
+  }
+  if(kind === 'set'){
+    return labelInput + `<button onclick="addFieldToSet('${f.id}')">+ インプットを追加</button><p class="muted small">表示画面上でも、各項目をクリックすると編集できます。</p>`;
+  }
+  if(kind === 'field'){
+    // カテゴリー直下のインプットだけ、横幅(カテゴリーの列数を単位とした
+    // 占有列数)を設定できる。上限は特に設けない。カテゴリーの列数を
+    // 超える値を指定した場合は、描画時に自動でクランプされ1行を占める
+    // 形になる。インプットセットの中の項目は、独自のflex-wrapレイアウト
+    // を使っており列の概念が無いため対象外。
+    const spanInput = isFieldInsideSet(f.id) ? '' : `<label><span>横幅</span><input type="number" min="1" value="${f.span || 1}" onchange="applyPatch('field','${f.id}',{span:Math.max(1,parseInt(this.value)||1)})"></label>`;
+    // チャットパレット出力は、値を文中にそのまま埋め込む用途に馴染まない
+    // 表・画像型を除いて、インプットセットの中の項目も含め全ての型で
+    // 設定できる(セット内は行ごとに繰り返し出力される。後述の
+    // renderChatPaletteEditor/renderChatPalette参照)。
+    const chatEditor = (f.type !== 'table' && f.type !== 'image') ? renderChatPaletteEditor(f) : '';
+    return labelInput + spanInput + renderFieldTypeEditor(f) + chatEditor;
+  }
+  return '';
+}
+// システム作者が「この項目の値をチャットパレットにどう出すか」を決める
+// 設定パネル。[この値]/[ラベル名]という日本語トークンにしているのは、
+// 作者が内部ID(f_xxxxx)を知らなくても自分自身の値・名称を埋め込める
+// ようにするため(他項目のIDを書かせる既存のchatTemplates[]方式は、
+// 編集UIが無いまま据え置かれていたため今回廃止し、この方式に一本化した)。
+// インプットセットの中の項目は、さらに[#1]のような番号付きトークンも
+// 使える。これは「同じ行の先頭からN番目の項目の値」に置き換わる
+// (例:攻撃セットの1列目が武器名なら[#1]で「ロングソード」等の行ごとの
+// 値を差し込める)。行内の項目を内部IDではなく列の並び順(非技術者でも
+// 数えられる位置)で指定させることで、既存の参照ルールと同様にIDを
+// 意識させない設計にしている。出てくるのはラベル名ではなく値そのものの
+// ため、[ラベル名#N]という表記は紛らわしいという指摘を受け、
+// 2026-09-19に[#N]へ変更した。
+function renderChatPaletteEditor(f){
+  const st = isFieldInsideSet(f.id);
+  const checkbox = `<label class="checkbox"><input type="checkbox" ${f.chatEnabled ? 'checked' : ''} onchange="toggleChatPalette('${f.id}',this.checked)"> チャットパレットに出す</label>`;
+  if(!f.chatEnabled) return checkbox;
+  const tpl = f.chatTemplate || '';
+  // 半角スペース区切り(ダイス+固定値 コメント)が想定書式だが、無くても
+  // 確定はブロックしない(データリストTSVの列数不一致と同じ、警告のみの方針)。
+  const spaceWarning = tpl.includes(' ') ? '' : `<p class="muted small term-warning">⚠ 半角スペースが入っていません(コメント部分が区切れずに出力されます)</p>`;
+  const hint = st
+    ? `<p class="muted small">[この値]=この項目の現在の値。[#1]のように書くと、同じ行の先頭から数えて1番目の項目の値に置き換わります(列の並び順で指定します)。</p>`
+    : `<p class="muted small">[この値]=この項目の現在の値、[ラベル名]=この項目の現在の名称に置き換わります。</p>`;
+  return checkbox
+    + `<label><span>出力形式</span><input type="text" value="${escAttr(tpl)}" onchange="updateChatTemplate('${f.id}',this.value)"></label>`
+    + hint
+    + spaceWarning;
+}
+function toggleChatPalette(id, checked){
+  const f = findFrame('field', id); if(!f) return;
+  f.chatEnabled = checked;
+  if(checked && !f.chatTemplate){
+    f.chatTemplate = isFieldInsideSet(id) ? 'NdX+[この値] [#1]' : 'NdX+[この値] [ラベル名]';
+  }
+  const order = ensureChatOrder();
+  if(checked){
+    if(!order.includes(id)) order.push(id);
+  } else {
+    const idx = order.indexOf(id);
+    if(idx > -1) order.splice(idx, 1);
+  }
+  render();
+}
+function updateChatTemplate(id, value){
+  const f = findFrame('field', id); if(!f) return;
+  f.chatTemplate = value;
+  render();
+}
+function renderFieldTypeEditor(f){
+  const typeOptions = ['number', 'string', 'multiline', 'boolean', 'list', 'table']
+    .map(t => `<option value="${t}" ${f.type === t ? 'selected' : ''}>${fieldTypeLabel(t)}</option>`).join('');
+  let html = `<label><span>データの種類</span><select onchange="changeFieldType('${f.id}',this.value)">${typeOptions}</select></label>`;
+  if(f.type === 'number'){
+    const kindOptions = [['input', '入力値'], ['formula', '計算式'], ['lookup', 'データリストから参照']];
+    if(!isFieldInsideSet(f.id)) kindOptions.push(['aggregateSum', '集計(インプットセットの合計)']);
+    const currentKind = f.kind === 'input' ? 'input' : f.refType;
+    html += `<label><span>計算方法</span><select onchange="changeNumberKind('${f.id}',this.value)">${
+      kindOptions.map(([v, l]) => `<option value="${v}" ${currentKind === v ? 'selected' : ''}>${l}</option>`).join('')
+    }</select></label>`;
+    // 初期値は入力値(kind:'input')の時のみ意味を持つ。
+    // 計算式・lookup・集計は値が自動的に決まるため設定不要。
+    if(currentKind === 'input'){
+      html += `<label><span>初期値</span><input type="number" step="any" value="${f.defaultValue ?? 0}" onchange="applyPatch('field','${f.id}',{defaultValue:Number(this.value)||0})"></label>`;
+    }
+    if(f.kind === 'ref' && f.refType === 'formula') html += renderFormulaEditor(f);
+    if(f.kind === 'ref' && f.refType === 'lookup') html += renderLookupEditor(f);
+    if(f.kind === 'ref' && f.refType === 'aggregateSum') html += renderAggregateEditor(f);
+  } else if(f.type === 'string'){
+    html += `<label><span>初期値</span><input type="text" value="${escAttr(f.defaultValue ?? '')}" onchange="applyPatch('field','${f.id}',{defaultValue:this.value})"></label>`;
+    html += `<label><span>空欄の時に表示する入力例（任意）</span><input type="text" value="${escAttr(f.placeholder ?? '')}" onchange="applyPatch('field','${f.id}',{placeholder:this.value})"></label>`;
+  } else if(f.type === 'boolean'){
+    const count = checkboxCountOf(f);
+    html += `<label><span>チェックボックスの数</span><input type="number" min="1" max="20" value="${count}" onchange="applyPatch('field','${f.id}',{checkboxCount:Math.max(1,parseInt(this.value)||1)})"></label>`;
+    if(count > 1){
+      html += `<p class="muted small">2個以上並べた場合、他の枠から参照された時の値は「チェックが入っている個数」になります。</p>`;
+    } else {
+      html += `<label class="checkbox"><input type="checkbox" ${f.defaultValue ? 'checked' : ''} onchange="applyPatch('field','${f.id}',{defaultValue:this.checked})"> 初期状態でチェックを入れる</label>`;
+    }
+  } else if(f.type === 'list'){
+    const isFiltered = f.kind === 'ref' && f.refType === 'listFilter';
+    html += `<label><span>選択肢の種類</span><select onchange="changeListKind('${f.id}',this.value)">
+      <option value="fixed" ${!isFiltered ? 'selected' : ''}>選択肢を直接入力</option>
+      <option value="filtered" ${isFiltered ? 'selected' : ''}>データリストから選択</option>
+    </select></label>`;
+    if(!isFiltered){
+      html += `<label><span>選択肢(カンマ区切り)</span><input type="text" value="${escAttr((f.options || []).join(','))}" onchange="applyPatch('field','${f.id}',{options:this.value.split(',').map(s=>s.trim()).filter(Boolean)})"></label>`;
+      // 固定の選択肢の時だけ初期値を選べる。データリストからの絞り込み
+      // (filtered)は候補が動的に変わるため、固定の初期値は意味を持たない
+      // (絞り込みが1件になった場合の自動選択は既に別の仕組みで対応済み)。
+      const defOpts = [`<option value="">(未選択)</option>`]
+        .concat((f.options || []).map(o => `<option value="${escAttr(o)}" ${f.defaultValue === o ? 'selected' : ''}>${esc(o)}</option>`))
+        .join('');
+      html += `<label><span>初期値</span><select onchange="applyPatch('field','${f.id}',{defaultValue:this.value || undefined})">${defOpts}</select></label>`;
+    } else {
+      html += renderListFilterEditor(f);
+    }
+    html += `<label class="checkbox"><input type="checkbox" ${f.allowCustomInput ? 'checked' : ''} onchange="applyPatch('field','${f.id}',{allowCustomInput:this.checked})"> 選択肢に無い値の自由入力を許可する</label>`;
+    if(f.allowCustomInput){
+      html += `<label><span>空欄の時に表示する入力例（任意）</span><input type="text" value="${escAttr(f.placeholder ?? '')}" onchange="applyPatch('field','${f.id}',{placeholder:this.value})"></label>`;
+    }
+  } else if(f.type === 'multiline'){
+    html += `<label><span>最低行数</span><input type="number" min="1" max="20" value="${Math.max(1, parseInt(f.minRows) || 3)}" onchange="applyPatch('field','${f.id}',{minRows:Math.max(1,parseInt(this.value)||1)})"></label>`;
+    html += `<label><span>初期値</span><textarea rows="2" onchange="applyPatch('field','${f.id}',{defaultValue:this.value})">${esc(f.defaultValue ?? '')}</textarea></label>`;
+    html += `<label><span>空欄の時に表示する入力例（任意）</span><input type="text" value="${escAttr(f.placeholder ?? '')}" onchange="applyPatch('field','${f.id}',{placeholder:this.value})"></label>`;
+  }
+  return html;
+}
+function changeFieldType(id, newType){
+  const f = findFrame('field', id); if(!f) return;
+  f.type = newType;
+  f.kind = 'input';
+  delete f.refType; delete f.terms; delete f.dataList; delete f.match; delete f.output; delete f.set;
+  delete f.optionLabel; delete f.optionValue;
+  delete f.defaultValue; delete f.placeholder;
+  if(newType === 'list' && !f.options) f.options = ['選択肢A', '選択肢B'];
+  if(newType !== 'list'){ delete f.options; delete f.allowCustomInput; }
+  if(newType === 'multiline' && !f.minRows) f.minRows = 3;
+  if(newType !== 'multiline') delete f.minRows;
+  if(newType !== 'boolean') delete f.checkboxCount;
+  render();
+}
+function changeNumberKind(id, kindValue){
+  const f = findFrame('field', id); if(!f) return;
+  if(kindValue === 'input'){
+    f.kind = 'input';
+    delete f.refType; delete f.terms; delete f.dataList; delete f.match; delete f.output; delete f.set;
+  } else {
+    f.kind = 'ref'; f.refType = kindValue;
+    delete f.defaultValue;
+    if(kindValue === 'formula' && !f.terms) f.terms = [];
+    if(kindValue === 'lookup'){ if(!f.dataList) f.dataList = ''; if(!f.match) f.match = []; if(!f.output) f.output = ''; }
+    if(kindValue === 'aggregateSum'){ if(!f.set) f.set = ''; if(!f.terms) f.terms = []; }
+  }
+  render();
+}
+function changeListKind(id, v){
+  const f = findFrame('field', id); if(!f) return;
+  if(v === 'fixed'){
+    f.kind = 'input';
+    delete f.refType; delete f.dataList; delete f.match; delete f.optionLabel; delete f.optionValue;
+    if(!f.options) f.options = ['選択肢A', '選択肢B'];
+  } else {
+    f.kind = 'ref'; f.refType = 'listFilter';
+    delete f.options; delete f.defaultValue;
+    if(!f.dataList) f.dataList = '';
+    if(!f.match) f.match = [];
+  }
+  render();
+}
+function renderFormulaEditor(f){
+  const candidates = referenceableFieldsFor(f.id, ['number', 'boolean']).filter(c => c.id !== f.id);
+  const rows = (f.terms || []).map((t, i) => {
+    const opSelect = i === 0 ? '' : `<select onchange="updateFormulaTerm('${f.id}',${i},'op',this.value)">
+      <option value="+" ${t.op === '+' ? 'selected' : ''}>+</option>
+      <option value="-" ${t.op === '-' ? 'selected' : ''}>−</option>
+      <option value="×" ${t.op === '×' ? 'selected' : ''}>×</option>
+      <option value="÷↑" ${t.op === '÷↑' ? 'selected' : ''}>÷切り上げ</option>
+      <option value="÷↓" ${t.op === '÷↓' ? 'selected' : ''}>÷切り捨て</option>
+      <option value="%" ${t.op === '%' ? 'selected' : ''}>%(余り)</option>
+    </select>`;
+    // 項は「他の枠を参照」か「固定の値を直接入力」のどちらかを選べる
+    // (受動知覚の「10+判断力修正値」のような、定数を含む計算式のため)。
+    // 両方の属性を同時に持たせると値の優先順位が分かりにくくなるため、
+    // 切り替え時にsetFormulaTermMode()でもう片方を必ず消す。
+    const isLiteral = Object.prototype.hasOwnProperty.call(t, 'value');
+    const modeSelect = `<select onchange="setFormulaTermMode('${f.id}',${i},this.value)">
+      <option value="field" ${!isLiteral ? 'selected' : ''}>枠を参照</option>
+      <option value="value" ${isLiteral ? 'selected' : ''}>値を直接入力</option>
+    </select>`;
+    const valueControl = isLiteral
+      ? `<input type="number" step="any" value="${t.value ?? 0}" onchange="updateFormulaTerm('${f.id}',${i},'value',Number(this.value)||0)">`
+      : `<select onchange="updateFormulaTerm('${f.id}',${i},'field',this.value)">
+          <option value="">(選択)</option>
+          ${candidates.map(c => `<option value="${c.id}" ${t.field === c.id ? 'selected' : ''}>${esc(c.label)}</option>`).join('')}
+        </select>`;
+    // ÷切り上げ・÷切り捨て・%は値が0になるとゼロ除算になる。作者が構造
+    // チェック時に気付けるよう、値には依存しない静的な注意書きをこの項の
+    // 並びにだけ表示する(利用者の手元での実際のゼロ除算検出はrenderFieldInput側)。
+    const zeroDivWarning = (t.op === '÷↑' || t.op === '÷↓' || t.op === '%')
+      ? `<p class="muted small term-warning">⚠ ${isLiteral ? 'この値が' : '参照先の値が'}0になるとゼロ除算エラーになります</p>` : '';
+    return `<div class="term-row">
+      <div class="term-row-head">${opSelect}${modeSelect}<button onclick="removeFormulaTerm('${f.id}',${i})">×</button></div>
+      <div class="term-row-value">${valueControl}</div>
+      ${zeroDivWarning}
+    </div>`;
+  }).join('');
+  return `<div class="formula-editor"><p class="muted small">計算式</p>${rows}<button onclick="addFormulaTerm('${f.id}')">+ 項を追加</button></div>`;
+}
+function addFormulaTerm(id){
+  const f = findFrame('field', id); if(!f) return;
+  if(!f.terms) f.terms = [];
+  f.terms.push({ op: f.terms.length ? '+' : null, field: '' });
+  render();
+}
+function setFormulaTermMode(id, idx, mode){
+  const f = findFrame('field', id); if(!f || !f.terms || !f.terms[idx]) return;
+  const t = f.terms[idx];
+  if(mode === 'value'){ delete t.field; if(!('value' in t)) t.value = 0; }
+  else { delete t.value; if(t.field === undefined) t.field = ''; }
+  render();
+}
+function removeFormulaTerm(id, idx){
+  const f = findFrame('field', id); if(!f || !f.terms) return;
+  f.terms.splice(idx, 1);
+  if(f.terms[0]) f.terms[0].op = null;
+  render();
+}
+function updateFormulaTerm(id, idx, key, value){
+  const f = findFrame('field', id); if(!f || !f.terms || !f.terms[idx]) return;
+  f.terms[idx][key] = value;
+  render();
+}
+function renderLookupEditor(f){
+  const dataLists = state.template.dataLists || [];
+  const dlOptions = dataLists.map(d => `<option value="${d.id}" ${f.dataList === d.id ? 'selected' : ''}>${esc(d.label)}</option>`).join('');
+  let html = `<label><span>参照するデータリスト</span><select onchange="setLookupDataList('${f.id}',this.value)"><option value="">(選択)</option>${dlOptions}</select></label>`;
+  const dl = dataLists.find(d => d.id === f.dataList);
+  if(dl){
+    const candidates = referenceableFieldsFor(f.id).filter(c => c.id !== f.id);
+    html += (dl.conditionColumns || []).map(key => {
+      const m = (f.match || []).find(mm => mm.key === key) || { key, field: '' };
+      return `<label><span>表示条件「${esc(key)}」に対応するインプット</span>
+        <select onchange="setLookupMatch('${f.id}','${key}',this.value)">
+          <option value="">(選択)</option>
+          ${candidates.map(c => `<option value="${c.id}" ${m.field === c.id ? 'selected' : ''}>${esc(c.label)}</option>`).join('')}
+        </select></label>`;
+    }).join('');
+    const valOptions = (dl.contentColumns || []).map(v => `<option value="${escAttr(v)}" ${f.output === v ? 'selected' : ''}>${esc(v)}</option>`).join('');
+    html += `<label><span>出力する列</span><select onchange="applyPatch('field','${f.id}',{output:this.value})"><option value="">(選択)</option>${valOptions}</select></label>`;
+  }
+  return html;
+}
+function setLookupDataList(id, dlId){
+  const f = findFrame('field', id); if(!f) return;
+  f.dataList = dlId; f.match = []; f.output = '';
+  render();
+}
+function setLookupMatch(id, key, fieldId){
+  const f = findFrame('field', id); if(!f) return;
+  if(!f.match) f.match = [];
+  const existing = f.match.find(m => m.key === key);
+  if(existing) existing.field = fieldId; else f.match.push({ key, field: fieldId });
+  render();
+}
+function renderListFilterEditor(f){
+  const dataLists = state.template.dataLists || [];
+  const dlOptions = dataLists.map(d => `<option value="${d.id}" ${f.dataList === d.id ? 'selected' : ''}>${esc(d.label)}</option>`).join('');
+  let html = `<label><span>参照するデータリスト</span><select onchange="setListFilterDataList('${f.id}',this.value)"><option value="">(選択)</option>${dlOptions}</select></label>`;
+  const dl = dataLists.find(d => d.id === f.dataList);
+  if(dl){
+    const candidates = referenceableFieldsFor(f.id).filter(c => c.id !== f.id);
+    html += (dl.conditionColumns || []).map(key => {
+      const m = (f.match || []).find(mm => mm.key === key) || { key, field: '' };
+      return `<label><span>表示条件「${esc(key)}」に対応するインプット</span><select onchange="setListFilterMatch('${f.id}','${key}',this.value)"><option value="">(選択)</option>${candidates.map(c => `<option value="${c.id}" ${m.field === c.id ? 'selected' : ''}>${esc(c.label)}</option>`).join('')}</select></label>`;
+    }).join('');
+    const allCols = [...(dl.conditionColumns || []), ...(dl.contentColumns || [])];
+    html += `<label><span>選択肢として表示する列</span><select onchange="applyPatch('field','${f.id}',{optionLabel:this.value})"><option value="">(選択)</option>${allCols.map(c => `<option value="${escAttr(c)}" ${f.optionLabel === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select></label>`;
+    const hasCustomValue = !!f.optionValue;
+    html += `<label class="checkbox"><input type="checkbox" ${hasCustomValue ? 'checked' : ''} onchange="toggleListFilterCustomValue('${f.id}',this.checked)"> 表示文字と別の値を保存する(通常は不要)</label>`;
+    if(hasCustomValue){
+      html += `<label><span>保存する値の列</span><select onchange="applyPatch('field','${f.id}',{optionValue:this.value})"><option value="">(選択)</option>${allCols.map(c => `<option value="${escAttr(c)}" ${f.optionValue === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select></label>`;
+    }
+  }
+  return html;
+}
+function toggleListFilterCustomValue(id, checked){
+  const f = findFrame('field', id); if(!f) return;
+  if(checked){ if(!f.optionValue) f.optionValue = ''; }
+  else { delete f.optionValue; }
+  render();
+}
+function setListFilterDataList(id, dlId){
+  const f = findFrame('field', id); if(!f) return;
+  f.dataList = dlId; f.match = []; f.optionLabel = ''; delete f.optionValue;
+  render();
+}
+function setListFilterMatch(id, key, fieldId){
+  const f = findFrame('field', id); if(!f) return;
+  if(!f.match) f.match = [];
+  const ex = f.match.find(m => m.key === key);
+  if(ex) ex.field = fieldId; else f.match.push({ key, field: fieldId });
+  render();
+}
+function renderAggregateEditor(f){
+  const sets = [];
+  for(const s of state.template.sections) for(const st of s.sets) sets.push(st);
+  const setOptions = sets.map(st => `<option value="${st.id}" ${f.set === st.id ? 'selected' : ''}>${esc(st.label)}</option>`).join('');
+  let html = `<label><span>対象のインプットセット</span><select onchange="setAggregateSet('${f.id}',this.value)"><option value="">(選択)</option>${setOptions}</select></label>`;
+  const st = sets.find(s => s.id === f.set);
+  if(st){
+    const numFields = st.fields.filter(sf => sf.type === 'number' && sf.id !== f.id);
+    html += `<p class="muted small">合計対象(複数選ぶと各行で掛け算してから合計)</p>` + numFields.map(nf => {
+      const checked = (f.terms || []).includes(nf.id);
+      return `<label class="checkbox"><input type="checkbox" ${checked ? 'checked' : ''} onchange="toggleAggregateTerm('${f.id}','${nf.id}',this.checked)"> ${esc(nf.label)}</label>`;
+    }).join('');
+  }
+  return html;
+}
+function setAggregateSet(id, setId){
+  const f = findFrame('field', id); if(!f) return;
+  f.set = setId; f.terms = [];
+  render();
+}
+function toggleAggregateTerm(id, termFieldId, checked){
+  const f = findFrame('field', id); if(!f) return;
+  if(!f.terms) f.terms = [];
+  if(checked){ if(!f.terms.includes(termFieldId)) f.terms.push(termFieldId); }
+  else f.terms = f.terms.filter(t => t !== termFieldId);
+  render();
+}
+
+/* ---------- 参照の一覧(モーダル、読み取り専用) ---------- */
+// 参照先の種類には制限を設けていないため(前述の「参照・計算のルール」
+// 参照)、テンプレート内にどんな依存関係が張られているかを一望できる
+// 場所が無いと見落としが起きやすい。この一覧はテンプレートの構造だけを
+// 見た読み取り専用のビューで、値の計算経路には一切関与しない。
+function refKindLabel(f){
+  if(f.kind === 'ref'){
+    return { formula: '計算式', lookup: 'データリストから参照', listFilter: 'データリストから選択', aggregateSum: '集計' }[f.refType] || f.refType;
+  }
+  return '';
+}
+function collectReferenceRows(){
+  const rows = [];
+  const describe = (f, location) => {
+    const deps = fieldDirectRefs(f);
+    if(!deps.length) return;
+    const depLabels = deps.map(depId => {
+      const df = findFrame('field', depId);
+      return df ? df.label : `(不明:${depId})`;
+    });
+    rows.push({ label: f.label, location, kindLabel: refKindLabel(f), depLabels, errors: getFieldReferenceErrors(f) });
+  };
+  for(const s of state.template.sections){
+    for(const f of s.fields) describe(f, s.label);
+    for(const st of s.sets) for(const f of st.fields) describe(f, `${s.label} > ${st.label}`);
+  }
+  return rows;
+}
+function toggleRefListModal(){ state.refListModalOpen = !state.refListModalOpen; render({ skipDirty: true }); }
+function renderRefListModal(){
+  if(!state.refListModalOpen) return '';
+  const rows = collectReferenceRows();
+  const body = rows.length
+    ? `<table class="dl-tsv-table"><tbody>
+        <tr><th>インプット</th><th>場所</th><th>種別</th><th>参照先</th><th>状態</th></tr>
+        ${rows.map(r => `<tr>
+          <td>${esc(r.label)}</td>
+          <td>${esc(r.location)}</td>
+          <td>${esc(r.kindLabel)}</td>
+          <td>${esc(r.depLabels.join('、'))}</td>
+          <td class="${r.errors.length ? 'ref-list-error' : ''}">${r.errors.length ? esc(r.errors.join(' / ')) : 'OK'}</td>
+        </tr>`).join('')}
+      </tbody></table>`
+    : '<p class="muted">他の枠を参照しているインプットがありません</p>';
+  return `<div class="modal-backdrop" onclick="toggleRefListModal()">
+    <div class="modal-box" onclick="event.stopPropagation()">
+      <div class="modal-head"><strong>参照の一覧</strong><button class="icon-btn" onclick="toggleRefListModal()">×</button></div>
+      <div class="modal-body">
+        <p class="muted small">テンプレート内の参照関係(計算式・データリストからの参照/選択・集計)を一覧します。読み取り専用です。</p>
+        ${body}
+      </div>
+    </div>
+  </div>`;
+}
+
+/* ---------- データリストの編集(モーダル) ---------- */
+function toggleDataListModal(){ state.dataListModalOpen = !state.dataListModalOpen; render({ skipDirty: true }); }
+function renderDataListModal(){
+  if(!state.dataListModalOpen) return '';
+  const dataLists = state.template.dataLists || [];
+  const body = dataLists.map(renderDataListEditorBlock).join('') || '<p class="muted">データリストがありません</p>';
+  return `<div class="modal-backdrop" onclick="toggleDataListModal()">
+    <div class="modal-box" onclick="event.stopPropagation()">
+      <div class="modal-head"><strong>データリストの編集</strong><button class="icon-btn" onclick="toggleDataListModal()">×</button></div>
+      <div class="modal-body">
+        <p class="muted small dl-tsv-hint">先頭が「_」の列名は表示条件列になります。それ以外は表示内容列です。</p>
+        ${body}
+        <button onclick="addDataList()">+ データリストを追加</button>
+      </div>
+    </div>
+  </div>`;
+}
+/* データリストの行・列は、フィフス版の呪文一覧と同じ「タブ区切り
+   テキストを編集し、フォーカスを外すと表になる」方式で編集する。
+   1行目が見出し行で、先頭に"_"を付けた列名が表示条件列(それ以外は
+   表示内容列)になる。大量入力・並べ替え・スプレッドシートからの
+   コピー貼り付けが、1つのテキストエリアだけで完結する。 */
+function coerceCell(v){ return /^-?\d+(\.\d+)?$/.test(v) ? Number(v) : v; }
+function dataListToTsv(dl){
+  const condCols = dl.conditionColumns || [];
+  const contCols = dl.contentColumns || [];
+  const allCols = [...condCols, ...contCols];
+  const header = [...condCols.map(c => '_' + c), ...contCols].join('\t');
+  const rowLines = (dl.rows || []).map(row => allCols.map(c => row[c] ?? '').join('\t'));
+  return [header, ...rowLines].join('\n');
+}
+function parseDataListTsv(text){
+  const lines = text.split(/\r\n|\r|\n/);
+  while(lines.length && lines[lines.length - 1].trim() === '') lines.pop();
+  if(!lines.length) return { conditionColumns: [], contentColumns: [], columnNames: [], rows: [], warnings: [], duplicateNames: [] };
+  const headerCells = lines[0].split('\t');
+  const columnNames = [];
+  const roles = [];
+  headerCells.forEach(cell => {
+    const trimmed = cell.trim();
+    if(trimmed.startsWith('_')){ columnNames.push(trimmed.slice(1)); roles.push('condition'); }
+    else { columnNames.push(trimmed); roles.push('content'); }
+  });
+  const expectedCount = columnNames.length;
+  const warnings = [];
+  const rows = [];
+  for(let i = 1; i < lines.length; i++){
+    const cells = lines[i].split('\t');
+    if(cells.length < expectedCount){
+      warnings.push(`${i + 1}行目: 列数が足りません(${cells.length}/${expectedCount}列。不足分は空欄として扱います)`);
+    } else if(cells.length > expectedCount){
+      warnings.push(`${i + 1}行目: 列が多すぎます(${cells.length}/${expectedCount}列。超過分は無視されます)`);
+    }
+    const row = {};
+    columnNames.forEach((name, ci) => { row[name] = coerceCell((cells[ci] ?? '').trim()); });
+    rows.push(row);
+  }
+  const seen = new Set();
+  const duplicateNames = [];
+  columnNames.forEach(n => { if(seen.has(n)) duplicateNames.push(n); seen.add(n); });
+  const conditionColumns = columnNames.filter((_, i) => roles[i] === 'condition');
+  const contentColumns = columnNames.filter((_, i) => roles[i] === 'content');
+  return { conditionColumns, contentColumns, columnNames, rows, warnings, duplicateNames };
+}
+function visualWidth(str){
+  let w = 0;
+  for(const ch of str){
+    const code = ch.codePointAt(0);
+    const isFullWidth =
+      (code >= 0x1100 && code <= 0x115F) ||
+      (code >= 0x2E80 && code <= 0xA4CF) ||
+      (code >= 0xAC00 && code <= 0xD7A3) ||
+      (code >= 0xF900 && code <= 0xFAFF) ||
+      (code >= 0xFF00 && code <= 0xFF60) ||
+      (code >= 0xFFE0 && code <= 0xFFE6);
+    w += isFullWidth ? 1.8 : 1;
+  }
+  return w;
+}
+// TSVテキストを読み取り専用の<table>として描画する共通処理。データ
+// リストの編集モーダルと、表(TSV)型のインプットの両方から使う。onclickJsは
+// クリック時に実行するJS文字列(空文字なら非クリック=表示専用)。
+function tsvTableHtml(tsv, onclickJs){
+  const lines = tsv.split('\n');
+  const rows = lines.map(line => line.split('\t'));
+  const colCount = Math.max(1, ...rows.map(cells => cells.length));
+  const MIN_WIDTH = 2.2;
+  const colMaxWidths = [];
+  for(let ci = 0; ci < colCount; ci++){
+    let maxW = MIN_WIDTH;
+    rows.forEach(cells => { if(cells[ci]) maxW = Math.max(maxW, visualWidth(cells[ci])); });
+    colMaxWidths.push(maxW);
+  }
+  const weightSum = colMaxWidths.reduce((s, w) => s + w, 0);
+  const colgroupHtml = `<colgroup>${colMaxWidths.map(w => `<col style="width:${(w / weightSum * 100).toFixed(2)}%">`).join('')}</colgroup>`;
+  const rowsHtml = rows.map((cells, i) => {
+    const tag = i === 0 ? 'th' : 'td';
+    return `<tr>${cells.map(cell => `<${tag}>${esc(cell)}</${tag}>`).join('')}</tr>`;
+  }).join('');
+  const onclick = onclickJs ? ` onclick="${onclickJs}"` : '';
+  return `<table class="dl-tsv-table"${onclick}>${colgroupHtml}${rowsHtml}</table>`;
+}
+function dataListTableHtml(tsv, clickable, dlId){
+  return tsvTableHtml(tsv, clickable ? `editDataListTsv('${dlId}')` : '');
+}
+function editDataListTsv(dlId){
+  state.dataListTsvEditing[dlId] = true;
+  render();
+  const el = document.getElementById('dl-tsv-' + dlId);
+  if(el) el.focus();
+}
+function handleDataListTsvTabKey(e){
+  if(e.key !== 'Tab') return;
+  e.preventDefault();
+  const el = e.target;
+  const start = el.selectionStart, end = el.selectionEnd;
+  el.value = el.value.slice(0, start) + '\t' + el.value.slice(end);
+  el.selectionStart = el.selectionEnd = start + 1;
+}
+// Tabキーは上記でタブ文字挿入に割り当て済みだが、モバイル等の
+// ソフトウェアキーボードにはTabキー自体が無い場合があるため、
+// タブ文字をクリップボードにコピーするボタンも用意する。
+// onmousedownでpreventDefaultするのは、クリックでtextareaのフォーカスが
+// 外れてしまうとonblurのcommit処理が走り、編集中の表示が予期せず
+// 確定・終了してしまうため(フォーカスを移動させずにクリックだけ拾う)。
+// 縦方向のスペースを増やさないよう、textareaの上に単独の行を作らず、
+// 既存の見出し・ラベル行に同居させる(呼び出し側でflex行の中に差し込む)。
+function tsvTabCopyButtonHtml(){
+  return `<button type="button" class="tsv-tab-copy-btn" onmousedown="event.preventDefault()" onclick="copyTabCharacter(this)">タブ記号をコピー</button>`;
+}
+function copyTabCharacter(btn){
+  navigator.clipboard.writeText('\t').then(() => {
+    const old = btn.textContent;
+    btn.textContent = 'コピーしました';
+    setTimeout(() => { btn.textContent = old; }, 1200);
+  }).catch(() => { alert('コピーできませんでした。'); });
+}
+function commitDataListTsv(dlId, textareaEl){
+  const dl = findDataList(dlId); if(!dl) return;
+  const parsed = parseDataListTsv(textareaEl.value);
+  if(parsed.duplicateNames.length){
+    alert(`列名が重複しています: ${[...new Set(parsed.duplicateNames)].join(', ')}\n\n列名を一意にしてから、あらためて確定してください。`);
+    textareaEl.focus();
+    return;
+  }
+  const oldNames = [...(dl.conditionColumns || []), ...(dl.contentColumns || [])];
+  const newNames = parsed.columnNames;
+  // 列数が変わっていない場合のみ、「同じ位置で名前だけ変わった列」を
+  // 名前変更の候補とみなす(単純な並べ替え・入れ替えは除く)。
+  // 参照が無ければそのまま名前変更として追従させ、参照がある場合は
+  // 削除と区別がつかないため、confirm()で本人の意図を確認する
+  // (自動で追従させて参照先を静かに取り違えてしまう事故を防ぐため)。
+  const candidateRenames = {};
+  if(newNames.length === oldNames.length){
+    for(let i = 0; i < oldNames.length; i++){
+      const oldName = oldNames[i], newName = newNames[i];
+      if(oldName === newName) continue;
+      const oldStillElsewhere = newNames.includes(oldName);
+      const newIsExistingOldName = oldNames.includes(newName);
+      if(!oldStillElsewhere && !newIsExistingOldName) candidateRenames[oldName] = newName;
+    }
+  }
+  const renameMap = {};
+  for(const oldName in candidateRenames){
+    const newName = candidateRenames[oldName];
+    const refs = findColumnReferences(dlId, oldName);
+    if(!refs.length){
+      renameMap[oldName] = newName;
+      continue;
+    }
+    const ok = confirm(`列名を「${oldName}」から「${newName}」に変更したとみなしてよいですか？\n\n以下の参照も新しい列名に追従させます。\n${refs.map(r => '・' + r).join('\n')}\n\nキャンセルすると、この確定は中止されます。`);
+    if(!ok){
+      textareaEl.focus();
+      return;
+    }
+    renameMap[oldName] = newName;
+  }
+  const removedNames = oldNames.filter(n => !newNames.includes(n) && !(n in renameMap));
+  const blockedRefs = [];
+  removedNames.forEach(n => {
+    const refs = findColumnReferences(dlId, n);
+    if(refs.length) blockedRefs.push(`列「${n}」:\n${refs.map(r => '  ・' + r).join('\n')}`);
+  });
+  if(blockedRefs.length){
+    alert(`以下の列は他から参照されているため削除できません。\n\n${blockedRefs.join('\n\n')}\n\n先にこれらの参照を外してから、あらためて確定してください。`);
+    textareaEl.focus();
+    return;
+  }
+  if(Object.keys(renameMap).length){
+    fieldsReferencingDataList(dlId).forEach(f => {
+      if(f.match) f.match.forEach(m => { if(m.key in renameMap) m.key = renameMap[m.key]; });
+      if(f.output in renameMap) f.output = renameMap[f.output];
+      if(f.optionLabel in renameMap) f.optionLabel = renameMap[f.optionLabel];
+      if(f.optionValue in renameMap) f.optionValue = renameMap[f.optionValue];
+    });
+  }
+  dl.conditionColumns = parsed.conditionColumns;
+  dl.contentColumns = parsed.contentColumns;
+  dl.rows = parsed.rows;
+  state.dataListTsvEditing[dlId] = false;
+  render();
+  if(parsed.warnings.length){
+    alert(`確定しましたが、以下の行に注意してください。\n\n${parsed.warnings.join('\n')}`);
+  }
+}
+// 表(TSV)型のインプットは、データリストと違って表示条件列/表示内容列の
+// 区別や参照チェックが不要な単純な自由入力表なので、専用の軽量な
+// 編集フローにする(TSVのパース・確定はそのまま表示するだけ)。
+function tableEditKey(fieldId, scopeKey){ return fieldId + (scopeKey ? ':' + scopeKey : ''); }
+// 表(TSV)型インプットが今まさに編集(textarea表示)中かどうか。「タブ記号を
+// コピー」ボタンをラベル行に出すかどうかの判定に使う(renderFieldInput側の
+// editing判定と同じ条件を、ラベル行を組み立てるrenderFieldFrame側からも
+// 参照できるよう切り出した)。
+function isTableFieldEditing(f, rowScope){
+  if(f.type !== 'table' || state.mode === 'edit') return false;
+  return !!state.tableEditing[tableEditKey(f.id, fieldScopeKey(rowScope))];
+}
+function editTableField(fieldId, scopeKey){
+  const key = tableEditKey(fieldId, scopeKey);
+  state.tableEditing[key] = true;
+  render();
+  const el = document.getElementById('table-tsv-' + key);
+  if(el) el.focus();
+}
+function commitTableTsv(fieldId, scopeKey, textareaEl){
+  setFieldValueByScope(fieldId, scopeKey, textareaEl.value);
+  state.tableEditing[tableEditKey(fieldId, scopeKey)] = false;
+  render();
+}
+// 画像型のインプットは、選択したファイルをDataURLとして読み込み、そのまま
+// 値として保存する(テンプレート/キャラクターJSONの入出力の仕組みに
+// 追加のコードなしで乗る)。
+function handleFieldImageFile(inputEl, fieldId, scopeKey){
+  const file = inputEl.files[0]; if(!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    setFieldValueByScope(fieldId, scopeKey, String(reader.result));
+    render();
+  };
+  reader.readAsDataURL(file);
+  inputEl.value = '';
+}
+function clearFieldImage(fieldId, scopeKey){
+  setFieldValueByScope(fieldId, scopeKey, '');
+  render();
+}
+function renderDataListEditorBlock(dl){
+  const tsv = dataListToTsv(dl);
+  const editing = !!state.dataListTsvEditing[dl.id];
+  const body = editing
+    ? `<textarea id="dl-tsv-${dl.id}" class="dl-tsv-input" onblur="commitDataListTsv('${dl.id}',this)" onkeydown="handleDataListTsvTabKey(event)" placeholder="タブ区切りで入力・貼り付け。1行目は見出し行で、先頭が _ の列名は表示条件列になります。${'\n'}例:${'\n'}_score\tmod${'\n'}10\t0${'\n'}16\t3">${esc(tsv)}</textarea>`
+    : (tsv.trim() ? dataListTableHtml(tsv, true, dl.id) : `<p class="muted small dl-tsv-hint" onclick="editDataListTsv('${dl.id}')" style="cursor:pointer;">(クリックして内容を入力)</p>`);
+  // 「タブ記号をコピー」は新しい行を作らず、既存の見出し行(名称+削除ボタン)
+  // に同居させて縦方向のスペースを増やさないようにする。
+  const tsvCopyBtn = editing ? tsvTabCopyButtonHtml() : '';
+  return `<div class="dl-block">
+    <h4>
+      <input type="text" class="dl-label-input" value="${escAttr(dl.label)}" onchange="renameDataList('${dl.id}',this.value)">
+      ${tsvCopyBtn}
+      <button class="danger-btn" onclick="removeDataList('${dl.id}')">データリストを削除</button>
+    </h4>
+    ${body}
+  </div>`;
+}
+function allFieldsInTemplate(){
+  const out = [];
+  for(const s of state.template.sections){
+    for(const f of s.fields) out.push(f);
+    for(const st of s.sets) for(const f of st.fields) out.push(f);
+  }
+  return out;
+}
+// テンプレートスナップショット比較用: allFieldsInTemplate()と同じ走査を
+// 任意のテンプレートオブジェクトに対して行い、ID→ラベルの対応表を作る。
+function templateFieldLabelMap(tpl){
+  const map = {};
+  (tpl.sections || []).forEach(s => {
+    (s.fields || []).forEach(f => { map[f.id] = f.label; });
+    (s.sets || []).forEach(st => (st.fields || []).forEach(f => { map[f.id] = f.label; }));
+  });
+  return map;
+}
+// 保存時に埋め込んだ旧テンプレート(templateSnapshot)と、現在読み込まれて
+// いる新テンプレートをID単位で突き合わせ、ラベルの改名・削除・追加を
+// 日本語の通知文として返す(空配列=差分なし)。
+function describeTemplateSnapshotDiff(oldTpl, newTpl){
+  const oldMap = templateFieldLabelMap(oldTpl);
+  const newMap = templateFieldLabelMap(newTpl);
+  const messages = [];
+  Object.keys(oldMap).forEach(id => {
+    if(!(id in newMap)) messages.push(`「${oldMap[id]}」の項目が削除されています。`);
+    else if(oldMap[id] !== newMap[id]) messages.push(`「${oldMap[id]}」の名前が「${newMap[id]}」に変更されています。値を移行します。`);
+  });
+  Object.keys(newMap).forEach(id => {
+    if(!(id in oldMap)) messages.push(`「${newMap[id]}」の項目が新しく追加されています。`);
+  });
+  return messages;
+}
+// テンプレートJSON・キャラクターJSONのどちらを読み込んだ直後にも呼ぶ
+// (読み込み順序に依らず検知するため)。通知後はスナップショットを現在の
+// テンプレートで更新し、同じ差分を繰り返し通知しないようにする。
+function checkTemplateSnapshotDiff(){
+  if(!state.character || !state.character.templateSnapshot) return;
+  const messages = describeTemplateSnapshotDiff(state.character.templateSnapshot, state.template);
+  if(messages.length) alert(messages.join('\n'));
+  state.character.templateSnapshot = structuredClone(state.template);
+  state.character.templateRef = { name: (state.template.meta && state.template.meta.name) || '' };
+}
+function fieldsReferencingDataList(dlId){
+  return allFieldsInTemplate().filter(f => f.kind === 'ref' && f.dataList === dlId);
+}
+function findColumnReferences(dlId, columnName){
+  const refs = [];
+  fieldsReferencingDataList(dlId).forEach(f => {
+    const label = f.label || f.id;
+    if((f.match || []).some(m => m.key === columnName)) refs.push(`インプット「${label}」の絞り込み条件`);
+    if(f.refType === 'lookup' && f.output === columnName) refs.push(`インプット「${label}」の出力する列`);
+    if(f.refType === 'listFilter' && f.optionLabel === columnName) refs.push(`インプット「${label}」の表示に使う列`);
+    if(f.refType === 'listFilter' && f.optionValue === columnName) refs.push(`インプット「${label}」の値として使う列`);
+  });
+  return refs;
+}
+function removeDataList(dlId){
+  const dl = findDataList(dlId); if(!dl) return;
+  const refCount = fieldsReferencingDataList(dlId).length;
+  if(refCount > 0){
+    const names = fieldsReferencingDataList(dlId).map(f => `・インプット「${f.label || f.id}」`).join('\n');
+    alert(`このデータリストは以下のインプットから参照されているため削除できません。\n\n${names}\n\n先にこれらのインプットでデータリストの参照を外してから、あらためて削除してください。`);
+    return;
+  }
+  if(!confirmDelete('このデータリストを削除しますか？')) return;
+  state.template.dataLists = (state.template.dataLists || []).filter(d => d.id !== dlId);
+  render();
+}
+function renameDataList(dlId, newLabel){
+  const dl = findDataList(dlId); if(!dl) return;
+  newLabel = (newLabel || '').trim();
+  if(newLabel) dl.label = newLabel;
+  render();
+}
+function addDataList(){
+  const label = prompt('データリストの名前', '新しいデータリスト');
+  if(label == null) return;
+  if(!state.template.dataLists) state.template.dataLists = [];
+  const id = uid('dl');
+  state.template.dataLists.push({ id, label, conditionColumns: [], contentColumns: [], rows: [] });
+  state.dataListTsvEditing[id] = true;
+  render();
+  const el = document.getElementById('dl-tsv-' + id);
+  if(el) el.focus();
+}
+
+/* ---------- 入出力(テンプレート/キャラクターJSON) ---------- */
+function downloadJson(obj, filename){
+  const blob = new Blob([JSON.stringify(obj, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+}
+function exportTemplate(){
+  downloadJson(state.template, (state.template.meta && state.template.meta.name || 'template') + '.json');
+  state.dirty = false;
+}
+// キャラクターJSONに、その時点のテンプレートの完全なコピーを埋め込む。
+// テンプレートがDrive上に存在しない(ローカルのみで作られた)場合や、
+// 後日共有が外れた場合でもキャラクターの共有リンクが壊れないよう、
+// ローカル保存・Drive保存の両方から必ずこれを通す
+// (resolveCharacterTemplate()の読み込み側と対になる)。
+function embedTemplateSnapshot(characterObj){
+  characterObj.templateSnapshot = structuredClone(state.template);
+  characterObj.templateRef = { name: (state.template.meta && state.template.meta.name) || '' };
+  // 生のDriveファイルIDではなく、share-proxyの暗号化トークンを埋め込む
+  // (キャラクターJSON自体が公開共有される可能性があるため、テンプレート
+  // 作成者の身元に繋がる生IDをここに含めてはいけない)。
+  characterObj.templateShareToken = state.templateShareToken || '';
+}
+function exportCharacter(){
+  embedTemplateSnapshot(state.character);
+  downloadJson(state.character, (state.template.meta && state.template.meta.name || 'character') + '_character.json');
+  state.dirty = false;
+}
+function handleImportTemplateFile(input){
+  const file = input.files[0]; if(!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      state.template = JSON.parse(reader.result);
+      state.template.dataLists = state.template.dataLists || [];
+      state.template.chatFreeTexts = state.template.chatFreeTexts || [];
+      // シートの描画は常にキャラクター側のデータを参照するため必ず
+      // 用意する。別のテンプレートに切り替えるので以前のキャラクターの
+      // 値は引き継がず空にする。
+      state.character = blankCharacter();
+      state.selection = null;
+      state.dataListTsvEditing = {};
+      // ローカルファイルから読み込んだ時点で、以前Driveに紐づいていた
+      // テンプレート・キャラクターとは別物として扱う(そのままだと
+      // 「Driveに保存」で意図せず別のファイルを上書きしてしまう)。
+      state.templateFileId = null;
+      state.templateFileMine = false;
+      state.templateShared = false;
+      state.templateShareUrl = '';
+      state.templateShareToken = '';
+      state.characterFileId = null;
+      state.characterShared = false;
+      state.characterShareToken = '';
+      state.mode = 'edit';
+      state.screen = 'templateEditor';
+      state.dirty = false;
+      render({ skipDirty: true });
+    } catch(e){ alert('テンプレートJSONの読み込みに失敗しました: ' + e.message); }
+  };
+  reader.readAsText(file);
+  input.value = '';
+}
+function handleImportCharacterFile(input){
+  const file = input.files[0]; if(!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      state.character = JSON.parse(reader.result);
+      state.character.values = state.character.values || {};
+      state.character.sets = state.character.sets || {};
+      // ローカルファイルから読み込んだ時点で、以前Driveに紐づいていた
+      // キャラクターとは別物として扱う(「Driveに保存」での意図しない
+      // 上書きを防ぐ)。
+      state.characterFileId = null;
+      state.characterShared = false;
+      state.characterShareToken = '';
+      state.readOnly = false;
+      state.mode = 'view';
+      state.screen = 'characterEditor';
+      state.dirty = false;
+      checkTemplateSnapshotDiff();
+      render({ skipDirty: true });
+    } catch(e){ alert('キャラクターJSONの読み込みに失敗しました: ' + e.message); }
+  };
+  reader.readAsText(file);
+  input.value = '';
+}
+/* ---------- 初期化 ----------
+ * URLパラメータで画面を振り分ける:
+ * - ?tpl=author: テンプレートトップ画面(テンプレート作成の入口)
+ * - ?char=<共有トークン>(?tpl=は無くてもよい): 共有されたキャラクターを
+ *   読み取り専用で表示する(キャラクター表示画面)。テンプレートは
+ *   ?tpl=があればまずDrive上の最新版を試し、無い/失敗したらキャラクター
+ *   JSON自身に埋め込まれたtemplateSnapshotにフォールバックする
+ *   (resolveCharacterTemplate参照)
+ * - ?tpl=<Driveファイル>のみ: 共有されたテンプレートを読み込み、
+ *   自分のキャラクターをこれから作る(キャラクター編集画面・非ログイン)
+ * - パラメータ無し: キャラクタートップ画面(既定)
+ */
+function blankCharacter(){
+  return { values: {}, sets: {} };
+}
+async function bootstrap(){
+  const params = new URLSearchParams(window.location.search);
+  const tpl = params.get('tpl');
+  const char = params.get('char');
+  state.loadError = '';
+
+  if(char){
+    try{
+      const res = await fetch(`${SHARE_VIEW_URL}?token=${encodeURIComponent(char)}`);
+      if(!res.ok){
+        let detail = '';
+        try{ const errBody = await res.json(); detail = (errBody && errBody.error) || ''; }catch(_e){ /* ignore */ }
+        throw new Error(`共有されたキャラクターの取得に失敗しました。${detail ? '(' + detail + ')' : ''}`);
+      }
+      const characterObj = await res.json();
+      // 閲覧側ではテンプレートの生存確認・最新版取得を一切行わない
+      // (2026-09-18の方針変更)。キャラクターJSONに埋め込まれた
+      // templateSnapshotだけで表示する。
+      const templateObj = characterObj.templateSnapshot;
+      if(!templateObj) throw new Error('このキャラクターのテンプレートが見つかりません。');
+      state.template = templateObj;
+      state.templateFileId = null;
+      state.templateShareToken = '';
+      state.templateFileMine = false;
+      state.character = characterObj;
+      state.readOnly = true;
+      state.screen = 'characterView';
+      // 見知らぬ訪問者にとって意味の無い「テンプレートが更新されました」
+      // 通知(alert)を出さないよう、読み取り専用時はcheckTemplateSnapshotDiff
+      // を呼ばない(general/CLAUDE.md参照)。
+    }catch(e){
+      console.error(e);
+      state.readOnly = false;
+      state.screen = 'characterTop';
+      state.loadError = e.message;
+    }
+    render();
+    initGoogle();
+    return;
+  }
+
+  if(tpl === 'author'){
+    state.screen = 'templateTop';
+    render();
+    initGoogle();
+    return;
+  }
+
+  if(tpl){
+    try{
+      state.template = await fetchPublicTemplate(tpl);
+      state.templateFileId = null;
+      state.templateShareToken = tpl;
+      state.templateFileMine = false;
+      state.character = blankCharacter();
+      state.mode = 'view';
+      state.screen = 'characterEditor';
+      state.dirty = false;
+    }catch(e){
+      console.error(e);
+      state.templateFileId = null;
+      state.templateShareToken = '';
+      state.screen = 'characterTop';
+      state.loadError = e.message;
+    }
+    render({ skipDirty: true });
+    initGoogle();
+    return;
+  }
+
+  state.screen = 'characterTop';
+  render();
+  initGoogle();
+}
+// タブを閉じる・再読み込みする・別サイトへ移動する等をした場合のみ、
+// ブラウザ標準の確認ダイアログを出す(アプリ内の画面遷移はページ遷移を
+// 伴わないためここでは発火しない)。表示文言はブラウザが独自に決める
+// ため、e.returnValueへの代入は多くのブラウザでは無視される。
+window.addEventListener('beforeunload', (e) => {
+  if((state.screen !== 'templateEditor' && state.screen !== 'characterEditor') || !state.dirty) return;
+  e.preventDefault();
+  e.returnValue = '保存されていない変更があります。続けると変更は失われます。よろしいですか?';
+});
+bootstrap();
+</script>
+</body>
+</html>
