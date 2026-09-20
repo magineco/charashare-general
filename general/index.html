@@ -512,16 +512,8 @@
   .chat-replace-row input{ flex:1 1 140px; width:auto; min-width:0; }
   .chat-replace-row span{ color:var(--muted); flex:0 0 auto; }
   .chat-line{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding:6px 0; border-bottom:1px solid var(--line); }
-  .chat-line-label{ min-width:100px; color:var(--muted); }
-  /* 自由入力行専用: ラベル+削除ボタンの行と、textarea(幅100%指定で
-     必ず単独行になる)の2行構成にする。この行自体をwidth:100%にして
-     独立した1行にし、ラベルは左・削除ボタンは右端に離して配置する
-     (2026-09-20: ドラッグハンドル・↑↓ボタンが左側に増えたため、
-     隣接する削除ボタンを誤って押しやすくなった。削除ボタンをボックス
-     右端まで離すことで誤操作を防ぐ)。 */
-  .chat-line-label-group{ display:flex; align-items:center; justify-content:space-between; gap:8px; width:100%; }
-  .chat-line-label-group .chat-line-label{ min-width:0; }
-  .chat-line-label-group .remove-row-btn{ flex:0 0 auto; }
+  .chat-line-label{ min-width:100px; color:var(--muted); flex:0 0 auto; }
+  .chat-line .remove-row-btn{ flex:0 0 auto; }
   .chat-line-text{
     background:var(--surface); flex:1 1 auto; width:auto; min-height:1.6em; min-width:120px;
     font-family:'IBM Plex Mono',monospace;
@@ -2244,7 +2236,7 @@ function renderToolbar(){
     ? `<button class="danger-btn" onclick="deleteDriveFile(state.templateFileId,'template')">削除</button>` : '';
   return `<header class="toolbar">
     <input class="tpl-name" type="text" value="${escAttr(state.template.meta && state.template.meta.name || '')}" placeholder="システム名を記述" onchange="updateTemplateName(this.value)">
-    <button class="${state.mode === 'edit' ? '' : 'share-btn'}" onclick="toggleMode()">${state.mode === 'edit' ? '確認画面に切替' : '編集モードに切替'}</button>
+    <button class="${state.mode === 'edit' ? '' : 'share-btn'}" onclick="toggleMode()">${state.mode === 'edit' ? '確認画面に切替' : '編集画面に戻す'}</button>
     <button class="${state.colorPanelOpen ? 'share-btn' : ''}" onclick="toggleColorPanel()">色を変更</button>
     <span class="spacer"></span>
     ${statusHtml}
@@ -3037,15 +3029,16 @@ function chatLineHtml(f, text){
 // インプットに紐付かない自由入力行。フィールドと違い専用の設定パネルが
 // 無いため、この場でそのまま編集・削除できるようにする(空欄のままなら
 // 改行だけの行になり、区切り線や見出しコメント等はここに直接書く)。
+// ラベル・textarea・削除ボタンをフィールドのチャット行(chatLineHtml)と
+// 同じく.chat-lineの直接の子として並べ、1行に収まるようにする
+// (2026-09-20: 以前はラベル+削除ボタンをwidth:100%のグループにまとめて
+// textareaを次の行に強制していたが、行の高さが揃わず見づらいとの指摘を
+// 受けて撤回。削除ボタンはtextareaの右隣に来るだけになるが、左側の
+// ドラッグハンドル・↑↓ボタンとの間にtextareaが挟まるため誤操作の
+// 懸念は変わらず小さい)。
 function chatFreeTextLineHtml(ct){
   if(!ct) return '';
-  // ラベルと削除ボタンを1つのグループにまとめておく。textarea側は他の
-  // 入力欄と同じ幅100%指定のため必ず単独の行になるので、削除ボタンを
-  // textareaと同じ行の子にすると入る場所が無く3行目にあふれてしまう
-  // (フィールドのチャット行と行数が揃わなくなる)。ラベル+ボタンを
-  // まとめて1つのフレックス項目にすることで、フィールドのチャット行と
-  // 同じ「ラベル行→textarea行」の2行構成に揃える。
-  return `<div class="chat-line"><span class="chat-line-label-group"><span class="chat-line-label muted small">自由入力</span><button class="remove-row-btn" onclick="removeChatFreeText('${ct.id}')">−</button></span><textarea class="chat-line-text chat-freetext-input" rows="1" oninput="autoResizeTextarea(this)" onchange="updateChatFreeText('${ct.id}',this.value)" placeholder="空欄のままだと改行だけの行になります">\n${esc(ct.text || '')}</textarea></div>`;
+  return `<div class="chat-line"><span class="chat-line-label muted small">自由入力</span><textarea class="chat-line-text chat-freetext-input" rows="1" oninput="autoResizeTextarea(this)" onchange="updateChatFreeText('${ct.id}',this.value)" placeholder="空欄のままだと改行だけの行になります">\n${esc(ct.text || '')}</textarea><button class="remove-row-btn" onclick="removeChatFreeText('${ct.id}')">−</button></div>`;
 }
 function copyChatPaletteAll(btn){
   const textarea = btn.parentElement.querySelector('.chat-palette-textarea');
