@@ -348,13 +348,18 @@
   .share-url input{ flex:1 1 auto; min-width:0; font-family:'IBM Plex Mono',monospace; }
   /* キャラクター一覧の行を名前だけで見分けられるよう添える、先頭画像の
      小さなサムネイルと、先頭の入力済みインプット値のプレビュー。 */
+  /* 日本国内で使われるキャラクター画像は縦長(バストアップ・全身立ち絵等)
+     が多いため、正方形ではなく縦長の枠にしている(2026-09-20、48×64px)。
+     一覧テーブル側(.char-list-table)の画像列はこのサイズが収まる
+     固定px幅にしており、%指定の列と違ってこの画像自体が列からはみ出す
+     ことはない。 */
   .char-list-thumb{
-    display:block; width:64px; height:64px; object-fit:cover;
+    display:block; width:48px; height:64px; object-fit:cover;
     border:1px solid var(--line); border-radius:4px; background:var(--surface);
   }
   .char-list-thumb-empty{ background:var(--surface-2); }
   .char-list-preview{
-    font-family:'IBM Plex Mono',monospace; font-size:0.8rem; color:var(--muted);
+    font-family:'IBM Plex Mono',monospace; color:var(--muted);
     margin-top:2px;
   }
   /* 値そのものは切らずに渡し、長い値はCSSの省略記号(…)に任せる。JS側で
@@ -373,6 +378,9 @@
   .char-list-controls label{ display:flex; align-items:center; gap:6px; }
   .char-list-controls label span{ color:var(--muted); white-space:nowrap; }
   .char-list-controls select{ width:auto; }
+  /* システム名は作者が自由に付ける文字列で長くなりがちなため、他の列より
+     一段階小さいフォントにして折り返し回数を減らす(2026-09-20)。 */
+  .char-list-system-name{ font-size:0.85rem; }
   .load-error-banner{
     background:var(--surface); border:1px solid var(--danger); color:var(--danger);
     border-radius:8px; padding:10px 14px; margin-bottom:14px;
@@ -1110,24 +1118,45 @@ async function fetchCharacterListPreview(fileId){
   }
 }
 // 画像は「テンプレート順で最初に見つかった画像エリアの値」、テキストは
-// 「テンプレート順(カテゴリー→インプントの並び)で、値が入っている
-// インプットを先頭から3つ」。見出し名は使わず値だけを並べる(区別が
-// 目的で、項目名までは要らないという想定)。テーブル型は値が配列で
-// 単純な文字列にならないため対象から除く。
+// 「実際のシート上の表示順(カテゴリー→そのカテゴリー直下のインプット→
+// そのカテゴリーのインプットセット、の順。renderSectionFrame()が
+// フィールドをグリッド表示した後にインプットセットを並べているのと
+// 同じ順序)で、値が入っているインプットを先頭から3つ」。見出し名は
+// 使わず値だけを並べる(区別が目的で、項目名までは要らないという想定)。
+// テーブル型は値が配列で単純な文字列にならないため対象から除く。
+// 真偽値(チェックボックス)型も対象から除く(2026-09-20): 単一チェック
+// ボックスは値が常にtrue/falseのどちらかで「未入力」を表現できず、一度
+// 触っただけで文字列"false"がそのまま並んでしまう。複数並べたチェック
+// ボックス(checkboxCount>1)はさらに値が配列(例:[true,false,true])
+// のため、String()で"true,false,true"のような無意味な文字列になって
+// しまう。どちらも「キャラクターを見分けるための値」として意味を
+// 持たないため、最初から候補にしない。
 function buildCharacterPreview(characterObj){
   const sections = (characterObj.templateSnapshot && characterObj.templateSnapshot.sections) || [];
   const values = characterObj.values || {};
+  const sets = characterObj.sets || {};
   let image = '';
   const texts = [];
+  const considerField = (f, v) => {
+    if(f.kind !== 'input' || f.type === 'table' || f.type === 'boolean') return;
+    if(v === undefined || v === null || v === '') return;
+    texts.push(String(v));
+  };
   for(const sec of sections){
     if(image && texts.length >= 3) break;
     if(!image && sec.imageArea && values[sec.imageArea.id]) image = values[sec.imageArea.id];
     for(const f of (sec.fields || [])){
       if(texts.length >= 3) break;
-      if(f.kind !== 'input' || f.type === 'table') continue;
-      const v = values[f.id];
-      if(v === undefined || v === null || v === '') continue;
-      texts.push(String(v));
+      considerField(f, values[f.id]);
+    }
+    for(const st of (sec.sets || [])){
+      if(texts.length >= 3) break;
+      const firstRow = (sets[st.id] || [])[0];
+      if(!firstRow) continue;
+      for(const f of (st.fields || [])){
+        if(texts.length >= 3) break;
+        considerField(f, firstRow[f.id]);
+      }
     }
   }
   return { image, texts };
@@ -1990,14 +2019,14 @@ function renderCharacterListScreen(){
     </div>`;
     body = files.length
       ? `<table class="dl-tsv-table char-list-table"><colgroup>
-          <col style="width:10%"><col style="width:42%"><col style="width:20%">
-          <col style="width:14%"><col style="width:14%">
+          <col style="width:76px"><col style="width:44%"><col style="width:21%">
+          <col style="width:17.5%"><col style="width:17.5%">
         </colgroup><tbody>
         <tr><th>画像</th><th>名前</th><th>システム名</th><th>作成日</th><th>更新日時</th></tr>
         ${files.map(f => `<tr onclick="openCharacterFromDrive('${f.id}')" style="cursor:pointer;">
           <td>${renderCharacterListThumb(f)}</td>
           <td>${(f.appProperties && f.appProperties.shared === 'true') ? '<span class="share-badge">共有中</span>' : ''}${renderCharacterListPreviewText(f)}</td>
-          <td>${esc((f.appProperties && f.appProperties.templateName) || '')}</td>
+          <td class="char-list-system-name">${esc((f.appProperties && f.appProperties.templateName) || '')}</td>
           <td>${esc(new Date(f.createdTime).toLocaleString('ja-JP'))}</td>
           <td>${esc(new Date(f.modifiedTime).toLocaleString('ja-JP'))}</td>
         </tr>`).join('')}
