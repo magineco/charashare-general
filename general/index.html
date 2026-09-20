@@ -367,7 +367,12 @@
   .char-list-preview-item{
     display:inline-block; max-width:25em; overflow:hidden;
     text-overflow:ellipsis; white-space:nowrap; vertical-align:bottom;
+    color:var(--text);
   }
+  .char-list-controls{ display:flex; gap:16px; flex-wrap:wrap; margin-bottom:12px; }
+  .char-list-controls label{ display:flex; align-items:center; gap:6px; }
+  .char-list-controls label span{ color:var(--muted); white-space:nowrap; }
+  .char-list-controls select{ width:auto; }
   .load-error-banner{
     background:var(--surface); border:1px solid var(--danger); color:var(--danger);
     border-radius:8px; padding:10px 14px; margin-bottom:14px;
@@ -501,6 +506,19 @@
     background:var(--surface); flex:1 1 auto; width:auto; min-height:1.6em; min-width:120px;
     font-family:'IBM Plex Mono',monospace;
   }
+  /* 自由入力行は、空欄(0行)と改行だけの行(1行分の空行)の見分けが
+     付きにくいという指摘を受け、既定の高さを1行分ではなく1.5行分に
+     広げた。この`min-height`だけでは効果が無い点に注意: <textarea
+     rows="2">は、JSでheight:autoにリセットした瞬間にrows属性由来の
+     「2行分」という組み込みの最小サイズが復活し、この`min-height`
+     (1.5行相当)より大きいためそちらが優先されてしまう(2026-09-20に
+     実機測定で判明)。そのためマークアップ側の`rows`も2から1に
+     変更している(`chatFreeTextLineHtml()`)。rows="1"の素の最小サイズ
+     (1行分)はこの`min-height`より小さいため、空欄・1行の内容なら
+     min-height側の1.5行に底上げされ、改行を含む(2行分必要になる)
+     場合はautoResizeTextareaが実際の内容の高さまで伸ばすため、
+     明確に高さの差が出て見分けられるようになる。 */
+  .chat-freetext-input{ min-height:calc(2.25em + 12px); }
   .mode-edit .chat-line-text{ opacity:0.8; }
   .chat-line-group{ display:flex; align-items:flex-start; gap:8px; }
   .chat-line-rows{ flex:1 1 auto; min-width:0; }
@@ -1039,19 +1057,22 @@ async function updateCharacterFile(fileId, characterObj){
 }
 async function listMyCharacters(){
   if(!state.accessToken){ loginAndThen('openCharacterBrowser'); return; }
-  state.driveBrowser = { kind: 'character', loading: true, files: [], error: '' };
+  // sortBy('modifiedTime'|'createdTime')・filterSystem(空なら絞り込み無し)は
+  // 一覧画面だけのUI状態なので、グローバルなstateではなくdriveBrowser側に
+  // 持たせる(一覧を開き直すたびにリセットされる想定でよいため)。
+  state.driveBrowser = { kind: 'character', loading: true, files: [], error: '', sortBy: 'modifiedTime', filterSystem: '' };
   state.screen = 'characterList';
   render();
   try{
     const q = encodeURIComponent(`appProperties has { key='app' and value='${APP_TAG_CHARACTER}' } and trashed=false`);
-    const res = await driveFetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,modifiedTime,appProperties)&orderBy=modifiedTime desc`);
+    const res = await driveFetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,createdTime,modifiedTime,appProperties)&orderBy=modifiedTime desc`);
     if(!res.ok) throw new Error('キャラクター一覧の取得に失敗しました。');
     const data = await res.json();
-    state.driveBrowser = { kind: 'character', loading: false, files: data.files || [], error: '' };
+    state.driveBrowser = { kind: 'character', loading: false, files: data.files || [], error: '', sortBy: 'modifiedTime', filterSystem: '' };
     loadCharacterListPreviews(state.driveBrowser);
   }catch(e){
     console.error(e);
-    state.driveBrowser = { kind: 'character', loading: false, files: [], error: e.message };
+    state.driveBrowser = { kind: 'character', loading: false, files: [], error: e.message, sortBy: 'modifiedTime', filterSystem: '' };
   }
   render();
 }
@@ -1374,13 +1395,6 @@ function findContainer(kind, id){
 function findDataList(id){ return (state.template.dataLists || []).find(d => d.id === id) || null; }
 function isFieldInsideSet(fieldId){
   for(const s of state.template.sections) for(const st of s.sets) if(st.fields.some(f => f.id === fieldId)) return st;
-  return null;
-}
-function findFieldSection(fieldId){
-  for(const s of state.template.sections){
-    if(s.fields.some(f => f.id === fieldId)) return s;
-    for(const st of s.sets) if(st.fields.some(f => f.id === fieldId)) return s;
-  }
   return null;
 }
 // 参照先として選べる枠の種類に制限は設けない(入力枠・計算式・lookup・
@@ -1906,23 +1920,78 @@ function renderCharacterListThumb(f){
 function renderCharacterListPreviewText(f){
   const texts = f.preview && f.preview.texts;
   if(!texts || !texts.length) return '';
-  return `<div class="char-list-preview">${texts.map(t => `[<span class="char-list-preview-item">${esc(t)}</span>]`).join(' ')}</div>`;
+  return `<div class="char-list-preview">${texts.map(t => `<span class="char-list-preview-item">${esc(t)}</span>`).join('、')}</div>`;
+}
+// キャラクター一覧の並び替え・システム絞り込み。どちらも一覧画面だけの
+// UI状態(driveBrowser.sortBy/filterSystem)を書き換えて再描画するだけで、
+// Drive APIを叩き直しはしない(取得済みのfilesをクライアント側で並べ替え・
+// 絞り込みする方が、切り替えるたびに通信するより速くシンプルなため)。
+function setCharacterListSort(sortBy){
+  if(!state.driveBrowser) return;
+  state.driveBrowser.sortBy = sortBy;
+  render({ skipDirty: true });
+}
+function setCharacterListFilterSystem(value){
+  if(!state.driveBrowser) return;
+  state.driveBrowser.filterSystem = value;
+  render({ skipDirty: true });
+}
+// 一覧に出てきた「システム名」(appProperties.templateName)の重複無し一覧。
+// 空文字(テンプレート名が無い古いデータ等)は選択肢に出さない。
+function characterListSystemOptions(files){
+  const names = new Set();
+  files.forEach(f => {
+    const n = (f.appProperties && f.appProperties.templateName) || '';
+    if(n) names.add(n);
+  });
+  return Array.from(names).sort((a, b) => a.localeCompare(b, 'ja'));
+}
+function visibleCharacterListFiles(b){
+  let files = b.files;
+  if(b.filterSystem){
+    files = files.filter(f => ((f.appProperties && f.appProperties.templateName) || '') === b.filterSystem);
+  }
+  const sortKey = b.sortBy === 'createdTime' ? 'createdTime' : 'modifiedTime';
+  return files.slice().sort((a, c) => new Date(c[sortKey]) - new Date(a[sortKey]));
 }
 function renderCharacterListScreen(){
   const b = state.driveBrowser;
+  let controls = '';
   let body;
   if(!b || b.loading) body = `<p class="muted">読み込み中…</p>`;
   else if(b.error) body = `<p class="muted">${esc(b.error)}</p>`;
   else if(!b.files.length) body = `<p class="muted">Driveに保存されたキャラクターがありません。</p>`;
-  else body = `<table class="dl-tsv-table"><tbody>
-      <tr><th>画像</th><th>名前</th><th>システム名</th><th>更新日時</th></tr>
-      ${b.files.map(f => `<tr onclick="openCharacterFromDrive('${f.id}')" style="cursor:pointer;">
-        <td>${renderCharacterListThumb(f)}</td>
-        <td>${esc(f.name)}${(f.appProperties && f.appProperties.shared === 'true') ? '<span class="share-badge">共有中</span>' : ''}${renderCharacterListPreviewText(f)}</td>
-        <td>${esc((f.appProperties && f.appProperties.templateName) || '')}</td>
-        <td>${esc(new Date(f.modifiedTime).toLocaleString('ja-JP'))}</td>
-      </tr>`).join('')}
-    </tbody></table>`;
+  else {
+    const sortBy = b.sortBy || 'modifiedTime';
+    const systemOptions = characterListSystemOptions(b.files);
+    const files = visibleCharacterListFiles(b);
+    controls = `<div class="char-list-controls">
+      <label><span>並び替え</span>
+        <select onchange="setCharacterListSort(this.value)">
+          <option value="modifiedTime" ${sortBy === 'modifiedTime' ? 'selected' : ''}>更新日時</option>
+          <option value="createdTime" ${sortBy === 'createdTime' ? 'selected' : ''}>作成日</option>
+        </select>
+      </label>
+      <label><span>システムで絞り込み</span>
+        <select onchange="setCharacterListFilterSystem(this.value)">
+          <option value="">すべて</option>
+          ${systemOptions.map(name => `<option value="${escAttr(name)}" ${b.filterSystem === name ? 'selected' : ''}>${esc(name)}</option>`).join('')}
+        </select>
+      </label>
+    </div>`;
+    body = files.length
+      ? `<table class="dl-tsv-table"><tbody>
+        <tr><th>画像</th><th>名前</th><th>システム名</th><th>作成日</th><th>更新日時</th></tr>
+        ${files.map(f => `<tr onclick="openCharacterFromDrive('${f.id}')" style="cursor:pointer;">
+          <td>${renderCharacterListThumb(f)}</td>
+          <td>${esc(f.name)}${(f.appProperties && f.appProperties.shared === 'true') ? '<span class="share-badge">共有中</span>' : ''}${renderCharacterListPreviewText(f)}</td>
+          <td>${esc((f.appProperties && f.appProperties.templateName) || '')}</td>
+          <td>${esc(new Date(f.createdTime).toLocaleString('ja-JP'))}</td>
+          <td>${esc(new Date(f.modifiedTime).toLocaleString('ja-JP'))}</td>
+        </tr>`).join('')}
+      </tbody></table>`
+      : `<p class="muted">選択したシステムのキャラクターがありません。</p>`;
+  }
   return `<div class="gate-list">
     ${renderGateListAuthBar()}
     <div class="gate-list-head">
@@ -1930,6 +1999,7 @@ function renderCharacterListScreen(){
       <button onclick="document.getElementById('gate-char-list-file').click()">キャラクターを読み込み</button>
       <input id="gate-char-list-file" type="file" accept="application/json" style="display:none" onchange="handleImportCharacterFile(this)">
     </div>
+    ${controls}
     ${body}
   </div>`;
 }
@@ -2579,20 +2649,13 @@ function moveChatOrder(fieldId, dir){
   render();
 }
 function chatOrderLines(order){
-  // カテゴリー(セクション)が切り替わるタイミングで「//---カテゴリー名」
-  // という区切り行を挟む。ユドナリウムのチャットパレットで「//---」から
-  // 始まる行が見出しとして扱われる仕様に倣った。インプットセットの中の
-  // 項目は、行(rowScope)ごとに1行ずつ展開する(攻撃セットなら武器の
-  // 行数だけ命中・ダメージ行が並ぶ)。
+  // 以前はカテゴリー(セクション)が切り替わるタイミングで
+  // 「//---カテゴリー名」という区切り行を自動挿入していたが、見出しが
+  // 不要な場合も出てきたため2026-09-20に廃止した。見出しが欲しい場合は
+  // 「自由入力の項目を追加」で任意の位置・任意の文言を手動で追加できる。
+  // インプットセットの中の項目は、行(rowScope)ごとに1行ずつ展開する
+  // (攻撃セットなら武器の行数だけ命中・ダメージ行が並ぶ)。
   const lines = [];
-  let lastSectionId = null;
-  const pushSectionHeaderIfNeeded = (id) => {
-    const sec = findFieldSection(id);
-    if(sec && sec.id !== lastSectionId){
-      lines.push(`//---${sec.label}`);
-      lastSectionId = sec.id;
-    }
-  };
   order.forEach(id => {
     const f = findFrame('field', id);
     if(!f){
@@ -2605,16 +2668,12 @@ function chatOrderLines(order){
     const st = isFieldInsideSet(id);
     if(st){
       const rows = (state.character.sets && state.character.sets[st.id]) || [];
-      // 行が1つも無い(インプットセットが空の)場合、区切り見出しだけが
-      // 中身無しで残ってしまうのを防ぐため、見出しごと何も出力しない。
       if(!rows.length) return;
-      pushSectionHeaderIfNeeded(id);
       rows.forEach((row, rowIndex) => {
         const rowScope = { setId: st.id, rowIndex, row };
         lines.push(resolveChatText(f, rowScope, st));
       });
     } else {
-      pushSectionHeaderIfNeeded(id);
       lines.push(resolveChatText(f, null));
     }
   });
@@ -2777,7 +2836,7 @@ function chatFreeTextLineHtml(ct){
   // (フィールドのチャット行と行数が揃わなくなる)。ラベル+ボタンを
   // まとめて1つのフレックス項目にすることで、フィールドのチャット行と
   // 同じ「ラベル行→textarea行」の2行構成に揃える。
-  return `<div class="chat-line"><span class="chat-line-label-group"><span class="chat-line-label muted small">自由入力</span><button class="remove-row-btn" onclick="removeChatFreeText('${ct.id}')">−</button></span><textarea class="chat-line-text" rows="2" oninput="autoResizeTextarea(this)" onchange="updateChatFreeText('${ct.id}',this.value)" placeholder="空欄のままだと改行だけの行になります">${esc(ct.text || '')}</textarea></div>`;
+  return `<div class="chat-line"><span class="chat-line-label-group"><span class="chat-line-label muted small">自由入力</span><button class="remove-row-btn" onclick="removeChatFreeText('${ct.id}')">−</button></span><textarea class="chat-line-text chat-freetext-input" rows="1" oninput="autoResizeTextarea(this)" onchange="updateChatFreeText('${ct.id}',this.value)" placeholder="空欄のままだと改行だけの行になります">${esc(ct.text || '')}</textarea></div>`;
 }
 function copyChatPaletteAll(btn){
   const textarea = btn.parentElement.querySelector('.chat-palette-textarea');
