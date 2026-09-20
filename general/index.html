@@ -321,6 +321,18 @@
   .mode-edit .frame-field input, .mode-edit .frame-field select, .mode-edit .frame-field textarea{
     pointer-events:none; opacity:0.8;
   }
+  /* 上のルールは「テンプレート編集中は値を直接いじれないプレビュー」を
+     示すため見た目のinputをうっすら不透明度0.8で暗くする意図だが、
+     真偽値インプットの<input type="checkbox">は本来opacity:0で完全に
+     透明にし、見た目は隣接する.checkbox-boxだけで描く設計になっている
+     (.checkbox-visual input[type="checkbox"]参照)。同じ詳細度
+     (クラス2つ+要素1つ)のセレクタ同士でCSSの後勝ちが働き、テンプレート
+     編集画面でだけ透明なはずのチェックボックス本体がopacity:0.8で
+     薄く見えてしまい(下敷きの.checkbox-boxの枠線色と重なって色が
+     濁る)、キャラクター編集/閲覧画面のチェックボックスと微妙に違う色に
+     見える不具合があった(2026-09-21指摘)。詳細度をこちらの方が高くなる
+     セレクタにし、テンプレート編集画面でもopacity:0を保つようにする。 */
+  .mode-edit .checkbox-visual input[type="checkbox"]{ opacity:0; }
 
   /* 編集パネル: メインカラムの位置には影響させず、右側に固定表示する */
   /* 中央カラム(#app、max-width:1100px)のすぐ右にパネルを表示する。
