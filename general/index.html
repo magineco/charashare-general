@@ -191,6 +191,10 @@
   /* 「タブ記号をコピー」ボタンをラベルと同じ行に収め、textareaの上に
      新しい行を追加しないようにする(縦方向のスペースへの配慮)。 */
   .field-label-row{ display:flex; align-items:center; justify-content:space-between; gap:8px; }
+  /* ドラッグハンドル+ラベル文字を1つの項目としてまとめ、field-label-row
+     全体のspace-between(左:ラベル側/右:タブ記号コピーボタン)を崩さない
+     ようにする(2026-09-20、ハンドル追加時)。 */
+  .field-label-left{ display:flex; align-items:center; gap:4px; min-width:0; }
   .tsv-tab-copy-btn{ flex:0 0 auto; padding:3px 8px; font-size:0.9rem; }
   /* 読み取り専用の欄(計算式・lookup・集計、および閲覧専用画面での
      入力枠(renderReadOnlyFieldValue)も同じクラスを使う)は、入力できる
@@ -459,6 +463,11 @@
   .gate-title{ font-size:2.1rem; line-height:1.25; margin-bottom:8px; }
   .gate-lead{ color:var(--muted); font-size:1.05rem; white-space:nowrap; }
   @media (max-width:600px){ .gate-lead{ white-space:normal; } }
+  /* トップ2画面(テンプレート/キャラクター)共通のキャッチコピー。
+     共通トップ(../index.html)の.heroと同じ役割で、その画面固有の
+     見出し(.gate-title)より上に置く「サービス全体の一言」。 */
+  .gate-tagline{ font-size:1.7rem; line-height:1.3; margin-bottom:8px; }
+  .gate-tagline-desc{ color:var(--muted); margin-bottom:28px; }
   /* ボタンを縦積みフル幅(旧デザイン)ではなく、フィフス版の
      .login-guest-rowのように横並び・幅は内容なりにすることで、
      画面の高さを大きく節約する。 */
@@ -504,10 +513,13 @@
   .chat-replace-row span{ color:var(--muted); flex:0 0 auto; }
   .chat-line{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding:6px 0; border-bottom:1px solid var(--line); }
   .chat-line-label{ min-width:100px; color:var(--muted); }
-  /* 自由入力行専用: ラベルと削除ボタンを1つの項目としてまとめ、
-     textarea(幅100%指定で必ず単独行になる)と合わせて2行構成にする。
-     グループ内のラベルは他の項目と幅を揃える必要が無いため詰める。 */
-  .chat-line-label-group{ display:flex; align-items:center; gap:8px; }
+  /* 自由入力行専用: ラベル+削除ボタンの行と、textarea(幅100%指定で
+     必ず単独行になる)の2行構成にする。この行自体をwidth:100%にして
+     独立した1行にし、ラベルは左・削除ボタンは右端に離して配置する
+     (2026-09-20: ドラッグハンドル・↑↓ボタンが左側に増えたため、
+     隣接する削除ボタンを誤って押しやすくなった。削除ボタンをボックス
+     右端まで離すことで誤操作を防ぐ)。 */
+  .chat-line-label-group{ display:flex; align-items:center; justify-content:space-between; gap:8px; width:100%; }
   .chat-line-label-group .chat-line-label{ min-width:0; }
   .chat-line-label-group .remove-row-btn{ flex:0 0 auto; }
   .chat-line-text{
@@ -530,7 +542,17 @@
   .mode-edit .chat-line-text{ opacity:0.8; }
   .chat-line-group{ display:flex; align-items:flex-start; gap:8px; }
   .chat-line-rows{ flex:1 1 auto; min-width:0; }
-  .chat-line-move{ display:flex; gap:4px; flex:0 0 auto; padding-top:6px; }
+  .chat-line-move{ display:flex; align-items:center; gap:4px; flex:0 0 auto; padding-top:6px; }
+  /* ドラッグハンドルの汎用スタイル。チャットパレット・インプットセットの
+     行・インプットの並べ替え、いずれもこのクラスを共有する
+     (2026-09-20、カーソル指定を`.chat-line-move`から切り出して
+     ハンドル自身に付け、置き場所を問わず同じ見た目・操作感にした)。 */
+  .chat-drag-handle{
+    display:inline-flex; align-items:center; justify-content:center;
+    width:22px; height:22px; padding:2px; box-sizing:border-box;
+    color:var(--muted); font-size:1.1rem; line-height:1; user-select:none; cursor:grab;
+  }
+  .chat-drag-handle:active{ cursor:grabbing; }
   .chat-palette-block{ display:flex; align-items:flex-start; gap:8px; }
   .chat-palette-textarea{
     flex:1 1 auto; min-width:0; min-height:6em;
@@ -1877,6 +1899,7 @@ function handleImportAnyJsonFile(input){
 function renderTemplateTopScreen(){
   return `${renderGateHeroBanner()}<div class="gate-page">
     ${renderGateBrand()}
+    ${renderGateTagline()}
     <h2 class="gate-title">テンプレートを作る</h2>
     <p class="gate-lead">TRPGシステム向けキャラクターシートのテンプレートを作り、公開できます。</p>
     <div class="gate-actions">
@@ -1893,6 +1916,14 @@ function renderGateBrand(){
     <h1>キャラシェア・ジェネラル</h1>
     <span class="gate-brand-tag">キャラクターシート設置サービス</span>
   </div>`;
+}
+// 共通トップ(../index.html)の.heroと同じキャッチコピー・説明文
+// (2026-09-20、ユーザー指示)。テンプレート/キャラクターどちらの
+// トップ画面でも、renderGateBrand()の直後・各画面固有の見出し
+// (「テンプレートを作る」「キャラクターを開く」)の前に表示する。
+function renderGateTagline(){
+  return `<h2 class="gate-tagline">全てのTRPGにWebキャラシを。</h2>
+  <p class="gate-tagline-desc">必要なのは、Googleアカウントでのログイン。サーバー準備不要、コーディング不要で『配置の変更』、『数式の設定』、『カラーリングの調整』、『チャットパレット設定』、そして『Web公開』ができます。</p>`;
 }
 function renderGateHeroBanner(){
   return `<div class="hero-banner"><img src="${HERO_BANNER_IMAGE}" alt=""></div>`;
@@ -1953,6 +1984,7 @@ function renderTemplateSelectScreen(){
 function renderCharacterTopScreen(){
   return `${renderGateHeroBanner()}<div class="gate-page">
     ${renderGateBrand()}
+    ${renderGateTagline()}
     <h2 class="gate-title">キャラクターを開く</h2>
     <p class="gate-lead">キャラシェア・ジェネラルで作成した、またはお手元のファイルのキャラクターを開きます。</p>
     <div class="gate-actions">
@@ -2158,7 +2190,7 @@ function autoResizeTextarea(el){
 function renderTemplateAuthorNote(){
   const meta = (state.template && state.template.meta) || {};
   const parts = [];
-  if(meta.author) parts.push(`作者:${meta.author}`);
+  if(meta.author) parts.push(`シート作者:${meta.author}`);
   if(meta.contact) parts.push(`連絡先:${meta.contact}`);
   if(!parts.length) return '';
   return `<p class="sheet-author-note muted small">${esc(parts.join(' / '))}</p>`;
@@ -2170,7 +2202,7 @@ function renderToolbar(){
   // 出さず、フローティングチャットパレットだけを見せる。
   if(state.screen === 'characterView'){
     const chatBtn = ensureChatOrder().length
-      ? `<button onclick="toggleFloatingChatPalette()">チャットパレットを表示</button>` : '';
+      ? `<button class="share-btn" onclick="toggleFloatingChatPalette()">チャットパレットを表示</button>` : '';
     const tplName = (state.template.meta && state.template.meta.name) || '(名称未設定のテンプレート)';
     const titleHtml = `<span class="tpl-view-title">${esc(tplName)}</span>`;
     return `<header class="toolbar">
@@ -2190,7 +2222,7 @@ function renderToolbar(){
     const deleteBtn = state.characterFileId
       ? `<button class="danger-btn" onclick="deleteDriveFile(state.characterFileId,'character')">削除</button>` : '';
     const chatBtn = ensureChatOrder().length
-      ? `<button onclick="toggleFloatingChatPalette()">チャットパレットを表示</button>` : '';
+      ? `<button class="share-btn" onclick="toggleFloatingChatPalette()">チャットパレットを表示</button>` : '';
     return `<header class="toolbar">
       <span class="spacer"></span>
       ${statusHtml}
@@ -2493,8 +2525,26 @@ function renderFieldFrame(f, rowScope, containerCols){
   // 「ラベル文字をクリックすると入力欄にフォーカスが移る」という一般的な
   // 挙動を活かすため、<label>のままにしている。
   const tag = f.type === 'boolean' ? 'div' : 'label';
-  return `<${tag} class="frame-field ${selected ? 'is-selected' : ''} ${broken ? 'is-broken' : ''}" ${frameAttrs('field', f.id)}${spanStyle}>
-    <span class="field-label-row"><span class="field-label">${esc(f.label)}</span>${tsvCopyBtn}</span>
+  // ドラッグ&ドロップでの並べ替え(2026-09-20追加)。インプットの枠自体は
+  // クリックで設定パネルを開く役目を持っているため、掴む場所をハンドル
+  // (⠿)だけに絞り、「ハンドルを触った=ドラッグ、それ以外を触った=
+  // 設定パネルを開く」を両立させたい。外枠が<label>の場合、
+  // `event.stopPropagation()`だけでは不十分な点に注意(実機検証で判明):
+  // <label>は、クリックされた場所が自身の子孫であれば、
+  // stopPropagationの有無に関わらず中の<input>へ「活性化」の
+  // 合成clickイベントを別途発火させる(チェックボックスの枠クリック
+  // 不具合修正時に判明した挙動と同じ)。この合成イベントが再度
+  // <label>まで伝播し、外枠のonclick(selectFrame)を呼んでしまう。
+  // `event.preventDefault()`を併用することで、この既定動作(ラベルの
+  // 子孫コントロールを活性化させる処理)自体を止める。
+  const dragHandle = state.mode === 'edit'
+    ? `<span class="chat-drag-handle field-drag-handle" draggable="true" title="ドラッグで並べ替え" onclick="event.preventDefault();event.stopPropagation();" ondragstart="handleFieldDragStart(event,'${f.id}')" ondragend="handleFieldDragEnd(event)">⠿</span>`
+    : '';
+  const dragTargetAttrs = state.mode === 'edit'
+    ? ` ondragover="handleFieldDragOver(event)" ondrop="handleFieldDrop(event,'${f.id}')"`
+    : '';
+  return `<${tag} class="frame-field ${selected ? 'is-selected' : ''} ${broken ? 'is-broken' : ''}" ${frameAttrs('field', f.id)}${spanStyle}${dragTargetAttrs}>
+    <span class="field-label-row"><span class="field-label-left">${dragHandle}<span class="field-label">${esc(f.label)}</span></span>${tsvCopyBtn}</span>
     ${renderFieldInput(f, rowScope)}
   </${tag}>`;
 }
@@ -2658,9 +2708,18 @@ function renderSetFrame(set){
   </div>`;
 }
 function renderSetRow(set, row, idx, rowCount){
+  // ドラッグ&ドロップでの並べ替え(2026-09-20追加、チャットパレットと
+  // 同じ考え方)。行(.set-row)自体はCSS Grid統合のためdisplay:contents
+  // で、それ自身には描画上のボックスが無い。実機検証の結果、
+  // display:contentsな要素にondragover/ondropを付けてもドラッグイベント
+  // は確実には届かない(ブラウザのドラッグ用ヒットテストは描画ボックス
+  // 基準で行われ、通常のクリック等と違って親へのバブリングに頼れない
+  // ことがある)と判明したため、行を構成する実体のある箱(各セル・
+  // 操作列)それぞれに個別にondragover/ondropを持たせている。
+  const dropAttrs = ` ondragover="handleSetRowDragOver(event)" ondrop="handleSetRowDrop(event,'${set.id}',${idx})"`;
   const cells = set.fields.map(f => {
     const rowScope = { setId: set.id, rowIndex: idx, row };
-    return `<div class="set-cell">${renderFieldInput(f, rowScope)}</div>`;
+    return `<div class="set-cell"${dropAttrs}>${renderFieldInput(f, rowScope)}</div>`;
   }).join('');
   const upDisabled = idx === 0 ? 'disabled' : '';
   const downDisabled = idx === rowCount - 1 ? 'disabled' : '';
@@ -2668,7 +2727,11 @@ function renderSetRow(set, row, idx, rowCount){
   // 各行が寄与するグリッドアイテム数(セル数+1)を必ず揃える必要がある。
   // 読み取り専用でボタンを消す場合も、空のプレースホルダーとして
   // .set-row-actions自体は残す(無くすと後続の行がずれて詰まってしまう)。
-  const actions = state.readOnly ? `<div class="set-row-actions"></div>` : `<div class="set-row-actions">
+  // 掴む場所はハンドル(⠿)のみに絞り、↑↓−ボタンの誤操作誘発や
+  // テキスト選択との競合を避ける。
+  const dragHandle = state.readOnly ? '' : `<span class="chat-drag-handle" draggable="true" title="ドラッグで並べ替え" ondragstart="handleSetRowDragStart(event,'${set.id}',${idx})" ondragend="handleSetRowDragEnd(event)">⠿</span>`;
+  const actions = state.readOnly ? `<div class="set-row-actions"${dropAttrs}></div>` : `<div class="set-row-actions"${dropAttrs}>
+      ${dragHandle}
       <button class="row-move-btn" ${upDisabled} onclick="moveSetRow('${set.id}',${idx},-1)">↑</button>
       <button class="row-move-btn" ${downDisabled} onclick="moveSetRow('${set.id}',${idx},1)">↓</button>
       <button class="remove-row-btn" onclick="removeSetRow('${set.id}',${idx})">−</button>
@@ -2744,6 +2807,41 @@ function moveChatOrder(fieldId, dir){
   const [item] = order.splice(idx, 1);
   order.splice(j, 0, item);
   render();
+}
+// チャットパレットの並べ替え(ドラッグ&ドロップ版、2026-09-20追加)。
+// ブラウザ標準のHTML5 Drag and Drop APIのみで実装し(ライブラリ・
+// ビルドツールを増やさない、charashare全体の方針に合わせる)、
+// 既存の↑↓ボタン(moveChatOrder)はキーボード操作等のためそのまま残す。
+let chatOrderDragId = null;
+function handleChatOrderDragStart(ev, id){
+  chatOrderDragId = id;
+  ev.dataTransfer.effectAllowed = 'move';
+  // 一部ブラウザ(Firefox等)はsetDataを呼ばないとドラッグ操作自体が
+  // 始まらないことがあるため、実際にはchatOrderDragId(クロージャ変数)を
+  // 使う場合でも形式的にセットしておく。
+  ev.dataTransfer.setData('text/plain', id);
+}
+function handleChatOrderDragOver(ev){
+  // dragoverでpreventDefault()しないと、そもそもdropイベントが発火しない
+  // (ブラウザの既定動作は「ここにはドロップさせない」)。
+  ev.preventDefault();
+  ev.dataTransfer.dropEffect = 'move';
+}
+function handleChatOrderDrop(ev, targetId){
+  ev.preventDefault();
+  const draggedId = chatOrderDragId;
+  chatOrderDragId = null;
+  if(!draggedId || draggedId === targetId) return;
+  const order = ensureChatOrder();
+  const fromIdx = order.indexOf(draggedId);
+  const toIdx = order.indexOf(targetId);
+  if(fromIdx === -1 || toIdx === -1) return;
+  order.splice(fromIdx, 1);
+  order.splice(order.indexOf(targetId), 0, draggedId);
+  render();
+}
+function handleChatOrderDragEnd(){
+  chatOrderDragId = null;
 }
 function chatOrderLines(order){
   // 以前はカテゴリー(セクション)が切り替わるタイミングで
@@ -2854,8 +2952,15 @@ function renderChatPalette(){
       }
       const upDisabled = idx === 0 ? 'disabled' : '';
       const downDisabled = idx === order.length - 1 ? 'disabled' : '';
-      return `<div class="chat-line-group">
-        <div class="chat-line-move">
+      // ドラッグ&ドロップでの並べ替え(2026-09-20追加、↑↓ボタンは残す)。
+      // 行全体(.chat-line-group)をdraggableにすると、中のテキストエリアで
+      // 文字列選択しようとした操作までドラッグ扱いされてしまうため、
+      // 掴む場所を.chat-line-move(↑↓ボタンと同じ箱)だけに絞る。
+      // ドロップ判定(dragover/drop)は行全体に付け、行のどこに落としても
+      // その行の位置を基準に並べ替わるようにする。
+      return `<div class="chat-line-group" data-chat-order-id="${id}" ondragover="handleChatOrderDragOver(event)" ondrop="handleChatOrderDrop(event,'${id}')">
+        <div class="chat-line-move" draggable="true" ondragstart="handleChatOrderDragStart(event,'${id}')" ondragend="handleChatOrderDragEnd(event)">
+          <span class="chat-drag-handle" title="ドラッグで並べ替え">⠿</span>
           <button class="row-move-btn" ${upDisabled} onclick="moveChatOrder('${id}',-1)">↑</button>
           <button class="row-move-btn" ${downDisabled} onclick="moveChatOrder('${id}',1)">↓</button>
         </div>
@@ -3022,6 +3127,35 @@ function moveSetRow(setId, idx, dir){
   rows.splice(j, 0, item);
   render();
 }
+// インプットセットの行のドラッグ&ドロップ並べ替え(2026-09-20、
+// handleChatOrderDragStart等と同じ考え方)。行データ自体にはID相当の
+// ものが無い(値だけの配列)ため、開始時のインデックスをそのまま覚えて
+// おく。ドロップ時、削除後にインデックスがずれる分は差し引いて補正する。
+let dragSetRowInfo = null;
+function handleSetRowDragStart(ev, setId, idx){
+  dragSetRowInfo = { setId, idx };
+  ev.dataTransfer.effectAllowed = 'move';
+  ev.dataTransfer.setData('text/plain', String(idx));
+}
+function handleSetRowDragOver(ev){
+  ev.preventDefault();
+  ev.dataTransfer.dropEffect = 'move';
+}
+function handleSetRowDrop(ev, setId, targetIdx){
+  ev.preventDefault();
+  const info = dragSetRowInfo;
+  dragSetRowInfo = null;
+  if(!info || info.setId !== setId || info.idx === targetIdx) return;
+  const rows = state.character.sets[setId];
+  if(!rows) return;
+  const [row] = rows.splice(info.idx, 1);
+  const insertAt = info.idx < targetIdx ? targetIdx - 1 : targetIdx;
+  rows.splice(insertAt, 0, row);
+  render();
+}
+function handleSetRowDragEnd(){
+  dragSetRowInfo = null;
+}
 function removeSetRow(setId, idx){
   if(!confirmDelete('この行を削除しますか？入力した内容は元に戻せません。')) return;
   if(state.character.sets[setId]) state.character.sets[setId].splice(idx, 1);
@@ -3155,6 +3289,38 @@ function moveFrame(kind, id, dir){
   const [item] = c.arr.splice(c.idx, 1);
   c.arr.splice(j, 0, item);
   render();
+}
+// インプットのドラッグ&ドロップ並べ替え(2026-09-20)。カテゴリー自体は
+// 1つ1つが大きく一覧性が低いためドラッグ対象にしていない(引き続き
+// 設定パネルの↑↓のみ)。findContainer()で「同じ入れ物(カテゴリー直下、
+// または同じインプットセット)」かどうかを確認し、異なる入れ物をまたぐ
+// 移動は行わない(↑↓ボタンの移動範囲と揃える)。
+let dragFieldId = null;
+function handleFieldDragStart(ev, id){
+  dragFieldId = id;
+  ev.dataTransfer.effectAllowed = 'move';
+  ev.dataTransfer.setData('text/plain', id);
+}
+function handleFieldDragOver(ev){
+  ev.preventDefault();
+  ev.dataTransfer.dropEffect = 'move';
+}
+function handleFieldDrop(ev, targetId){
+  ev.preventDefault();
+  const draggedId = dragFieldId;
+  dragFieldId = null;
+  if(!draggedId || draggedId === targetId) return;
+  const from = findContainer('field', draggedId);
+  const to = findContainer('field', targetId);
+  if(!from || !to || from.arr !== to.arr) return;
+  const arr = from.arr;
+  const [item] = arr.splice(from.idx, 1);
+  const targetIdx = arr.findIndex(f => f.id === targetId);
+  arr.splice(targetIdx === -1 ? from.idx : targetIdx, 0, item);
+  render();
+}
+function handleFieldDragEnd(){
+  dragFieldId = null;
 }
 function applyPatch(kind, id, patch){
   const f = findFrame(kind, id);
