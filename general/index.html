@@ -2679,10 +2679,17 @@ function renderSetFrame(set){
   const selected = state.selection && state.selection.kind === 'set' && state.selection.id === set.id;
   let body;
   let addRowBtn = '';
+  let addFieldBtn = '';
   if(state.mode === 'edit'){
     body = `<div class="set-schema-row">${set.fields.map(f =>
       `<span class="set-schema-field ${isFieldReferenceBroken(f) ? 'is-broken' : ''}" data-frame-id="${f.id}" onclick="selectFrame(event,'field','${f.id}')">${esc(f.label)}</span>`
     ).join('')}</div>`;
+    // 以前は設定パネル(右カラム)にあった「+ インプットを追加」を、
+    // 2026-09-20にインプットセットのタイトル行(画面本体側)へ移した。
+    // frameAttrs()によりインプットセットの枠全体がクリックで設定パネルを
+    // 開くため、このボタン自体のクリックが誤ってパネルを開かないよう
+    // stopPropagation()する(他の「+ ○○を追加」系ボタンと同じ作法)。
+    addFieldBtn = `<button class="add-frame-btn small" onclick="event.stopPropagation();addFieldToSet('${set.id}')">+ セットにインプットを追加</button>`;
   } else {
     // 行ごとに見出し(品名・重量…)を繰り返さず、1番上に1回だけ出す。
     // .set-table全体を1つのCSS Gridにし、見出し行・各データ行は
@@ -2702,7 +2709,7 @@ function renderSetFrame(set){
   return `<div class="frame-set ${selected ? 'is-selected' : ''}" ${frameAttrs('set', set.id)}>
     <div class="set-header">
       <h3 class="set-title">${esc(set.label)}</h3>
-      ${addRowBtn}
+      ${addRowBtn}${addFieldBtn}
     </div>
     ${body}
   </div>`;
@@ -3381,7 +3388,10 @@ function renderPanelBody(kind, f){
       + imageAreaWidthInput;
   }
   if(kind === 'set'){
-    return labelInput + `<button onclick="addFieldToSet('${f.id}')">+ インプットを追加</button><p class="muted small">表示画面上でも、各項目をクリックすると編集できます。</p>`;
+    // 「+ インプットを追加」ボタンは2026-09-20に画面本体側
+    // (インプットセットのタイトル行、renderSetFrame()参照)へ移したため、
+    // ここには置かない。
+    return labelInput + `<p class="muted small">表示画面上でも、各項目をクリックすると編集できます。</p>`;
   }
   if(kind === 'field'){
     // カテゴリー直下のインプットだけ、横幅(カテゴリーの列数を単位とした
