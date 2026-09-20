@@ -349,7 +349,7 @@
   /* キャラクター一覧の行を名前だけで見分けられるよう添える、先頭画像の
      小さなサムネイルと、先頭の入力済みインプット値のプレビュー。 */
   .char-list-thumb{
-    display:block; width:40px; height:40px; object-fit:cover;
+    display:block; width:64px; height:64px; object-fit:cover;
     border:1px solid var(--line); border-radius:4px; background:var(--surface);
   }
   .char-list-thumb-empty{ background:var(--surface-2); }
@@ -1027,7 +1027,10 @@ async function resolveCharacterTemplate(characterObj){
 /* ---------- Drive: キャラクターの保存・読み込み(自分のDrive) ---------- */
 async function createCharacterFile(characterObj){
   const boundary = 'chsg_' + randomHex(16);
-  const name = (state.template.meta && state.template.meta.name ? state.template.meta.name + 'のキャラクター' : 'キャラクター');
+  // 以前は「{システム名}のキャラクター」という名前にしていたが、一覧画面の
+  // システム名列・プレビュー表示と重複して冗長なため2026-09-20に廃止し、
+  // 常に固定の「キャラクター」にした。
+  const name = 'キャラクター';
   const metadata = { name, appProperties: { app: APP_TAG_CHARACTER, templateFileId: state.templateFileId || '', templateName: (state.template.meta && state.template.meta.name) || '', shared: 'false' } };
   const body =
     `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n` +
@@ -1917,9 +1920,15 @@ function renderCharacterListThumb(f){
     ? `<img class="char-list-thumb" src="${escAttr(img)}" alt="">`
     : `<span class="char-list-thumb char-list-thumb-empty"></span>`;
 }
+// 2026-09-20: 「名前」欄はDriveファイルの`name`(常に固定文字列「キャラクター」
+// で、システム名列と重複して冗長)を表示するのをやめ、このプレビュー
+// (先頭3つの入力値)だけを表示するようにした。そのため、読み込み中(まだ
+// f.previewが届いていない)・入力値が1つも無い、のどちらの場合も欄が
+// 完全に空白の行にならないよう、それぞれ専用の文言を出す。
 function renderCharacterListPreviewText(f){
+  if(f.preview === undefined) return `<div class="char-list-preview">読み込み中…</div>`;
   const texts = f.preview && f.preview.texts;
-  if(!texts || !texts.length) return '';
+  if(!texts || !texts.length) return `<div class="char-list-preview">(内容未入力)</div>`;
   return `<div class="char-list-preview">${texts.map(t => `<span class="char-list-preview-item">${esc(t)}</span>`).join('、')}</div>`;
 }
 // キャラクター一覧の並び替え・システム絞り込み。どちらも一覧画面だけの
@@ -1980,11 +1989,14 @@ function renderCharacterListScreen(){
       </label>
     </div>`;
     body = files.length
-      ? `<table class="dl-tsv-table"><tbody>
+      ? `<table class="dl-tsv-table char-list-table"><colgroup>
+          <col style="width:10%"><col style="width:42%"><col style="width:20%">
+          <col style="width:14%"><col style="width:14%">
+        </colgroup><tbody>
         <tr><th>画像</th><th>名前</th><th>システム名</th><th>作成日</th><th>更新日時</th></tr>
         ${files.map(f => `<tr onclick="openCharacterFromDrive('${f.id}')" style="cursor:pointer;">
           <td>${renderCharacterListThumb(f)}</td>
-          <td>${esc(f.name)}${(f.appProperties && f.appProperties.shared === 'true') ? '<span class="share-badge">共有中</span>' : ''}${renderCharacterListPreviewText(f)}</td>
+          <td>${(f.appProperties && f.appProperties.shared === 'true') ? '<span class="share-badge">共有中</span>' : ''}${renderCharacterListPreviewText(f)}</td>
           <td>${esc((f.appProperties && f.appProperties.templateName) || '')}</td>
           <td>${esc(new Date(f.createdTime).toLocaleString('ja-JP'))}</td>
           <td>${esc(new Date(f.modifiedTime).toLocaleString('ja-JP'))}</td>
@@ -2016,9 +2028,28 @@ function renderCharacterListScreen(){
 // Tab/Shift+Tabの方向だけ覚えておき、再描画後は同じ欄ではなく
 // data-field-id順で1つ隣の欄へ明示的にフォーカスを移すことで、
 // 標準のTab移動を代わりに再現する。
+//
+// 「入力→確定→Tab」で稀に次の欄へ移らない不具合(2026-09-20修正):
+// 値を変更した直後にTabを押すと、値の確定(blur→change)は「Tabキーが
+// 次の要素へフォーカスを移す」というブラウザ既定動作の一部として起きる。
+// このchangeイベントからrender()が同期的に呼ばれるが、その瞬間の
+// document.activeElementは(新しい要素へのフォーカス移動が完了する前の、
+// blur処理中の過渡状態のため)入力欄ではなくdocument.bodyになっている
+// ことがある(実機で確認済み)。以前はcaptureActiveFieldFocus()が
+// その場でdocument.activeElementを読んでいたため、この過渡状態に
+// 当たるとpendingTabStepが「今どの欄からの移動か」を特定できないまま
+// 消費されてしまい、Tabが何も起きずに終わっていた。
+// 対策として、keydown時点(まだ元の欄にフォーカスがある、確実なタイミング)
+// で対象の欄そのものも合わせて記録しておき(pendingTabFromEl)、
+// captureActiveFieldFocus()側はTab起因の再描画に限りdocument.activeElement
+// ではなくこちらを起点に「次の欄」を計算する。
 let pendingTabStep = 0;
+let pendingTabFromEl = null;
 document.addEventListener('keydown', function(e){
-  if(e.key === 'Tab') pendingTabStep = e.shiftKey ? -1 : 1;
+  if(e.key === 'Tab'){
+    pendingTabStep = e.shiftKey ? -1 : 1;
+    pendingTabFromEl = document.activeElement;
+  }
 }, true);
 function fieldElSelector(el){
   return el.dataset.rowIndex !== undefined
@@ -2026,9 +2057,12 @@ function fieldElSelector(el){
     : `[data-field-id="${CSS.escape(el.dataset.fieldId)}"]`;
 }
 function captureActiveFieldFocus(app){
-  const el = document.activeElement;
   const step = pendingTabStep;
+  const fromEl = pendingTabFromEl;
   pendingTabStep = 0;
+  pendingTabFromEl = null;
+  const usingTabOrigin = step !== 0 && fromEl && app.contains(fromEl) && fromEl.dataset && fromEl.dataset.fieldId;
+  const el = usingTabOrigin ? fromEl : document.activeElement;
   if(!el || !app.contains(el) || !el.dataset || !el.dataset.fieldId) return () => {};
   let targetEl = el;
   let restoreSelection = true;
