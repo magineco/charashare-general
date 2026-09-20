@@ -122,6 +122,10 @@
   .checkbox-visual input[type="checkbox"]{
     position:absolute; inset:0; width:100%; height:100%; margin:0; opacity:0; cursor:pointer;
   }
+  /* 閲覧専用画面(renderReadOnlyFieldValue)のチェックボックスは操作
+     できないため、ポインタカーソルにしない(見た目自体は編集可能な
+     ものと変えない、2026-09-20)。 */
+  .checkbox-visual input[type="checkbox"]:disabled{ cursor:default; }
   .checkbox-box{
     display:block; width:100%; height:100%; box-sizing:border-box; position:relative;
     background:var(--surface-2); border:1px solid var(--line); border-radius:5px;
@@ -2666,8 +2670,19 @@ function renderReadOnlyFieldValue(f, rowScope){
   const val = getEffectiveValue(f, rowScope);
   if(f.type === 'boolean'){
     const count = checkboxCountOf(f);
-    const text = count > 1 ? `${val}/${count}` : (val ? 'チェック済み' : '未チェック');
-    return `<div class="field-value ref-value">${text}</div>`;
+    // 以前は「未チェック」「0/3」のような文字表示だったが、実際の
+    // シートの見た目(チェックボックスそのもの)と違いすぎて分かりにくい
+    // という指摘を受け、編集可能な状態と同じ.checkbox-frame/
+    // .checkbox-visual見た目のまま、disabledにして変更だけできないように
+    // した(2026-09-20)。
+    if(count === 1){
+      return `<div class="checkbox-frame"><label class="checkbox-visual"><input type="checkbox" disabled ${val ? 'checked' : ''}><span class="checkbox-box"></span></label></div>`;
+    }
+    const states = getCheckboxStates(f, rowScope);
+    const boxes = states.map(checked =>
+      `<label class="checkbox-visual"><input type="checkbox" disabled ${checked ? 'checked' : ''}><span class="checkbox-box"></span></label>`
+    ).join('');
+    return `<div class="checkbox-frame">${boxes}</div>`;
   }
   if(f.type === 'image'){
     return val ? `<div class="field-image"><img src="${escAttr(val)}" class="field-image-preview" alt=""></div>` : `<div class="field-image"><p class="muted small">(画像未設定)</p></div>`;
