@@ -913,6 +913,15 @@ async function driveFetch(url, options={}){
   });
   const res = await fetch(url, options);
   if(res.status === 401){
+    // トークン失効時、accessTokenをnullに戻さないと、ツールバーが
+    // 「ログアウト」ボタンのままになり(state.accessTokenがまだ真値のため)、
+    // 編集中の画面から離れずに再ログインする手段が無くなってしまう
+    // (ログアウトを押すとトップ画面に遷移し、編集中のテンプレート/
+    // キャラクターの編集画面には戻れなくなる)。ここでnullにしておけば、
+    // 次の再描画で同じ画面のまま「Googleでログイン」ボタンが出るため、
+    // 編集内容(state.template/state.character)を保持したまま
+    // 再ログイン→保存し直せる。
+    state.accessToken = null;
     throw new Error('認証の有効期限が切れました。再度ログインしてください。');
   }
   return res;
