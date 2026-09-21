@@ -424,12 +424,19 @@
   /* システム名は作者が自由に付ける文字列で長くなりがちなため、他の列より
      一段階小さいフォントにして折り返し回数を減らす(2026-09-20)。 */
   .char-list-system-name{ font-size:0.85rem; }
+  /* 作成日時・更新日時は一覧の主役ではないため、システム名と同じ
+     縮小フォントにする(2026-09-22)。 */
+  .list-date-cell{ font-size:0.85rem; }
   /* モバイル幅では列(特に見出しの日本語)が窮屈になり、1文字ずつ縦に
      折り返されて読めなくなっていた(2026-09-21指摘)。インプットセットの
      表(.set-table-wrap)と同じ「最低幅を確保しつつ横スクロールに任せる」
      方式を横展開し、table-layout:fixedでも列が潰れすぎないようにする。 */
   .char-list-table{ min-width:560px; }
   .tpl-list-table{ min-width:480px; }
+  /* 見出し行(th)はクリックできないのに、.dl-tsv-tableのcursor:pointerが
+     継承されてリンクのように見えてしまっていた(2026-09-22指摘)。
+     データ行だけがクリック可能なので、見出し行は通常カーソルに戻す。 */
+  .char-list-table th, .tpl-list-table th{ cursor:default; }
   .load-error-banner{
     background:var(--surface); border:1px solid var(--danger); color:var(--danger);
     border-radius:8px; padding:10px 14px; margin-bottom:14px;
@@ -505,18 +512,33 @@
   /* トップ画面の主見出し。フィフス版の.login-hero h1(2.4rem)よりは
      控えめだが、通常のh2(1.3rem)よりはっきり大きくして「この画面の
      主役」であることを示す。 */
-  .gate-title{ font-size:2.1rem; line-height:1.25; margin-bottom:8px; }
-  .gate-lead{ color:var(--muted); font-size:1.05rem; white-space:nowrap; }
-  @media (max-width:600px){ .gate-lead{ white-space:normal; } }
+  .gate-title{ font-size:2.1rem; line-height:1.25; margin-bottom:16px; }
+  /* 2026-09-22: 統合トップ画面のセクション(「キャラクターを開く」
+     「テンプレートを作る」)のリード文が、以前の短い1行の説明文から
+     複数文の長めの文章に変わったため、white-space:nowrapのままだと
+     640px幅の.gate-pageを大きくはみ出してしまう。元々nowrapだったのは
+     短文を1行に収めるためだったが、今回のリード文には合わないため
+     通常の折り返しに変更した。 */
+  .gate-lead{ color:var(--muted); font-size:1.05rem; line-height:1.7; }
   /* トップ2画面(テンプレート/キャラクター)共通のキャッチコピー。
      共通トップ(../index.html)の.heroと同じ役割で、その画面固有の
      見出し(.gate-title)より上に置く「サービス全体の一言」。 */
-  .gate-tagline{ font-size:1.7rem; line-height:1.3; margin-bottom:8px; }
+  .gate-tagline{ font-size:1.7rem; line-height:1.3; margin-bottom:28px; }
   .gate-tagline-desc{ color:var(--muted); margin-bottom:28px; }
   /* ボタンを縦積みフル幅(旧デザイン)ではなく、フィフス版の
      .login-guest-rowのように横並び・幅は内容なりにすることで、
      画面の高さを大きく節約する。 */
-  .gate-actions{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-top:16px; }
+  .gate-actions{ display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-top:16px; }
+  /* 統合トップ画面(2026-09-22)の「キャラクターを開く」「テンプレートを
+     作る」の各セクションを囲む箱。要素同士が詰まって見えるという指摘を
+     受け、見出し→ボタン→説明文の順に並べつつ、十分な余白を持たせる。 */
+  .gate-section-box{
+    border:1px solid var(--line); border-radius:10px;
+    background:var(--surface); padding:28px 24px; margin-top:32px;
+  }
+  .gate-section-box .gate-title{ margin-bottom:18px; }
+  .gate-section-box .gate-actions{ margin-top:0; margin-bottom:20px; }
+  .gate-section-box .gate-lead{ margin:0; }
   /* ログインを主動線として視覚的に目立たせ、ローカルファイル系の副次的な
      導線と区別する(共有ボタンのアクセント塗り=.share-btnと同じ考え方)。 */
   .gate-primary-btn{
@@ -528,6 +550,16 @@
   .gate-list{ max-width:760px; margin:40px auto; padding:0 20px 40px; }
   .gate-list-auth{ display:flex; justify-content:flex-end; align-items:center; gap:10px; margin-bottom:16px; }
   .gate-list-head{ display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:16px; }
+  /* 2026-09-22: 見出しを目立たせる(既定のh2は1.3remと小さいため)。
+     margin:0はflex行内での縦位置ズレを防ぐため。 */
+  .gate-list-title{ font-size:1.7rem; margin:0; }
+  /* 見出し・ボタン群の2つをgate-list-headの直接の子にすると、
+     justify-content:space-betweenが3つ以上の子要素の間に均等に余白を
+     入れてしまい、ボタン同士の間まで大きく開いてしまう(見出しとの間だけ
+     広げたい)。ボタン群を1つのコンテナにまとめることで、
+     space-betweenが効くのは「見出し」と「ボタン群」の2つの間だけになる。 */
+  .gate-list-head-actions{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  .gate-list-divider{ border:none; border-top:1px solid var(--line); margin:32px 0; }
   .dl-block{
     background:var(--surface); border:1px solid var(--line); border-radius:10px;
     padding:12px 14px; margin-bottom:14px;
@@ -548,6 +580,10 @@
   .dl-tsv-table th{ background:var(--surface); color:var(--accent-bright); border-bottom:2px solid var(--accent); }
   .dl-tsv-table tbody tr:nth-child(odd){ background:var(--surface); }
   .dl-tsv-table tbody tr:nth-child(even){ background:var(--surface-2); }
+  /* マウスでフォーカスしている行を分かりやすくする(2026-09-22)。
+     奇数/偶数行の背景色指定(上記2行)と特異性が同じため、後に書くことで
+     優先させている。 */
+  .char-list-table tbody tr:hover, .tpl-list-table tbody tr:hover{ background:var(--line); }
   .dl-tsv-hint{ margin:4px 0 8px; }
   .ref-list-error{ color:var(--danger); }
 
@@ -690,7 +726,9 @@
  * 詳細はgeneral/CLAUDE.mdの「Google Drive連携」を参照。 */
 const GOOGLE_CLIENT_ID = "373791663243-329rrjbe7at41rr5ffljkhomp23lnsaq.apps.googleusercontent.com";
 const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file";
-const OAUTH_EXCHANGE_URL = "https://asia-northeast1-chara-share-507105.cloudfunctions.net/charashareExchangeAuthCode";
+const OAUTH_EXCHANGE_URL = "https://oauth-exchange.magineco.com";
+const OAUTH_REFRESH_URL = "https://oauth-refresh.magineco.com";
+const OAUTH_REVOKE_URL = "https://oauth-revoke.magineco.com";
 const SHARE_ENCRYPT_URL = "https://asia-northeast1-chara-share-507105.cloudfunctions.net/charashareEncryptShareId";
 const SHARE_VIEW_URL = "https://asia-northeast1-chara-share-507105.cloudfunctions.net/charashareViewSharedCharacter";
 // トップ2画面(テンプレート/キャラクター)共通のヒーローバナー画像。
@@ -777,8 +815,10 @@ const COLOR_PRESETS = {
 
 const state = {
   // 画面遷移(フィフス版のlogin/list/editorのような明示的なルーティング)。
-  // 'templateTop'|'templateSelect'|'templateEditor'|
-  // 'characterTop'|'characterList'|'characterEditor'|'characterView'
+  // 'top'|'browse'|'templateEditor'|'characterEditor'|'characterView'
+  // ('top'=テンプレート/キャラクター共通の入口、'browse'=Drive内の
+  // キャラクター一覧・テンプレート一覧を1画面にまとめた共通一覧、
+  // 2026-09-22にそれぞれ4画面→2画面へ統合した)
   screen: null,
   template: null,
   character: null,
@@ -801,7 +841,7 @@ const state = {
   characterFileId: null, characterShared: false, characterShareToken: '',
   readOnly: false,  // 共有URL(?char=)からの閲覧時のみtrue(state.screen==='characterView'と連動)
   loadError: '',    // 起動時のURLパラメータ読み込みに失敗した場合のバナー表示用
-  driveBrowser: null, // {kind:'template'|'character', loading, files, error} — テンプレート選択/キャラクター一覧画面のデータ
+  driveBrowser: null, // {characters:{loading,files,error,sortBy,filterSystem}, templates:{loading,files,error,sortBy}} — 統合一覧画面('browse')のデータ。2種類を同時に保持する
 };
 
 /* ---------- Google認証(../fifthe/index.html と同じ認可コードフロー) ----------
@@ -830,6 +870,9 @@ async function exchangeAuthCode(code, redirectUri){
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ code, redirectUri }),
+    // セッションCookie(httpOnly)を受け取るために必須。無いとSet-Cookie
+    // 応答ヘッダーがブラウザに破棄される。
+    credentials: 'include',
   });
   if(!res.ok){
     let detail = '';
@@ -861,9 +904,8 @@ async function handleAuthCodeResponse(resp, expectedState){
     state.accessToken = tokenData.access_token;
     setStatus('ログインしました。', 'ok');
     if(pendingAction === 'saveTemplate') await saveTemplateToDrive();
-    else if(pendingAction === 'openTemplateBrowser') await listMyTemplates();
+    else if(pendingAction === 'openDriveBrowser') openDriveBrowser();
     else if(pendingAction === 'saveCharacter') await saveCharacterToDrive();
-    else if(pendingAction === 'openCharacterBrowser') await listMyCharacters();
     else if(pendingAction === 'shareTemplate') await shareTemplate();
     else if(pendingAction === 'shareCharacter') await shareCharacter();
   }catch(e){
@@ -882,6 +924,10 @@ function login(){
     // (未指定だと毎回同意画面が出る挙動になるとの報告があったため)。
     prompt: '',
     state: oauthState,
+    // オフラインアクセスを要求し、Googleにリフレッシュトークンを発行して
+    // もらう(セッション永続化のため。Cloud Function側でFirestoreに
+    // 保管し、ブラウザにはhttpOnly Cookie経由のセッションIDだけを渡す)。
+    access_type: 'offline',
     callback: (resp) => handleAuthCodeResponse(resp, oauthState),
   });
   codeClient.requestCode();
@@ -898,21 +944,46 @@ function logout(){
   if(state.accessToken){
     google.accounts.oauth2.revoke(state.accessToken, () => {});
   }
+  // このアプリ側のセッション記録(Firestore)とCookieの後片付け。
+  // 応答を待たずfire-and-forgetにして、ログアウトの画面遷移速度を保つ。
+  fetch(OAUTH_REVOKE_URL, { method: 'POST', credentials: 'include' }).catch(() => {});
   state.accessToken = null;
   // ログアウト後もそのままの画面に留まると、ログイン前提の編集画面や
   // 一覧画面が中途半端に(ログインボタンだけ出た状態で)表示され続けて
-  // しまうため、テンプレート系/キャラクター系どちらの文脈にいたかに
-  // 応じて、それぞれのトップ画面へ戻す。
-  const isTemplateContext = state.screen === 'templateTop' || state.screen === 'templateSelect' || state.screen === 'templateEditor';
-  state.screen = isTemplateContext ? 'templateTop' : 'characterTop';
+  // しまうため、統合トップ画面へ戻す(2026-09-22の画面統合により、
+  // 戻り先がテンプレート/キャラクターで分岐する必要が無くなった)。
+  state.screen = 'top';
   setStatus('ログアウトしました。', '');
 }
-async function driveFetch(url, options={}){
+// セッションCookie(httpOnly)経由で、無言でアクセストークンを更新する。
+// リフレッシュトークン自体はここでは一切見えない(Cloud Function・
+// Firestore側だけで完結する)。成功時はstate.accessTokenを差し替えて
+// trueを返す。セッションが無い/失効している/Firestore不通などで
+// 失敗した場合はfalseを返すだけで、例外は投げない
+// (呼び出し側は「今まで通りの再ログイン導線」にフォールバックする)。
+async function tryRefreshAccessToken(){
+  try{
+    const res = await fetch(OAUTH_REFRESH_URL, { method: 'POST', credentials: 'include' });
+    if(!res.ok) return false;
+    const data = await res.json();
+    if(!data.access_token) return false;
+    state.accessToken = data.access_token;
+    return true;
+  }catch(e){
+    console.error(e);
+    return false;
+  }
+}
+async function driveFetch(url, options={}, isRetry){
   options.headers = Object.assign({}, options.headers, {
     'Authorization': 'Bearer ' + state.accessToken,
   });
   const res = await fetch(url, options);
   if(res.status === 401){
+    // 即座にエラーにする前に、セッションCookieでの無言更新を1回だけ試す。
+    if(!isRetry && await tryRefreshAccessToken()){
+      return driveFetch(url, options, true);
+    }
     // トークン失効時、accessTokenをnullに戻さないと、ツールバーが
     // 「ログアウト」ボタンのままになり(state.accessTokenがまだ真値のため)、
     // 編集中の画面から離れずに再ログインする手段が無くなってしまう
@@ -996,27 +1067,50 @@ async function saveTemplateToDrive(){
     setStatus(e.message, 'err');
   }
 }
-async function listMyTemplates(){
-  if(!state.accessToken){ loginAndThen('openTemplateBrowser'); return; }
-  // sortBy('modifiedTime'|'createdTime')はキャラクター一覧と同じく
-  // driveBrowser側だけに持たせるUI状態(general/CLAUDE.md「キャラクター
-  // 一覧の並び替え・絞り込み・作成日列」参照。テンプレート一覧には
-  // システムでの絞り込みに相当する概念(=システム名そのもの)が無いため
-  // 並び替えだけ同様に用意する)。
-  state.driveBrowser = { kind: 'template', loading: true, files: [], error: '', sortBy: 'modifiedTime' };
-  state.screen = 'templateSelect';
+// 統合一覧画面('browse')を開く。ログイン前提の操作なので未ログイン時は
+// pendingLoginActionを積んでログインへ回す(既存パターンを踏襲)。
+// キャラクター・テンプレート両方の取得を(awaitせず)並行して走らせ、
+// それぞれが完了した時点で個別に再描画する(今までの「読み込み中…」の
+// 挙動を、2セクション独立のまま維持するため)。
+function openDriveBrowser(){
+  if(!state.accessToken){ loginAndThen('openDriveBrowser'); return; }
+  state.driveBrowser = {
+    characters: { loading: true, files: [], error: '', sortBy: 'modifiedTime', sortOrder: 'desc', filterSystem: '' },
+    templates: { loading: true, files: [], error: '', sortBy: 'modifiedTime', sortOrder: 'desc' },
+  };
+  state.screen = 'browse';
   render();
+  fetchCharacterList();
+  fetchTemplateList();
+}
+// sortBy('modifiedTime'|'createdTime')はキャラクター一覧と同じく
+// driveBrowser側だけに持たせるUI状態(general/CLAUDE.md「キャラクター
+// 一覧の並び替え・絞り込み・作成日列」参照。テンプレート一覧には
+// システムでの絞り込みに相当する概念(=システム名そのもの)が無いため
+// 並び替えだけ同様に用意する)。
+async function fetchTemplateList(){
+  const db = state.driveBrowser;
   try{
     const q = encodeURIComponent(`appProperties has { key='app' and value='${APP_TAG_TEMPLATE}' } and trashed=false`);
     const res = await driveFetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,createdTime,modifiedTime,appProperties)&orderBy=modifiedTime desc`);
     if(!res.ok) throw new Error('テンプレート一覧の取得に失敗しました。');
     const data = await res.json();
-    state.driveBrowser = { kind: 'template', loading: false, files: data.files || [], error: '', sortBy: 'modifiedTime' };
+    if(state.driveBrowser !== db) return; // 開き直し等で既に差し替わっていたら破棄
+    db.templates = { loading: false, files: data.files || [], error: '', sortBy: 'modifiedTime', sortOrder: 'desc' };
   }catch(e){
     console.error(e);
-    state.driveBrowser = { kind: 'template', loading: false, files: [], error: e.message, sortBy: 'modifiedTime' };
+    if(state.driveBrowser !== db) return;
+    db.templates = { loading: false, files: [], error: e.message, sortBy: 'modifiedTime', sortOrder: 'desc' };
   }
   render();
+}
+// deleteDriveFile()からの削除後リフレッシュ専用。テンプレート側だけを
+// 再取得し、キャラクター側のスロットには触れない。
+function refreshTemplateList(){
+  if(!state.driveBrowser) return;
+  state.driveBrowser.templates = { loading: true, files: [], error: '', sortBy: 'modifiedTime', sortOrder: 'desc' };
+  render();
+  fetchTemplateList();
 }
 async function openTemplateFromDrive(fileId){
   try{
@@ -1060,8 +1154,8 @@ async function deleteDriveFile(fileId, kind){
   try{
     const res = await driveFetch(`https://www.googleapis.com/drive/v3/files/${fileId}`, { method: 'DELETE' });
     if(!res.ok && res.status !== 204) throw new Error('削除に失敗しました。');
-    if(kind === 'template') await listMyTemplates();
-    else await listMyCharacters();
+    if(kind === 'template') refreshTemplateList();
+    else refreshCharacterList();
   }catch(e){
     console.error(e);
     setStatus(e.message, 'err');
@@ -1139,26 +1233,33 @@ async function updateCharacterFile(fileId, characterObj){
     body: JSON.stringify({ appProperties: { app: APP_TAG_CHARACTER, templateFileId: state.templateFileId || '', templateName: (state.template.meta && state.template.meta.name) || '' } }),
   });
 }
-async function listMyCharacters(){
-  if(!state.accessToken){ loginAndThen('openCharacterBrowser'); return; }
-  // sortBy('modifiedTime'|'createdTime')・filterSystem(空なら絞り込み無し)は
-  // 一覧画面だけのUI状態なので、グローバルなstateではなくdriveBrowser側に
-  // 持たせる(一覧を開き直すたびにリセットされる想定でよいため)。
-  state.driveBrowser = { kind: 'character', loading: true, files: [], error: '', sortBy: 'modifiedTime', filterSystem: '' };
-  state.screen = 'characterList';
-  render();
+// sortBy('modifiedTime'|'createdTime')・filterSystem(空なら絞り込み無し)は
+// 一覧画面だけのUI状態なので、グローバルなstateではなくdriveBrowser.characters
+// 側に持たせる(一覧を開き直すたびにリセットされる想定でよいため)。
+async function fetchCharacterList(){
+  const db = state.driveBrowser;
   try{
     const q = encodeURIComponent(`appProperties has { key='app' and value='${APP_TAG_CHARACTER}' } and trashed=false`);
     const res = await driveFetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,createdTime,modifiedTime,appProperties)&orderBy=modifiedTime desc`);
     if(!res.ok) throw new Error('キャラクター一覧の取得に失敗しました。');
     const data = await res.json();
-    state.driveBrowser = { kind: 'character', loading: false, files: data.files || [], error: '', sortBy: 'modifiedTime', filterSystem: '' };
-    loadCharacterListPreviews(state.driveBrowser);
+    if(state.driveBrowser !== db) return; // 開き直し等で既に差し替わっていたら破棄
+    db.characters = { loading: false, files: data.files || [], error: '', sortBy: 'modifiedTime', sortOrder: 'desc', filterSystem: '' };
+    loadCharacterListPreviews(db.characters);
   }catch(e){
     console.error(e);
-    state.driveBrowser = { kind: 'character', loading: false, files: [], error: e.message, sortBy: 'modifiedTime', filterSystem: '' };
+    if(state.driveBrowser !== db) return;
+    db.characters = { loading: false, files: [], error: e.message, sortBy: 'modifiedTime', sortOrder: 'desc', filterSystem: '' };
   }
   render();
+}
+// deleteDriveFile()からの削除後リフレッシュ専用。キャラクター側だけを
+// 再取得し、テンプレート側のスロットには触れない。
+function refreshCharacterList(){
+  if(!state.driveBrowser) return;
+  state.driveBrowser.characters = { loading: true, files: [], error: '', sortBy: 'modifiedTime', sortOrder: 'desc', filterSystem: '' };
+  render();
+  fetchCharacterList();
 }
 // キャラクター一覧は名前だけでは見分けが付きにくいため、各行の先頭画像と
 // 「先頭から3つ見つかった入力済みインプットの値」を軽いプレビューとして
@@ -1171,10 +1272,10 @@ async function listMyCharacters(){
 // `state.driveBrowser`が別オブジェクトに差し替わった後に古い取得が
 // 完了しても、そのdb引数(古いオブジェクト)を見て中断するので、表示中の
 // 一覧を上書きしない。
-async function loadCharacterListPreviews(db){
-  for(const f of db.files){
+async function loadCharacterListPreviews(charactersSlot){
+  for(const f of charactersSlot.files){
     fetchCharacterListPreview(f.id).then(preview => {
-      if(state.driveBrowser !== db) return;
+      if(!state.driveBrowser || state.driveBrowser.characters !== charactersSlot) return;
       f.preview = preview;
       render();
     });
@@ -1781,13 +1882,11 @@ function evalAggregateSum(f, visiting){
 
 /* ---------- 描画: 全体 ---------- */
 function isGateScreen(screen){
-  return screen === 'templateTop' || screen === 'templateSelect' || screen === 'characterTop' || screen === 'characterList';
+  return screen === 'top' || screen === 'browse';
 }
 function renderGateScreen(){
-  if(state.screen === 'templateTop') return renderTemplateTopScreen();
-  if(state.screen === 'templateSelect') return renderTemplateSelectScreen();
-  if(state.screen === 'characterTop') return renderCharacterTopScreen();
-  if(state.screen === 'characterList') return renderCharacterListScreen();
+  if(state.screen === 'top') return renderTopScreen();
+  if(state.screen === 'browse') return renderBrowseScreen();
   return '';
 }
 // render()はテンプレート・キャラクターの編集からUIの単純な開閉(モーダル・
@@ -1984,19 +2083,36 @@ function handleImportAnyJsonFile(input){
   reader.readAsText(file);
   input.value = '';
 }
-function renderTemplateTopScreen(){
+// 統合トップ画面(2026-09-22、テンプレートトップ/キャラクタートップを
+// 1画面に統合)。ログインボタンは1つだけ共通で持ち、その下に
+// 「キャラクターを開く」「テンプレートを作る」の2セクションを積む。
+// 各セクションのリード文には、以前トップ共通のタグライン説明文として
+// 出していた2種類の文言(テンプレート作者向け/プレイヤー向け)を
+// そのまま転用している(ユーザー指示、2026-09-22)。
+function renderTopScreen(){
   return `${renderGateHeroBanner()}<div class="gate-page">
     ${renderGateBrand()}
     ${renderGateTagline()}
-    <h2 class="gate-title">テンプレートを作る</h2>
-    <p class="gate-lead">TRPGシステム向けキャラクターシートのテンプレートを作り、公開できます。</p>
-    <div class="gate-actions">
-      <button class="gate-primary-btn" onclick="loginAndThen('openTemplateBrowser')">Googleでログイン</button>
-      <button onclick="startNewTemplateNoLogin()">ログインなしで作る</button>
-      <button onclick="document.getElementById('gate-tpl-file').click()">読み込みして開く</button>
-      <input id="gate-tpl-file" type="file" accept="application/json" style="display:none" onchange="handleImportTemplateFile(this)">
-    </div>
     ${renderGateDataNote()}
+    <div class="gate-section-box">
+      <h2 class="gate-title">キャラクターを開く</h2>
+      <div class="gate-actions">
+        <button class="gate-primary-btn" onclick="loginAndThen('openDriveBrowser')">Googleでログイン</button>
+        <button onclick="document.getElementById('gate-char-file').click()">読み込みして開く</button>
+        <input id="gate-char-file" type="file" accept="application/json" style="display:none" onchange="handleImportAnyJsonFile(this)">
+      </div>
+      <p class="gate-lead">Googleアカウントでログインすれば、あなたのGoogle Driveに保存・共有もできます。</p>
+    </div>
+    <div class="gate-section-box">
+      <h2 class="gate-title">テンプレートを作る</h2>
+      <div class="gate-actions">
+        <button class="gate-primary-btn" onclick="loginAndThen('openDriveBrowser')">Googleでログイン</button>
+        <button onclick="startNewTemplateNoLogin()">ログインなしで作る</button>
+        <button onclick="document.getElementById('gate-tpl-file').click()">読み込みして開く</button>
+        <input id="gate-tpl-file" type="file" accept="application/json" style="display:none" onchange="handleImportTemplateFile(this)">
+      </div>
+      <p class="gate-lead">サーバー準備不要、コーディング不要<br>『配置の変更』『数式の設定』『カラーリングの調整』『チャットパレット設定』が可能<br>Googleアカウントでログインすれば、あなたのGoogle Driveに保存・共有もできます。</p>
+    </div>
   </div>`;
 }
 function renderGateBrand(){
@@ -2005,27 +2121,12 @@ function renderGateBrand(){
     <span class="gate-brand-tag">キャラクターシート設置サービス</span>
   </div>`;
 }
-// 共通トップ(../index.html)の.heroと同じキャッチコピー(2026-09-20、
-// ユーザー指示)。見出し自体はテンプレート/キャラクターどちらの
-// トップ画面でも共通で、renderGateBrand()の直後・各画面固有の見出し
-// (「テンプレートを作る」「キャラクターを開く」)の前に表示する。
-// 説明文(1行目の下の段落)は画面ごとに内容が違う(テンプレート作成者
-// 向けの機能一覧と、プレイヤー向けの使い方は別物)ため、2026-09-21に
-// テンプレートトップ専用に戻した(以前はここに直接書いていたテンプレート
-// 作成者向けの説明文が、そのままキャラクタートップにも表示されてしまい
-// 「配置の変更・数式の設定」等プレイヤーには無関係な文言が出ていた、との
-// 指摘を受けて分離。キャラクタートップ側はrenderCharacterGateTagline()参照)。
+// 統合トップ画面共通のブランド見出し。説明文(タグライン直下の段落)は
+// 2026-09-22の画面統合で、各セクション(「キャラクターを開く」
+// 「テンプレートを作る」)自身のリード文として移設したため、ここでは
+// 見出しだけを返す(renderTopScreen()参照)。
 function renderGateTagline(){
-  return `<h2 class="gate-tagline">全てのTRPGにWebキャラシを。</h2>
-  <p class="gate-tagline-desc">必要なのは、Googleアカウントでのログイン<br>サーバー準備不要、コーディング不要<br>『配置の変更』『数式の設定』『カラーリングの調整』『チャットパレット設定』そして『Web公開』ができます</p>`;
-}
-// キャラクタートップ専用の説明文(2026-09-21新設)。見出しはテンプレート
-// トップと共通(ブランドの決まり文句として維持)だが、説明文はプレイヤー
-// 目線(テンプレート作成者が公開したシートを開くだけで使える・
-// ログイン無しでも試せる・ログインすればDriveに保存できる)に差し替えた。
-function renderCharacterGateTagline(){
-  return `<h2 class="gate-tagline">全てのTRPGにWebキャラシを。</h2>
-  <p class="gate-tagline-desc">テンプレート作成者が公開しているキャラクターシートを開くだけで、ログインなしでもすぐにキャラクターを作成できます。Googleアカウントでログインすれば、あなた自身のGoogle Driveに保存・共有もできます。</p>`;
+  return `<h2 class="gate-tagline">全てのTRPGにWebキャラシを。</h2>`;
 }
 function renderGateHeroBanner(){
   return `<div class="hero-banner"><img src="${HERO_BANNER_IMAGE}" alt=""></div>`;
@@ -2042,59 +2143,6 @@ function renderGateListAuthBar(){
   return `<div class="gate-list-auth">
     <span class="muted">Google Drive に接続済み</span>
     <button onclick="logout()">ログアウト</button>
-  </div>`;
-}
-function renderTemplateSelectScreen(){
-  const b = state.driveBrowser;
-  let controls = '';
-  let body;
-  if(!b || b.loading) body = `<p class="muted">読み込み中…</p>`;
-  else if(b.error) body = `<p class="muted">${esc(b.error)}</p>`;
-  else if(!b.files.length) body = `<p class="muted">Driveに保存されたテンプレートがありません。</p>`;
-  else {
-    const sortBy = b.sortBy || 'modifiedTime';
-    const files = sortFilesByDate(b.files, sortBy);
-    controls = `<div class="char-list-controls">
-      <label><span>並び替え</span>
-        <select onchange="setTemplateListSort(this.value)">
-          <option value="modifiedTime" ${sortBy === 'modifiedTime' ? 'selected' : ''}>更新日時</option>
-          <option value="createdTime" ${sortBy === 'createdTime' ? 'selected' : ''}>作成日</option>
-        </select>
-      </label>
-    </div>`;
-    body = `<div class="set-table-wrap"><table class="dl-tsv-table tpl-list-table"><tbody>
-      <tr><th>システム名</th><th>作成日</th><th>更新日時</th></tr>
-      ${files.map(f => `<tr onclick="openTemplateFromDrive('${f.id}')" style="cursor:pointer;">
-        <td>${esc(f.name)}${(f.appProperties && f.appProperties.shared === 'true') ? '<span class="share-badge">共有中</span>' : ''}</td>
-        <td>${esc(new Date(f.createdTime).toLocaleString('ja-JP'))}</td>
-        <td>${esc(new Date(f.modifiedTime).toLocaleString('ja-JP'))}</td>
-      </tr>`).join('')}
-    </tbody></table></div>`;
-  }
-  return `<div class="gate-list">
-    ${renderGateListAuthBar()}
-    <div class="gate-list-head">
-      <h1>テンプレート一覧</h1>
-      <button onclick="document.getElementById('tplselect-file').click()">テンプレートを読み込み</button>
-      <input id="tplselect-file" type="file" accept="application/json" style="display:none" onchange="handleImportTemplateFile(this)">
-      <button onclick="startNewTemplateNoLogin()">+ 新規に作る</button>
-    </div>
-    ${controls}
-    ${body}
-  </div>`;
-}
-function renderCharacterTopScreen(){
-  return `${renderGateHeroBanner()}<div class="gate-page">
-    ${renderGateBrand()}
-    ${renderCharacterGateTagline()}
-    <h2 class="gate-title">キャラクターを開く</h2>
-    <p class="gate-lead">キャラシェア・ジェネラルで作成した、またはお手元のファイルのキャラクターを開きます。</p>
-    <div class="gate-actions">
-      <button class="gate-primary-btn" onclick="loginAndThen('openCharacterBrowser')">Googleでログイン</button>
-      <button onclick="document.getElementById('gate-char-file').click()">読み込みして開く</button>
-      <input id="gate-char-file" type="file" accept="application/json" style="display:none" onchange="handleImportAnyJsonFile(this)">
-    </div>
-    ${renderGateDataNote()}
   </div>`;
 }
 function renderCharacterListThumb(f){
@@ -2118,14 +2166,19 @@ function renderCharacterListPreviewText(f){
 // UI状態(driveBrowser.sortBy/filterSystem)を書き換えて再描画するだけで、
 // Drive APIを叩き直しはしない(取得済みのfilesをクライアント側で並べ替え・
 // 絞り込みする方が、切り替えるたびに通信するより速くシンプルなため)。
-function setCharacterListSort(sortBy){
+// 「並び替え」(更新日時/作成日時)と「並び順」(新しい→古い/古い→新しい)を
+// 別々のドロップダウンにしていたが、2026-09-22にユーザー指示で1つの
+// ドロップダウン(4パターン)にまとめた。valueは"sortBy_sortOrder"の形。
+function setCharacterListSortOrder(value){
   if(!state.driveBrowser) return;
-  state.driveBrowser.sortBy = sortBy;
+  const [sortBy, sortOrder] = value.split('_');
+  state.driveBrowser.characters.sortBy = sortBy;
+  state.driveBrowser.characters.sortOrder = sortOrder;
   render({ skipDirty: true });
 }
 function setCharacterListFilterSystem(value){
   if(!state.driveBrowser) return;
-  state.driveBrowser.filterSystem = value;
+  state.driveBrowser.characters.filterSystem = value;
   render({ skipDirty: true });
 }
 // 一覧に出てきた「システム名」(appProperties.templateName)の重複無し一覧。
@@ -2138,26 +2191,31 @@ function characterListSystemOptions(files){
   });
   return Array.from(names).sort((a, b) => a.localeCompare(b, 'ja'));
 }
-// 更新日時・作成日のどちらでも使う共通の並び替え(新しい順)。
-// テンプレート一覧・キャラクター一覧の両方から呼ぶ。
-function sortFilesByDate(files, sortBy){
+// 更新日時・作成日のどちらでも使う共通の並び替え。sortOrder('desc'=新しい順・
+// 既定/'asc'=古い順)は2026-09-22に追加。テンプレート一覧・キャラクター
+// 一覧の両方から呼ぶ。
+function sortFilesByDate(files, sortBy, sortOrder){
   const sortKey = sortBy === 'createdTime' ? 'createdTime' : 'modifiedTime';
-  return files.slice().sort((a, c) => new Date(c[sortKey]) - new Date(a[sortKey]));
+  const cmp = sortOrder === 'asc'
+    ? (a, c) => new Date(a[sortKey]) - new Date(c[sortKey])
+    : (a, c) => new Date(c[sortKey]) - new Date(a[sortKey]);
+  return files.slice().sort(cmp);
 }
 function visibleCharacterListFiles(b){
   let files = b.files;
   if(b.filterSystem){
     files = files.filter(f => ((f.appProperties && f.appProperties.templateName) || '') === b.filterSystem);
   }
-  return sortFilesByDate(files, b.sortBy);
+  return sortFilesByDate(files, b.sortBy, b.sortOrder);
 }
-function setTemplateListSort(sortBy){
+function setTemplateListSortOrder(value){
   if(!state.driveBrowser) return;
-  state.driveBrowser.sortBy = sortBy;
+  const [sortBy, sortOrder] = value.split('_');
+  state.driveBrowser.templates.sortBy = sortBy;
+  state.driveBrowser.templates.sortOrder = sortOrder;
   render({ skipDirty: true });
 }
-function renderCharacterListScreen(){
-  const b = state.driveBrowser;
+function renderCharacterListSection(b){
   let controls = '';
   let body;
   if(!b || b.loading) body = `<p class="muted">読み込み中…</p>`;
@@ -2165,13 +2223,16 @@ function renderCharacterListScreen(){
   else if(!b.files.length) body = `<p class="muted">Driveに保存されたキャラクターがありません。</p>`;
   else {
     const sortBy = b.sortBy || 'modifiedTime';
+    const sortOrder = b.sortOrder || 'desc';
     const systemOptions = characterListSystemOptions(b.files);
     const files = visibleCharacterListFiles(b);
     controls = `<div class="char-list-controls">
       <label><span>並び替え</span>
-        <select onchange="setCharacterListSort(this.value)">
-          <option value="modifiedTime" ${sortBy === 'modifiedTime' ? 'selected' : ''}>更新日時</option>
-          <option value="createdTime" ${sortBy === 'createdTime' ? 'selected' : ''}>作成日</option>
+        <select onchange="setCharacterListSortOrder(this.value)">
+          <option value="modifiedTime_desc" ${sortBy === 'modifiedTime' && sortOrder === 'desc' ? 'selected' : ''}>更新日時(新しい→古い)</option>
+          <option value="modifiedTime_asc" ${sortBy === 'modifiedTime' && sortOrder === 'asc' ? 'selected' : ''}>更新日時(古い→新しい)</option>
+          <option value="createdTime_desc" ${sortBy === 'createdTime' && sortOrder === 'desc' ? 'selected' : ''}>作成日時(新しい→古い)</option>
+          <option value="createdTime_asc" ${sortBy === 'createdTime' && sortOrder === 'asc' ? 'selected' : ''}>作成日時(古い→新しい)</option>
         </select>
       </label>
       <label><span>システムで絞り込み</span>
@@ -2186,26 +2247,78 @@ function renderCharacterListScreen(){
           <col style="width:76px"><col style="width:44%"><col style="width:21%">
           <col style="width:17.5%"><col style="width:17.5%">
         </colgroup><tbody>
-        <tr><th>画像</th><th>名前</th><th>システム名</th><th>作成日</th><th>更新日時</th></tr>
-        ${files.map(f => `<tr onclick="openCharacterFromDrive('${f.id}')" style="cursor:pointer;">
+        <tr><th>画像</th><th>名前</th><th>システム名</th><th>作成日時</th><th>更新日時</th></tr>
+        ${files.map(f => `<tr onclick="openCharacterFromDrive('${f.id}')">
           <td>${renderCharacterListThumb(f)}</td>
           <td>${(f.appProperties && f.appProperties.shared === 'true') ? '<span class="share-badge">共有中</span>' : ''}${renderCharacterListPreviewText(f)}</td>
           <td class="char-list-system-name">${esc((f.appProperties && f.appProperties.templateName) || '')}</td>
-          <td>${esc(new Date(f.createdTime).toLocaleString('ja-JP'))}</td>
-          <td>${esc(new Date(f.modifiedTime).toLocaleString('ja-JP'))}</td>
+          <td class="list-date-cell">${esc(new Date(f.createdTime).toLocaleString('ja-JP'))}</td>
+          <td class="list-date-cell">${esc(new Date(f.modifiedTime).toLocaleString('ja-JP'))}</td>
         </tr>`).join('')}
       </tbody></table></div>`
       : `<p class="muted">選択したシステムのキャラクターがありません。</p>`;
   }
-  return `<div class="gate-list">
-    ${renderGateListAuthBar()}
-    <div class="gate-list-head">
-      <h1>キャラクター一覧</h1>
-      <button onclick="document.getElementById('gate-char-list-file').click()">キャラクターを読み込み</button>
-      <input id="gate-char-list-file" type="file" accept="application/json" style="display:none" onchange="handleImportCharacterFile(this)">
+  return `<div class="gate-list-head">
+      <h2 class="gate-list-title">キャラクター一覧</h2>
+      <div class="gate-list-head-actions">
+        <button onclick="document.getElementById('gate-char-list-file').click()">テンプレートまたはキャラクターを読み込み</button>
+        <input id="gate-char-list-file" type="file" accept="application/json" style="display:none" onchange="handleImportAnyJsonFile(this)">
+      </div>
     </div>
     ${controls}
-    ${body}
+    ${body}`;
+}
+function renderTemplateListSection(b){
+  let controls = '';
+  let body;
+  if(!b || b.loading) body = `<p class="muted">読み込み中…</p>`;
+  else if(b.error) body = `<p class="muted">${esc(b.error)}</p>`;
+  else if(!b.files.length) body = `<p class="muted">Driveに保存されたテンプレートがありません。</p>`;
+  else {
+    const sortBy = b.sortBy || 'modifiedTime';
+    const sortOrder = b.sortOrder || 'desc';
+    const files = sortFilesByDate(b.files, sortBy, sortOrder);
+    controls = `<div class="char-list-controls">
+      <label><span>並び替え</span>
+        <select onchange="setTemplateListSortOrder(this.value)">
+          <option value="modifiedTime_desc" ${sortBy === 'modifiedTime' && sortOrder === 'desc' ? 'selected' : ''}>更新日時(新しい→古い)</option>
+          <option value="modifiedTime_asc" ${sortBy === 'modifiedTime' && sortOrder === 'asc' ? 'selected' : ''}>更新日時(古い→新しい)</option>
+          <option value="createdTime_desc" ${sortBy === 'createdTime' && sortOrder === 'desc' ? 'selected' : ''}>作成日時(新しい→古い)</option>
+          <option value="createdTime_asc" ${sortBy === 'createdTime' && sortOrder === 'asc' ? 'selected' : ''}>作成日時(古い→新しい)</option>
+        </select>
+      </label>
+    </div>`;
+    body = `<div class="set-table-wrap"><table class="dl-tsv-table tpl-list-table"><tbody>
+      <tr><th>システム名</th><th>作成日時</th><th>更新日時</th></tr>
+      ${files.map(f => `<tr onclick="openTemplateFromDrive('${f.id}')">
+        <td>${(f.appProperties && f.appProperties.shared === 'true') ? '<span class="share-badge">共有中</span>' : ''}${esc(f.name)}</td>
+        <td class="list-date-cell">${esc(new Date(f.createdTime).toLocaleString('ja-JP'))}</td>
+        <td class="list-date-cell">${esc(new Date(f.modifiedTime).toLocaleString('ja-JP'))}</td>
+      </tr>`).join('')}
+    </tbody></table></div>`;
+  }
+  return `<div class="gate-list-head">
+      <h2 class="gate-list-title">テンプレート一覧</h2>
+      <div class="gate-list-head-actions">
+        <button onclick="document.getElementById('tplselect-file').click()">テンプレートを読み込み</button>
+        <input id="tplselect-file" type="file" accept="application/json" style="display:none" onchange="handleImportTemplateFile(this)">
+        <button onclick="startNewTemplateNoLogin()">+ 新規に作る</button>
+      </div>
+    </div>
+    ${controls}
+    ${body}`;
+}
+// 統合一覧画面(2026-09-22、テンプレート一覧/キャラクター一覧を1画面に
+// 統合)。ユーザー指示により上側にキャラクター一覧、下側にテンプレート
+// 一覧を並べる。認証バーは1回だけ表示する。
+function renderBrowseScreen(){
+  const b = state.driveBrowser;
+  return `<div class="gate-list">
+    ${renderGateListAuthBar()}
+    <hr class="gate-list-divider">
+    ${renderCharacterListSection(b && b.characters)}
+    <hr class="gate-list-divider">
+    ${renderTemplateListSection(b && b.templates)}
   </div>`;
 }
 // 値を1つ変えるだけでrender()がDOM全体を作り直すため、何もしなければ
@@ -2336,7 +2449,7 @@ function renderToolbar(){
       <button onclick="document.getElementById('char-file').click()">キャラクターを読み込み</button>
       <input id="char-file" type="file" accept="application/json" style="display:none" onchange="handleImportCharacterFile(this)">
       <button onclick="exportCharacter()">キャラクターをダウンロード</button>
-      <button onclick="listMyCharacters()">Driveの一覧を開く</button>
+      <button onclick="openDriveBrowser()">Driveの一覧を開く</button>
       ${deleteBtn}
     </div>
     ${renderInlineSharePanel('character')}`;
@@ -2356,7 +2469,7 @@ function renderToolbar(){
     <button onclick="document.getElementById('tpl-file').click()">テンプレートを読み込み</button>
     <input id="tpl-file" type="file" accept="application/json" style="display:none" onchange="handleImportTemplateFile(this)">
     <button onclick="exportTemplate()">テンプレートをダウンロード</button>
-    <button onclick="listMyTemplates()">Driveの一覧を開く</button>
+    <button onclick="openDriveBrowser()">Driveの一覧を開く</button>
     ${templateDeleteBtn}
   </div>
   <div class="toolbar-row">
@@ -4357,7 +4470,10 @@ function handleImportCharacterFile(input){
 }
 /* ---------- 初期化 ----------
  * URLパラメータで画面を振り分ける:
- * - ?tpl=author: テンプレートトップ画面(テンプレート作成の入口)
+ * - ?tpl=author: 統合トップ画面('top')。2026-09-22の画面統合以前は
+ *   テンプレート専用のトップ画面だったが、現在はパラメータ無し時と
+ *   同じ共通トップ画面を表示する(テンプレート作成の入口として機能する
+ *   URLの意味自体は維持)
  * - ?char=<共有トークン>(?tpl=は無くてもよい): 共有されたキャラクターを
  *   読み取り専用で表示する(キャラクター表示画面)。テンプレートは
  *   ?tpl=があればまずDrive上の最新版を試し、無い/失敗したらキャラクター
@@ -4365,10 +4481,19 @@ function handleImportCharacterFile(input){
  *   (resolveCharacterTemplate参照)
  * - ?tpl=<共有トークン>のみ: 共有されたテンプレートを読み込み、
  *   自分のキャラクターをこれから作る(キャラクター編集画面・非ログイン)
- * - パラメータ無し: キャラクタートップ画面(既定)
+ * - パラメータ無し: 統合トップ画面(既定)
  */
 function blankCharacter(){
   return { values: {}, sets: {} };
+}
+// ページ読み込み時、httpOnly Cookie(セッション)が有効なら無言でログイン
+// 状態を復元する。初回描画をブロックしないよう、bootstrap側ではawaitせず
+// 呼びっぱなしにする(失敗しても今まで通り「未ログイン」のままなだけで、
+// 何も壊れない)。成功したら再描画してツールバーの表示を更新する。
+function attemptSilentSessionRestore(){
+  tryRefreshAccessToken().then((ok) => {
+    if(ok) render({ skipDirty: true });
+  });
 }
 async function bootstrap(){
   const params = new URLSearchParams(window.location.search);
@@ -4403,18 +4528,20 @@ async function bootstrap(){
     }catch(e){
       console.error(e);
       state.readOnly = false;
-      state.screen = 'characterTop';
+      state.screen = 'top';
       state.loadError = e.message;
     }
     render();
     initGoogle();
+    attemptSilentSessionRestore();
     return;
   }
 
   if(tpl === 'author'){
-    state.screen = 'templateTop';
+    state.screen = 'top';
     render();
     initGoogle();
+    attemptSilentSessionRestore();
     return;
   }
 
@@ -4432,17 +4559,19 @@ async function bootstrap(){
       console.error(e);
       state.templateFileId = null;
       state.templateShareToken = '';
-      state.screen = 'characterTop';
+      state.screen = 'top';
       state.loadError = e.message;
     }
     render({ skipDirty: true });
     initGoogle();
+    attemptSilentSessionRestore();
     return;
   }
 
-  state.screen = 'characterTop';
+  state.screen = 'top';
   render();
   initGoogle();
+  attemptSilentSessionRestore();
 }
 // タブを閉じる・再読み込みする・別サイトへ移動する等をした場合のみ、
 // ブラウザ標準の確認ダイアログを出す(アプリ内の画面遷移はページ遷移を
