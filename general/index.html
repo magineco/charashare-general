@@ -389,11 +389,15 @@
   .author-fields-row{ display:flex; gap:12px; margin-top:8px; }
   .author-fields-row label{ flex:1 1 0; min-width:0; }
   .share-url{ display:flex; gap:6px; margin:8px 0 0; flex-wrap:wrap; }
-  /* 一覧画面で「共有中」かどうかを示すバッジ(フィフス版と同じ見た目)。 */
+  /* 一覧画面で「共有中」かどうかを示すバッジ(フィフス版と同じ見た目)。
+     テンプレート一覧・キャラクター一覧ともバッジの直後に名前/プレビュー
+     文字列が続くマークアップのため、後ろに余白を入れて詰まって見えない
+     ようにする(2026-09-22、margin-leftのままだと後続文字との間隔が
+     開かない不具合だった)。 */
   .share-badge{
     display:inline-block; font-family:'IBM Plex Mono',monospace; font-size:0.8rem;
     color:var(--accent); border:1px solid var(--accent); border-radius:3px;
-    padding:1px 6px; margin-left:6px;
+    padding:1px 6px; margin-right:6px;
   }
   .share-url input{ flex:1 1 auto; min-width:0; font-family:'IBM Plex Mono',monospace; }
   /* キャラクター一覧の行を名前だけで見分けられるよう添える、先頭画像の
