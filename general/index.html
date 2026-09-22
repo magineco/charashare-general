@@ -107,7 +107,7 @@
   input[type="checkbox"]:checked{ background:var(--accent); border-color:var(--accent); }
   input[type="checkbox"]:checked::after{
     content:''; position:absolute; left:7px; top:3px; width:6px; height:11px;
-    border:solid var(--bg); border-width:0 2px 2px 0; transform:rotate(45deg);
+    border:solid var(--surface); border-width:0 2px 2px 0; transform:rotate(45deg);
   }
   /* シート上の真偽値インプット(renderFieldInput、複数個並ぶ場合がある)は、
      <input>自身への::afterではなく隣接する<span>(.checkbox-box)に見た目を
@@ -135,7 +135,7 @@
   }
   .checkbox-visual input[type="checkbox"]:checked + .checkbox-box::after{
     content:''; position:absolute; left:7px; top:3px; width:6px; height:11px;
-    border:solid var(--bg); border-width:0 2px 2px 0; transform:rotate(45deg);
+    border:solid var(--surface); border-width:0 2px 2px 0; transform:rotate(45deg);
   }
   /* 真偽値インプットは、他の入力欄(幅いっぱいの箱)と見た目を揃えるため、
      入力欄と同じ枠線・背景・角丸を持つ<div>(.checkbox-frame)でチェック
@@ -366,9 +366,17 @@
   .danger-btn{ color:var(--danger); border-color:var(--danger); }
   /* 共有は「リンクを知っている人なら誰でも見られる」という特別な操作
      (取り消しにくい・第三者に影響する)なので、他のボタンとは見た目を
-     はっきり変える。 */
-  .share-btn{ background:var(--accent); color:var(--bg); border-color:var(--accent); font-weight:600; }
-  .share-btn:hover{ background:var(--accent); border-color:var(--accent); }
+     はっきり変える。文字色は、暗い配色+白いカテゴリー背景のような
+     組み合わせでも読めるよう、ページ背景(--bg)ではなくカテゴリー背景
+     (--surface)を使う(2026-09-22)。 */
+  .share-btn{
+    background:var(--accent); color:var(--surface); border-color:var(--accent); font-weight:600;
+  }
+  /* 強調色をaccent1色に統合した(2026-09-22)ことで、ホバー時の色変更
+     (以前はaccentBrightへ差し替えていた)が地色と同色になり無効化して
+     いた。色を増やさずにホバーの手応えを出すため、色ではなく明るさ・
+     浮き上がりのデザイン変化にした。 */
+  .share-btn:hover{ filter:brightness(1.12); transform:translateY(-1px); box-shadow:0 3px 10px rgba(0,0,0,0.3); }
   .share-btn:disabled{ background:var(--surface-2); color:var(--muted); border-color:var(--line); font-weight:400; cursor:not-allowed; }
   .icon-btn{ padding:2px 8px; }
   /* フィフス版と同じ、常時インライン表示の共有パネル(トグル式モーダルは
@@ -544,7 +552,9 @@
     background:var(--accent); color:var(--bg); border-color:var(--accent);
     font-weight:600; padding:8px 20px; font-size:1.05rem;
   }
-  .gate-primary-btn:hover{ background:var(--accent); border-color:var(--accent); }
+  /* .share-btnと同じ理由(強調色1色化でホバーの色変更が無効化していた)で、
+     色ではなく明るさ・浮き上がりのデザイン変化にした(2026-09-22)。 */
+  .gate-primary-btn:hover{ filter:brightness(1.12); transform:translateY(-1px); box-shadow:0 3px 10px rgba(0,0,0,0.3); }
   .gate-note{ margin-top:14px; color:var(--muted); font-size:0.85rem; max-width:50ch; }
   .gate-list{ max-width:760px; margin:40px auto; padding:0 20px 40px; }
   .gate-list-auth{ display:flex; justify-content:flex-end; align-items:center; gap:10px; margin-bottom:16px; }
