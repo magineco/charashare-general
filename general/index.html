@@ -894,6 +894,16 @@ async function exchangeAuthCode(code, redirectUri){
   }
   return res.json();
 }
+// ログイン完了後(またはログイン済みの状態でloginAndThen()が呼ばれた時)に
+// 実行する操作の振り分け。handleAuthCodeResponse()とloginAndThen()の
+// 両方から呼ばれる共通処理として切り出している。
+async function runPendingLoginAction(action){
+  if(action === 'saveTemplate') await saveTemplateToDrive();
+  else if(action === 'openDriveBrowser') openDriveBrowser();
+  else if(action === 'saveCharacter') await saveCharacterToDrive();
+  else if(action === 'shareTemplate') await shareTemplate();
+  else if(action === 'shareCharacter') await shareCharacter();
+}
 async function handleAuthCodeResponse(resp, expectedState){
   const pendingAction = state.pendingLoginAction;
   state.pendingLoginAction = null;
@@ -916,11 +926,7 @@ async function handleAuthCodeResponse(resp, expectedState){
     const tokenData = await exchangeAuthCode(resp.code, location.origin);
     state.accessToken = tokenData.access_token;
     setStatus('ログインしました。', 'ok');
-    if(pendingAction === 'saveTemplate') await saveTemplateToDrive();
-    else if(pendingAction === 'openDriveBrowser') openDriveBrowser();
-    else if(pendingAction === 'saveCharacter') await saveCharacterToDrive();
-    else if(pendingAction === 'shareTemplate') await shareTemplate();
-    else if(pendingAction === 'shareCharacter') await shareCharacter();
+    await runPendingLoginAction(pendingAction);
   }catch(e){
     console.error(e);
     setStatus(e.message, 'err');
@@ -946,6 +952,15 @@ function login(){
   codeClient.requestCode();
 }
 function loginAndThen(action){
+  // 無言セッション復元(attemptSilentSessionRestore)で既にログイン済みの
+  // 場合、Googleの認証フローを経由せずそのまま目的の操作を実行する
+  // (2026-09-22、「Googleでログイン」ボタンを押すたびに毎回フルの
+  // 再認証が走ってしまい、実質的に再ログインを強いられていた不具合の
+  // 修正)。
+  if(state.accessToken){
+    runPendingLoginAction(action);
+    return;
+  }
   if(!window.google || !google.accounts || !google.accounts.oauth2){
     setStatus('Googleログインの準備中です。少し待ってからもう一度お試しください。', 'err');
     return;
