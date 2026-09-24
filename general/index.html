@@ -3823,15 +3823,30 @@ function changeFieldType(id, newType){
 }
 function changeNumberKind(id, kindValue){
   const f = findFrame('field', id); if(!f) return;
+  const oldRefType = f.refType;
   if(kindValue === 'input'){
     f.kind = 'input';
     delete f.refType; delete f.terms; delete f.dataList; delete f.match; delete f.output; delete f.set;
   } else {
     f.kind = 'ref'; f.refType = kindValue;
     delete f.defaultValue;
-    if(kindValue === 'formula' && !f.terms) f.terms = [];
+    // formula(項ごとの{op,field|value}オブジェクトの配列)とaggregateSum
+    // (対象フィールドIDそのものの文字列配列)はどちらも`terms`という
+    // 名前を使うが、形式が全く異なる。切り替え元の種類が違う場合は
+    // 必ずリセットする(2026-09-24修正: 「集計」で対象を選んだ状態から
+    // 「計算式」に戻すと、文字列配列がそのまま残ってしまい、
+    // renderFormulaEditor()/setFormulaTermMode()が項を{op,...}オブジェクト
+    // として扱おうとして例外を投げ、設定パネルの表示がそこで止まって
+    // しまう不具合があった)。
+    if(kindValue === 'formula'){
+      if(oldRefType !== 'formula') f.terms = [];
+    } else if(kindValue === 'aggregateSum'){
+      if(!f.set) f.set = '';
+      if(oldRefType !== 'aggregateSum') f.terms = [];
+    } else {
+      delete f.terms;
+    }
     if(kindValue === 'lookup'){ if(!f.dataList) f.dataList = ''; if(!f.match) f.match = []; if(!f.output) f.output = ''; }
-    if(kindValue === 'aggregateSum'){ if(!f.set) f.set = ''; if(!f.terms) f.terms = []; }
   }
   render();
 }
@@ -3990,8 +4005,14 @@ function renderAggregateEditor(f){
   let html = `<label><span>対象のインプットセット</span><select onchange="setAggregateSet('${f.id}',this.value)"><option value="">(選択)</option>${setOptions}</select></label>`;
   const st = sets.find(s => s.id === f.set);
   if(st){
-    const numFields = st.fields.filter(sf => sf.type === 'number' && sf.id !== f.id);
-    html += `<p class="muted small">合計対象(複数選ぶと各行で掛け算してから合計)</p>` + numFields.map(nf => {
+    // 数値だけでなくチェックボックス(真偽値)も対象に選べるようにしている
+    // (2026-09-24)。evalAggregateSum()は各項をNumber(v)||0で数値化する
+    // ため、チェックボックスはtrue→1/false→0としてそのまま掛け算に使え、
+    // 「値×チェックボックス」でチェックが入っている行だけを合計する、
+    // という使い方ができる。
+    const numFields = st.fields.filter(sf => (sf.type === 'number' || sf.type === 'boolean') && sf.id !== f.id);
+    html += `<p class="muted small">合計対象(複数選ぶと各行で掛け算してから合計。チェックボックスは
+      チェック時1・未チェック時0として掛け算されます)</p>` + numFields.map(nf => {
       const checked = (f.terms || []).includes(nf.id);
       return checkboxToggleHtml(checked, `onchange="toggleAggregateTerm('${f.id}','${nf.id}',this.checked)"`, esc(nf.label));
     }).join('');
