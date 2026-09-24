@@ -232,15 +232,21 @@
     min-height:calc(1.5em + 12px);
   }
   /* キャラクター編集/閲覧画面(mode-view、テンプレート構造編集中は
-     対象外)では、計算式・参照などの読み取り専用の欄も通常の入力欄と
-     同じ背景(surface-2)に揃える。背景色がまちまちで分かりにくいという
-     指摘を受けた(2026-09-21)。特に明るい配色プリセット(ホワイト+
-     ブラウン等)では、カテゴリー背景(surface)と枠線(line)の差が小さく、
-     計算式の欄だけ枠がほぼ見えなくなっていた。テンプレート編集画面
-     (mode-edit)は対象外とし、従来通り「カテゴリーに溶け込む=編集できない
-     欄」という区別を残す(構造を設計する作者にとっては引き続き意味の
-     ある区別のため)。 */
-  .mode-view .field-value.ref-value{ background:var(--surface-2); }
+     対象外)では、計算式・参照などの読み取り専用の欄の背景を、カテゴリー
+     背景(surface)と入力欄の背景(surface-2)のちょうど中間にする
+     (2026-09-25)。以前は入力欄と全く同じsurface-2に揃えていたが
+     (2026-09-21、明るい配色プリセットでカテゴリー背景と枠線の差が
+     小さく枠がほぼ見えなくなっていた問題への対応)、それだと「入力できる
+     欄」と「読み取り専用の欄」の区別が付かなくなってしまうという指摘を
+     受けた。カテゴリーに完全に溶け込ませる(枠が見えにくい)のでも、
+     入力欄と全く同じ(区別が付かない)のでもない、両方の問題を避ける
+     中間色を採用している。テンプレートごとに変わる2色から動的に中間色を
+     計算する必要があるため、固定の16進数値ではなくcolor-mix()を使う
+     (対応ブラウザ: Chrome111+/Firefox113+/Safari16.2+、2023年以降の
+     主要ブラウザで利用可能)。テンプレート編集画面(mode-edit)は対象外の
+     まま、従来通り「カテゴリーに溶け込む=編集できない欄」という区別を
+     残す(構造を設計する作者にとっては引き続き意味のある区別のため)。 */
+  .mode-view .field-value.ref-value{ background:color-mix(in srgb, var(--surface), var(--surface-2)); }
   /* 参照が切れている枠(削除済みのデータリスト・列・入力枠・インプット
      セットを参照したまま)は、赤で目立たせる。 */
   .frame-field.is-broken .field-label{ color:var(--danger); }
@@ -2501,6 +2507,15 @@ function renderTemplateAuthorNote(){
   if(!parts.length) return '';
   return `<p class="sheet-author-note muted small">${esc(parts.join(' / '))}</p>`;
 }
+// characterEditor(値入力画面)・characterView(共有閲覧画面)の両方の
+// ツールバー左端に出す、テンプレート名の表示(2026-09-19にcharacterView
+// へ追加、2026-09-25にcharacterEditorへも追加)。見出しと同じFraunces
+// 書体・アクセントカラーで、どのシステム向けのキャラクターを編集/閲覧
+// しているか一目で分かるようにする。
+function tplViewTitleHtml(){
+  const tplName = (state.template.meta && state.template.meta.name) || '(名称未設定のテンプレート)';
+  return `<span class="tpl-view-title">${esc(tplName)}</span>`;
+}
 function renderToolbar(){
   const statusHtml = state.statusMsg
     ? `<span class="status-line status-${esc(state.statusKind)}">${esc(state.statusMsg)}</span>` : '';
@@ -2509,10 +2524,8 @@ function renderToolbar(){
   if(state.screen === 'characterView'){
     const chatBtn = ensureChatOrder().length
       ? `<button class="share-btn" onclick="toggleFloatingChatPalette()">チャットパレットを表示</button>` : '';
-    const tplName = (state.template.meta && state.template.meta.name) || '(名称未設定のテンプレート)';
-    const titleHtml = `<span class="tpl-view-title">${esc(tplName)}</span>`;
     return `<header class="toolbar">
-      ${titleHtml}
+      ${tplViewTitleHtml()}
       <span class="muted">これは共有された閲覧専用のキャラクターです。</span>
       <span class="spacer"></span>
       ${statusHtml}
@@ -2530,6 +2543,7 @@ function renderToolbar(){
     const chatBtn = ensureChatOrder().length
       ? `<button class="share-btn" onclick="toggleFloatingChatPalette()">チャットパレットを表示</button>` : '';
     return `<header class="toolbar">
+      ${tplViewTitleHtml()}
       <span class="spacer"></span>
       ${statusHtml}
       <button onclick="saveCharacterToDrive()">Driveに保存</button>
