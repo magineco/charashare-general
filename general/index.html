@@ -1912,6 +1912,24 @@ function normalizeListFilterValues(){
     }
   }
 }
+// インプットセットは実用上「1行も無い」状態をほぼ想定しないため
+// (2026-09-25、ユーザー指定)、まだ一度も行を追加/削除していない
+// (state.character.sets[id]がundefinedの)セットには、render()のたびに
+// 初期状態として1行分だけ自動で追加する。ユーザーが明示的に全行を
+// 削除した場合、removeSetRow()は配列そのものは残す(.splice()するだけ)
+// ためundefinedにはならず空配列([])のまま残る。この「undefined(未初期化)
+// か[](意図的に空にした)か」の違いによって、「初期状態としては1行ある
+// 方が自然だが、編集の途中で0行になるのはあり得る」という区別を実現
+// している。
+function ensureInitialSetRows(){
+  for(const s of state.template.sections){
+    for(const st of s.sets){
+      if(state.character.sets[st.id] === undefined){
+        state.character.sets[st.id] = [buildDefaultSetRow(st)];
+      }
+    }
+  }
+}
 // 集計(aggregateSum)のtermsは、以前は対象フィールドIDの文字列配列
 // (「全項を掛け算してから合計」という単純な仕様)だったが、2026-09-24に
 // formulaと同じ{op,field|value}オブジェクトの配列へ変更した(四則演算
@@ -2004,6 +2022,7 @@ function render(opts){
   if(!(opts && opts.skipDirty) && (state.screen === 'templateEditor' || state.screen === 'characterEditor')){
     state.dirty = true;
   }
+  ensureInitialSetRows();
   normalizeListFilterValues();
   normalizeLegacyAggregateTerms();
   const scrollY = window.scrollY;
@@ -3433,17 +3452,20 @@ function setFieldValueByScope(fieldId, scopeKey, value){
     state.character.values[fieldId] = value;
   }
 }
-function addSetRow(setId){
-  const st = findFrame('set', setId);
-  if(!st) return;
-  if(!state.character.sets[setId]) state.character.sets[setId] = [];
+function buildDefaultSetRow(st){
   const row = {};
   st.fields.forEach(f => {
     row[f.id] = f.defaultValue !== undefined
       ? f.defaultValue
       : (f.type === 'number' ? 0 : f.type === 'boolean' ? false : '');
   });
-  state.character.sets[setId].push(row);
+  return row;
+}
+function addSetRow(setId){
+  const st = findFrame('set', setId);
+  if(!st) return;
+  if(!state.character.sets[setId]) state.character.sets[setId] = [];
+  state.character.sets[setId].push(buildDefaultSetRow(st));
   render();
 }
 function moveSetRow(setId, idx, dir){
@@ -3577,7 +3599,12 @@ function addSection(){
 }
 function addSetDef(sectionId){
   const s = findFrame('section', sectionId); if(!s) return;
-  s.sets.push({ id: uid('set'), label: '新しいインプットセット', fields: [] });
+  // インプットを1つも持たないインプットセットは実用上ほぼ想定しない
+  // (編集の途中で一時的に0個になるのは構わないが、新規作成した直後の
+  // 初期状態が0個だと毎回「+ セットにインプットを追加」を押す一手間が
+  // 必ず発生していたため)、追加した時点で最初から1つインプットが
+  // 入っている状態にする(2026-09-25)。
+  s.sets.push({ id: uid('set'), label: '新しいインプットセット', fields: [{ id: uid('f'), label: '新しいインプット', type: 'string', kind: 'input' }] });
   render();
 }
 function addFieldToSection(sectionId){
