@@ -1721,7 +1721,7 @@ function fieldDirectRefs(f){
   if(f.kind === 'ref'){
     if(f.refType === 'formula') refs.push(...(f.terms || []).map(t => t.field).filter(Boolean));
     if(f.refType === 'lookup' || f.refType === 'listFilter') refs.push(...(f.match || []).map(m => m.field).filter(Boolean));
-    if(f.refType === 'aggregateSum') refs.push(...(f.terms || []));
+    if(f.refType === 'aggregateSum') refs.push(...(f.terms || []).map(t => t.field).filter(Boolean));
   }
   return refs;
 }
@@ -1912,18 +1912,42 @@ function normalizeListFilterValues(){
     }
   }
 }
+// 集計(aggregateSum)のtermsは、以前は対象フィールドIDの文字列配列
+// (「全項を掛け算してから合計」という単純な仕様)だったが、2026-09-24に
+// formulaと同じ{op,field|value}オブジェクトの配列へ変更した(四則演算
+// 対応のため)。公開済みの既存テンプレートが古い文字列配列のままでも
+// 壊れないよう、render()のたびに古い形式を検出して新しい形式へその場で
+// 変換する(1度変換すれば以降は何もしない、非破壊的なマイグレーション)。
+// 「先頭は演算子なし、以降は×」という変換は、以前の「全項を掛け算して
+// から合計」という挙動と完全に等価。aggregateSumはインプットセットの
+// 外(s.fields側)にしか置けない設計のため、st.fields側は見なくてよい。
+function normalizeLegacyAggregateTerms(){
+  for(const s of state.template.sections){
+    for(const f of s.fields){
+      if(f.refType === 'aggregateSum' && Array.isArray(f.terms) && f.terms.length && typeof f.terms[0] === 'string'){
+        f.terms = f.terms.map((fieldId, i) => ({ op: i === 0 ? null : '×', field: fieldId }));
+      }
+    }
+  }
+}
+// 集計(aggregateSum)は2026-09-24に「各項を掛け算してから合計」という
+// 単純な仕様から、計算式(formula)と同じ四則演算(+-×÷↑÷↓%、
+// 優先順位も同じ)を各行ごとに適用してから全行を合計する仕様に変更した。
+// f.termsの形式もformulaと共通(項ごとの{op,field|value}オブジェクトの
+// 配列)にしたため、行ごとの計算はevalFormula()をそのまま再利用できる
+// (evalFormula自体はf.refTypeを見ないため、fがaggregateSumでも
+// 問題なく動く)。いずれかの行でゼロ除算が起きた場合は、その行だけを
+// 0として扱わず合計全体をDIV_BY_ZERO_ERRORにする(一部の行が壊れて
+// いるのに合計だけは正常な数値に見えてしまう事故を避けるため)。
 function evalAggregateSum(f, visiting){
   const rows = (state.character.sets && state.character.sets[f.set]) || [];
   let total = 0;
-  rows.forEach((row, idx) => {
-    const rowScope = { setId: f.set, rowIndex: idx, row };
-    let product = null;
-    for(const termId of (f.terms || [])){
-      const v = Number(resolveTermValue(termId, rowScope, visiting)) || 0;
-      product = product === null ? v : product * v;
-    }
-    total += (product === null ? 0 : product);
-  });
+  for(let idx = 0; idx < rows.length; idx++){
+    const rowScope = { setId: f.set, rowIndex: idx, row: rows[idx] };
+    const rowResult = evalFormula(f, rowScope, visiting);
+    if(rowResult === DIV_BY_ZERO_ERROR) return DIV_BY_ZERO_ERROR;
+    total += rowResult;
+  }
   return total;
 }
 
@@ -1981,6 +2005,7 @@ function render(opts){
     state.dirty = true;
   }
   normalizeListFilterValues();
+  normalizeLegacyAggregateTerms();
   const scrollY = window.scrollY;
   const restoreFocus = captureActiveFieldFocus(app);
   app.className = state.mode === 'edit' ? 'mode-edit' : 'mode-view';
@@ -2760,8 +2785,7 @@ function getFieldReferenceErrors(f){
     const st = findFrame('set', f.set);
     if(!st){ missing(f.set); return errors; }
     (f.terms || []).forEach(t => {
-      const sf = st.fields.find(x => x.id === t);
-      if(!sf) missing(t);
+      if(t.field && !st.fields.some(x => x.id === t.field)) missing(t.field);
     });
     return errors;
   }
@@ -3998,6 +4022,17 @@ function setListFilterMatch(id, key, fieldId){
   if(ex) ex.field = fieldId; else f.match.push({ key, field: fieldId });
   render();
 }
+// 集計(aggregateSum)は2026-09-24に、計算式(formula)と同じ四則演算
+// (+-×÷↑÷↓%)を各行に適用してから全行を合計する仕様に変更した。
+// termsの形式・項の編集UIはformulaと共通(項ごとの{op,field|value}
+// オブジェクトの配列)なので、項の追加・削除・演算子/参照先の変更は
+// formula用の関数(addFormulaTerm/setFormulaTermMode/updateFormulaTerm/
+// removeFormulaTerm)をそのまま流用している(これらはf.refTypeを見ない
+// 汎用の項操作関数のため)。renderAggregateEditor()側で異なるのは、
+// 参照候補を「選んだインプットセット自身が持つ数値・チェックボックスの
+// 枠」に限定している点だけ(集計は「そのセットの各行を計算してから
+// 合計する」機能のため、行ごとに値が変わらないセット外の枠を候補に
+// 混ぜる意味が薄いと判断した)。
 function renderAggregateEditor(f){
   const sets = [];
   for(const s of state.template.sections) for(const st of s.sets) sets.push(st);
@@ -4005,30 +4040,46 @@ function renderAggregateEditor(f){
   let html = `<label><span>対象のインプットセット</span><select onchange="setAggregateSet('${f.id}',this.value)"><option value="">(選択)</option>${setOptions}</select></label>`;
   const st = sets.find(s => s.id === f.set);
   if(st){
-    // 数値だけでなくチェックボックス(真偽値)も対象に選べるようにしている
-    // (2026-09-24)。evalAggregateSum()は各項をNumber(v)||0で数値化する
-    // ため、チェックボックスはtrue→1/false→0としてそのまま掛け算に使え、
-    // 「値×チェックボックス」でチェックが入っている行だけを合計する、
-    // という使い方ができる。
-    const numFields = st.fields.filter(sf => (sf.type === 'number' || sf.type === 'boolean') && sf.id !== f.id);
-    html += `<p class="muted small">合計対象(複数選ぶと各行で掛け算してから合計。チェックボックスは
-      チェック時1・未チェック時0として掛け算されます)</p>` + numFields.map(nf => {
-      const checked = (f.terms || []).includes(nf.id);
-      return checkboxToggleHtml(checked, `onchange="toggleAggregateTerm('${f.id}','${nf.id}',this.checked)"`, esc(nf.label));
+    // チェックボックス(真偽値)も対象に選べるようにしている(2026-09-24)。
+    // evalFormula()の各項はNumber(v)||0で数値化するため、チェックボックス
+    // はtrue→1/false→0としてそのまま計算式に使え、「値×チェックボックス」
+    // でチェックが入っている行だけを合計に含める、という使い方ができる。
+    const candidates = st.fields.filter(sf => (sf.type === 'number' || sf.type === 'boolean') && sf.id !== f.id);
+    const rows = (f.terms || []).map((t, i) => {
+      const opSelect = i === 0 ? '' : `<select onchange="updateFormulaTerm('${f.id}',${i},'op',this.value)">
+        <option value="+" ${t.op === '+' ? 'selected' : ''}>+</option>
+        <option value="-" ${t.op === '-' ? 'selected' : ''}>−</option>
+        <option value="×" ${t.op === '×' ? 'selected' : ''}>×</option>
+        <option value="÷↑" ${t.op === '÷↑' ? 'selected' : ''}>÷切り上げ</option>
+        <option value="÷↓" ${t.op === '÷↓' ? 'selected' : ''}>÷切り捨て</option>
+        <option value="%" ${t.op === '%' ? 'selected' : ''}>%(余り)</option>
+      </select>`;
+      const isLiteral = Object.prototype.hasOwnProperty.call(t, 'value');
+      const modeSelect = `<select onchange="setFormulaTermMode('${f.id}',${i},this.value)">
+        <option value="field" ${!isLiteral ? 'selected' : ''}>枠を参照</option>
+        <option value="value" ${isLiteral ? 'selected' : ''}>値を直接入力</option>
+      </select>`;
+      const valueControl = isLiteral
+        ? `<input type="number" step="any" value="${t.value ?? 0}" onchange="updateFormulaTerm('${f.id}',${i},'value',Number(this.value)||0)">`
+        : `<select onchange="updateFormulaTerm('${f.id}',${i},'field',this.value)">
+            <option value="">(選択)</option>
+            ${candidates.map(c => `<option value="${c.id}" ${t.field === c.id ? 'selected' : ''}>${esc(c.label)}</option>`).join('')}
+          </select>`;
+      const zeroDivWarning = (t.op === '÷↑' || t.op === '÷↓' || t.op === '%')
+        ? `<p class="muted small term-warning">⚠ ${isLiteral ? 'この値が' : '参照先の値が'}0になるとゼロ除算エラーになります</p>` : '';
+      return `<div class="term-row">
+        <div class="term-row-head">${opSelect}${modeSelect}<button onclick="removeFormulaTerm('${f.id}',${i})">×</button></div>
+        <div class="term-row-value">${valueControl}</div>
+        ${zeroDivWarning}
+      </div>`;
     }).join('');
+    html += `<div class="formula-editor"><p class="muted small">各行の計算式(行ごとに計算してから、全行の結果を合計します)</p>${rows}<button onclick="addFormulaTerm('${f.id}')">+ 項を追加</button></div>`;
   }
   return html;
 }
 function setAggregateSet(id, setId){
   const f = findFrame('field', id); if(!f) return;
   f.set = setId; f.terms = [];
-  render();
-}
-function toggleAggregateTerm(id, termFieldId, checked){
-  const f = findFrame('field', id); if(!f) return;
-  if(!f.terms) f.terms = [];
-  if(checked){ if(!f.terms.includes(termFieldId)) f.terms.push(termFieldId); }
-  else f.terms = f.terms.filter(t => t !== termFieldId);
   render();
 }
 
