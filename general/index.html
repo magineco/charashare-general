@@ -3383,7 +3383,9 @@ function resolveChatText(f, rowScope, st){
     .replaceAll('[ラベル名]', f.label);
   if(rowScope){
     text = text.replace(/\[#(\d+)\]/g, (m, n) => {
-      const target = st.fields[parseInt(n, 10) - 1];
+      const num = parseInt(n, 10);
+      if(num === 0) return String(rowScope.rowIndex + 1);
+      const target = st.fields[num - 1];
       if(!target) return '';
       const tv = getEffectiveValue(target, rowScope);
       return tv === DIV_BY_ZERO_ERROR ? 'ゼロで割っています' : String(tv ?? '');
@@ -3785,14 +3787,19 @@ function renderPanelBody(kind, f){
 // 作者が内部ID(f_xxxxx)を知らなくても自分自身の値・名称を埋め込める
 // ようにするため(他項目のIDを書かせる既存のchatTemplates[]方式は、
 // 編集UIが無いまま据え置かれていたため今回廃止し、この方式に一本化した)。
-// インプットセットの中の項目は、さらに[#1]のような番号付きトークンも
+// インプットセットの中の項目でも[この値]/[ラベル名]は同様に使える
+// (この項目自身の値・名称)。さらに[#1]のような番号付きトークンも
 // 使える。これは「同じ行の先頭からN番目の項目の値」に置き換わる
 // (例:攻撃セットの1列目が武器名なら[#1]で「ロングソード」等の行ごとの
 // 値を差し込める)。行内の項目を内部IDではなく列の並び順(非技術者でも
 // 数えられる位置)で指定させることで、既存の参照ルールと同様にIDを
 // 意識させない設計にしている。出てくるのはラベル名ではなく値そのものの
 // ため、[ラベル名#N]という表記は紛らわしいという指摘を受け、
-// 2026-09-19に[#N]へ変更した。
+// 2026-09-19に[#N]へ変更した。[#0]は特別扱いで、他の項目を参照せず
+// 「何行目か」を1始まりの数値に置き換える(2026-09-30追加。[#1]と
+// [この値]を同じ内容で書いてしまい値が重複する、という誤用の報告を
+// 受けて調査した際、[ラベル名]がセット内で使えることが分かりにくい
+// ことが根本原因と判明し、設定パネルの説明文にも明記した)。
 function renderChatPaletteEditor(f){
   const st = isFieldInsideSet(f.id);
   const checkbox = checkboxToggleHtml(f.chatEnabled, `onchange="toggleChatPalette('${f.id}',this.checked)"`, 'チャットパレットに出す');
@@ -3802,7 +3809,7 @@ function renderChatPaletteEditor(f){
   // 確定はブロックしない(データリストTSVの列数不一致と同じ、警告のみの方針)。
   const spaceWarning = tpl.includes(' ') ? '' : `<p class="muted small term-warning">⚠ 半角スペースが入っていません(コメント部分が区切れずに出力されます)</p>`;
   const hint = st
-    ? `<p class="muted small">[この値]=この項目の現在の値。[#1]のように書くと、同じ行の先頭から数えて1番目の項目の値に置き換わります(列の並び順で指定します)。</p>`
+    ? `<p class="muted small">[この値]=この項目の現在の値、[ラベル名]=この項目の現在の名称に置き換わります。[#1]のように書くと、同じ行の先頭から数えて1番目の項目の値に置き換わります(列の並び順で指定します)。[#0]と書くと、何行目かを数字にした値となります(一番上を1とします)。</p>`
     : `<p class="muted small">[この値]=この項目の現在の値、[ラベル名]=この項目の現在の名称に置き換わります。</p>`;
   return checkbox
     + `<label><span>出力形式</span><input type="text" value="${escAttr(tpl)}" onchange="updateChatTemplate('${f.id}',this.value)"></label>`
