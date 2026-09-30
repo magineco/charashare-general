@@ -2550,7 +2550,7 @@ function renderToolbar(){
       ${tplViewTitleHtml()}
       <span class="spacer"></span>
       ${statusHtml}
-      <button onclick="saveCharacterToDrive()">Driveに保存</button>
+      <button class="share-btn" onclick="saveCharacterToDrive()">Driveに保存</button>
       ${authHtml}
     </header>
     <div class="toolbar-row">
@@ -2571,7 +2571,7 @@ function renderToolbar(){
     <button class="${state.mode === 'edit' ? '' : 'share-btn'}" onclick="toggleMode()">${state.mode === 'edit' ? '確認画面に切替' : '編集画面に戻す'}</button>
     <span class="spacer"></span>
     ${statusHtml}
-    <button onclick="saveTemplateToDrive()">Driveに保存</button>
+    <button class="share-btn" onclick="saveTemplateToDrive()">Driveに保存</button>
     ${authHtml}
   </header>
   <div class="toolbar-row">
