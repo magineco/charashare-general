@@ -266,7 +266,11 @@
      同じグリッドに乗せる。こうすると別々のdivに分かれていても列の幅が
      ぴったり揃う(行ごとに独立したflexコンテナのままだと、行間で列幅が
      微妙にずれてしまうため)。狭い画面では列が窮屈になるので、
-     .set-table-wrapで横スクロールできるようにしておく。 */
+     .set-table-wrapで横スクロールできるようにしておく。
+     grid-template-columnsは、各項目のwidth(既定1、2026-09-25追加)を
+     fr値としてrenderSetFrame()がインラインstyleで都度組み立てるため、
+     ここでのgrid-template-columns指定は(インラインstyleが無い万一の
+     場合の)フォールバックにすぎない。 */
   .set-table-wrap{ overflow-x:auto; }
   .set-table{
     display:grid; gap:6px 10px; align-items:center;
@@ -3033,7 +3037,12 @@ function renderSetFrame(set){
     ).join('') + '<span class="set-cell-label set-cell-label-spacer"></span>';
     const header = rows.length ? `<div class="set-table-header">${headerCells}</div>` : '';
     const rowsHtml = rows.map((row, idx) => renderSetRow(set, row, idx, rows.length)).join('');
-    body = `<div class="set-table-wrap"><div class="set-table" style="--set-cols:${set.fields.length}">${header}${rowsHtml}</div></div>`;
+    // 各項目のwidth(既定1)をfr値として使い、列ごとの相対的な太さを
+    // 反映したgrid-template-columnsを都度組み立てる(2026-09-25)。
+    // 最低幅(90px)は今まで通り確保しつつ、width比率に応じて余った
+    // スペースを配分する。末尾のautoは↑↓−の操作列。
+    const colTemplate = set.fields.map(f => `minmax(90px, ${Math.max(1, parseInt(f.width) || 1)}fr)`).join(' ') + ' auto';
+    body = `<div class="set-table-wrap"><div class="set-table" style="grid-template-columns:${colTemplate}">${header}${rowsHtml}</div></div>`;
     if(!state.readOnly) addRowBtn = `<button class="add-row-btn" onclick="addSetRow('${set.id}')">+ 行を追加</button>`;
   }
   return `<div class="frame-set ${selected ? 'is-selected' : ''}" ${frameAttrs('set', set.id)}>
@@ -3749,12 +3758,19 @@ function renderPanelBody(kind, f){
     return labelInput + `<p class="muted small">表示画面上でも、各項目をクリックすると編集できます。</p>`;
   }
   if(kind === 'field'){
-    // カテゴリー直下のインプットだけ、横幅(カテゴリーの列数を単位とした
-    // 占有列数)を設定できる。上限は特に設けない。カテゴリーの列数を
+    // カテゴリー直下のインプットは、横幅をカテゴリーの列数を単位とした
+    // 占有列数(span)で設定できる。上限は特に設けない。カテゴリーの列数を
     // 超える値を指定した場合は、描画時に自動でクランプされ1行を占める
-    // 形になる。インプットセットの中の項目は、独自のflex-wrapレイアウト
-    // を使っており列の概念が無いため対象外。
-    const spanInput = isFieldInsideSet(f.id) ? '' : `<label><span>横幅</span><input type="number" min="1" value="${f.span || 1}" onchange="applyPatch('field','${f.id}',{span:Math.max(1,parseInt(this.value)||1)})"></label>`;
+    // 形になる。
+    // インプットセットの中の項目は、表(.set-table、CSS Grid)の列の
+    // 相対的な太さをwidthで設定できる(2026-09-25追加、既定値1)。
+    // spanとは意味が異なる(spanは「固定の列数のうち何列分占有するか」、
+    // widthは「fr単位での相対的な太さ」)ため別のプロパティ名にしている。
+    // renderSetFrame()がstate.character.sets[]のテーブル描画時に、
+    // 各項目のwidthをそのままgrid-template-columnsのfr値として使う。
+    const spanInput = isFieldInsideSet(f.id)
+      ? `<label><span>横幅(セット内での相対的な太さ)</span><input type="number" min="1" value="${f.width || 1}" onchange="applyPatch('field','${f.id}',{width:Math.max(1,parseInt(this.value)||1)})"></label>`
+      : `<label><span>横幅</span><input type="number" min="1" value="${f.span || 1}" onchange="applyPatch('field','${f.id}',{span:Math.max(1,parseInt(this.value)||1)})"></label>`;
     // チャットパレット出力は、値を文中にそのまま埋め込む用途に馴染まない
     // 表・画像型を除いて、インプットセットの中の項目も含め全ての型で
     // 設定できる(セット内は行ごとに繰り返し出力される。後述の
