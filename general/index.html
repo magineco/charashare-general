@@ -3637,14 +3637,18 @@ function addFieldToSection(sectionId){
   if(!s.fields) s.fields = [];
   const f = { id: uid('f'), label: '新しいインプット', type: 'string', kind: 'input', span: 1 };
   s.fields.push(f);
-  if(!state.selection) state.selection = { kind: 'field', id: f.id };
+  // 「+ インプットを追加」は、追加という操作そのものが「次にこれを
+  // 設定したい」という明確な意図の表明なので、他の枠を編集中でも
+  // 常に追加した項目の設定パネルへ切り替える(2026-09-30、addSection()等の
+  // 「他を編集中なら邪魔しない」という既存方針とは異なる扱いにしている)。
+  state.selection = { kind: 'field', id: f.id };
   render();
 }
 function addFieldToSet(setId){
   const st = findFrame('set', setId); if(!st) return;
   const f = { id: uid('f'), label: '新しいインプット', type: 'string', kind: 'input' };
   st.fields.push(f);
-  if(!state.selection) state.selection = { kind: 'field', id: f.id };
+  state.selection = { kind: 'field', id: f.id };
   render();
 }
 function removeFrame(kind, id){
