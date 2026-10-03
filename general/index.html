@@ -1940,6 +1940,38 @@ function ensureInitialSetRows(){
     }
   }
 }
+// 初期値(defaultValue)のままの項目も、キャラクターの値(values/sets)として
+// 実際に保存しておく(2026-10-03)。以前は未入力の項目はvaluesに何も持たず、
+// 表示のたびに(getEffectiveValue)テンプレート側のdefaultValueへ
+// フォールバックしていたため、テンプレート作者が後から初期値を変えると、
+// 初期値のままだった既存キャラクターの値まで書き換わってしまう問題が
+// あった。ensureInitialSetRows()と同様にキャラクター編集画面の描画の
+// たびに呼び、まだ値が無い(undefined/null)項目だけを現在のdefaultValue
+// で埋める。一度埋まれば以降はキャラクター自身の値として固定され、
+// 保存・共有・パーティービュー等の他ツールでもそのまま読める。
+// - テンプレート編集画面の確認(プレビュー)用キャラクターには適用しない
+//   (作者が初期値を変えた結果をプレビューで確認できなくなるため)
+// - 値を空にした場合は''/0/falseが明示的に入るためundefinedに戻らず、
+//   再び初期値で埋め直されることは無い
+// - 1つの枠に複数のチェックボックスを持つ真偽値(checkboxCount>1)は、
+//   表示側がdefaultValueを使わない(真偽値の配列で持つ)ため対象外
+function materializeDefaultValues(){
+  if(state.screen !== 'characterEditor') return;
+  const fill = (store, f) => {
+    if(f.kind !== 'input' || f.defaultValue === undefined) return;
+    if(f.type === 'boolean' && checkboxCountOf(f) > 1) return;
+    if(store[f.id] === undefined || store[f.id] === null) store[f.id] = f.defaultValue;
+  };
+  if(!state.character.values) state.character.values = {};
+  for(const s of state.template.sections){
+    for(const f of s.fields) fill(state.character.values, f);
+    for(const st of s.sets){
+      for(const row of (state.character.sets[st.id] || [])){
+        if(row) for(const f of st.fields) fill(row, f);
+      }
+    }
+  }
+}
 // 集計(aggregateSum)のtermsは、以前は対象フィールドIDの文字列配列
 // (「全項を掛け算してから合計」という単純な仕様)だったが、2026-09-24に
 // formulaと同じ{op,field|value}オブジェクトの配列へ変更した(四則演算
@@ -2033,6 +2065,7 @@ function render(opts){
     state.dirty = true;
   }
   ensureInitialSetRows();
+  materializeDefaultValues();
   normalizeListFilterValues();
   normalizeLegacyAggregateTerms();
   const scrollY = window.scrollY;
