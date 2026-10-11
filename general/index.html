@@ -1615,6 +1615,22 @@ function esc(s){
   return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 const escAttr = esc;
+// onXXX="fn(...)"属性に、値をJSの文字列リテラルとして渡すための表記。値を
+// JSON.stringifyで安全な文字列リテラルにしてから、HTML属性としてエスケープする
+// （属性値は「HTMLとしてデコードされた後にJSとして解釈される」二重の文脈を
+// 持つため、'${値}'のように直接埋め込むと、値に'や"があると属性やJSを
+// 抜け出せてしまう。2026-10-12、画像エリアのidで実際に確認）。idの形式検査
+// （assertSafeTemplateIds）と二重の防御にしている。
+function jsArg(v){ return esc(JSON.stringify(String(v))); }
+// 外部から読み込んだキャラクター・テンプレートの「画像の値」は、<img src>に
+// そのまま使うと、外部のURLを指定されて表示しただけで通信が飛ぶ（閲覧者の
+// IPの漏れ・追跡）。アプリ自身が作る形式（ファイルを読み込んだDataURL）だけを
+// 通す。
+const SAFE_IMAGE_SRC_PATTERN = /^data:image\/(?:png|jpe?g|gif|webp|avif|bmp|svg\+xml);base64,[A-Za-z0-9+\/=]+$/;
+function safeImageSrc(v){ return (typeof v === 'string' && SAFE_IMAGE_SRC_PATTERN.test(v)) ? v : ''; }
+// テンプレートの配色は16進カラーコードだけを通す。そのままsetPropertyに渡すと、
+// url(外部URL)等を入れられて、外部への通信・画面の偽装に使われる。
+const SAFE_COLOR_PATTERN = /^#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/;
 function uid(prefix){ return prefix + '_' + Math.random().toString(36).slice(2, 9); }
 function sanitizeDomId(s){ return String(s).replace(/[^a-zA-Z0-9_-]/g, '_'); }
 // テンプレート内の各id(section/field/set/dataList/chatFreeText、および
@@ -1639,6 +1655,7 @@ function assertSafeTemplateIds(tpl){
   };
   (tpl.sections || []).forEach(sec => {
     checkId(sec.id);
+    if(sec.imageArea) checkId(sec.imageArea.id); // 2026-10-12: 検査から漏れていた
     (sec.fields || []).forEach(f => checkId(f.id));
     (sec.sets || []).forEach(st => {
       checkId(st.id);
@@ -2280,7 +2297,7 @@ function renderGateListAuthBar(){
   </div>`;
 }
 function renderCharacterListThumb(f){
-  const img = f.preview && f.preview.image;
+  const img = safeImageSrc(f.preview && f.preview.image);
   return img
     ? `<img class="char-list-thumb" src="${escAttr(img)}" alt="">`
     : `<span class="char-list-thumb char-list-thumb-empty"></span>`;
@@ -2776,7 +2793,7 @@ function renderCategoryImageArea(sec){
   const id = sec.imageArea.id;
   const width = sec.imageArea.width || 20;
   const areaStyle = ` style="flex-basis:${width}%"`;
-  const val = state.character.values[id];
+  const val = safeImageSrc(state.character.values[id]);
   // フィフス版のportrait-frameと同じ「枠はoverflow:hidden固定、imgは
   // data-fitに応じて高さ100%/幅auto または 幅100%/高さautoで中央寄せ」
   // 方式。クリックでの切り替えは、実際に触って確かめられる場面
@@ -2784,7 +2801,7 @@ function renderCategoryImageArea(sec){
   // 閲覧専用画面では、クリックしても意味のある操作先が無いため)。
   const interactive = state.mode !== 'edit' && !state.readOnly;
   const preview = val
-    ? `<div class="category-image-frame" data-fit="${getCategoryImageFit(id)}" ${interactive ? `onclick="toggleCategoryImageFit('${id}')"` : ''} title="クリックで上下/左右フィットを切り替え"><img src="${escAttr(val)}" alt=""></div>`
+    ? `<div class="category-image-frame" data-fit="${getCategoryImageFit(id)}" ${interactive ? `onclick="toggleCategoryImageFit(${jsArg(id)})"` : ''} title="クリックで上下/左右フィットを切り替え"><img src="${escAttr(val)}" alt=""></div>`
     : `<p class="muted small">(画像未設定)</p>`;
   if(state.mode === 'edit'){
     return `<div class="category-image-area"${areaStyle}>${preview}<button class="danger-btn" onclick="event.stopPropagation();removeCategoryImageArea('${sec.id}')">画像エリアを削除</button></div>`;
@@ -2793,9 +2810,9 @@ function renderCategoryImageArea(sec){
     return `<div class="category-image-area"${areaStyle}>${preview}</div>`;
   }
   const inputId = 'catimg-file-' + sanitizeDomId(id);
-  const fileInput = `<input type="file" accept="image/*" id="${inputId}" style="display:none" onchange="handleFieldImageFile(this,'${id}','')">`;
+  const fileInput = `<input type="file" accept="image/*" id="${inputId}" style="display:none" onchange="handleFieldImageFile(this,${jsArg(id)},'')">`;
   const changeBtn = `<button type="button" onclick="document.getElementById('${inputId}').click()">${val ? '画像を変更' : '画像を選択'}</button>`;
-  const clearBtn = val ? `<button type="button" onclick="clearFieldImage('${id}','')">削除</button>` : '';
+  const clearBtn = val ? `<button type="button" onclick="clearFieldImage(${jsArg(id)},'')">削除</button>` : '';
   return `<div class="category-image-area"${areaStyle}>${preview}${fileInput}<div class="field-image-actions">${changeBtn}${clearBtn}</div></div>`;
 }
 function addCategoryImageArea(sectionId){
@@ -3002,7 +3019,8 @@ function renderFieldInput(f, rowScope){
   if(f.type === 'image'){
     const scopeKey = fieldScopeKey(rowScope);
     const interactive = state.mode !== 'edit';
-    const preview = val ? `<img src="${escAttr(val)}" class="field-image-preview" alt="">` : `<p class="muted small">(画像未設定)</p>`;
+    const imgSrc = safeImageSrc(val);
+    const preview = imgSrc ? `<img src="${escAttr(imgSrc)}" class="field-image-preview" alt="">` : `<p class="muted small">(画像未設定)</p>`;
     if(!interactive) return `<div class="field-image">${preview}</div>`;
     const inputId = 'img-file-' + sanitizeDomId(f.id + (scopeKey ? '-' + scopeKey : ''));
     const fileInput = `<input type="file" accept="image/*" id="${inputId}" style="display:none" onchange="handleFieldImageFile(this,'${f.id}','${scopeKey}')">`;
@@ -3032,7 +3050,8 @@ function renderReadOnlyFieldValue(f, rowScope){
     return `<div class="checkbox-frame">${boxes}</div>`;
   }
   if(f.type === 'image'){
-    return val ? `<div class="field-image"><img src="${escAttr(val)}" class="field-image-preview" alt=""></div>` : `<div class="field-image"><p class="muted small">(画像未設定)</p></div>`;
+    const imgSrc = safeImageSrc(val);
+    return imgSrc ? `<div class="field-image"><img src="${escAttr(imgSrc)}" class="field-image-preview" alt=""></div>` : `<div class="field-image"><p class="muted small">(画像未設定)</p></div>`;
   }
   if(f.type === 'table'){
     return String(val ?? '').trim() ? tsvTableHtml(val, '') : `<p class="muted small dl-tsv-hint">(表が空です)</p>`;
@@ -3596,7 +3615,10 @@ function toggleColorPanel(){
 function resolveTemplateColors(){
   const custom = (state.template && state.template.colors) || {};
   const out = {};
-  Object.keys(DEFAULT_COLORS).forEach(key => { out[key] = custom[key] || DEFAULT_COLORS[key]; });
+  Object.keys(DEFAULT_COLORS).forEach(key => {
+    const c = custom[key];
+    out[key] = (typeof c === 'string' && SAFE_COLOR_PATTERN.test(c)) ? c : DEFAULT_COLORS[key];
+  });
   return out;
 }
 // document.body自体に対してCSS変数を上書きする。#app要素だけに
