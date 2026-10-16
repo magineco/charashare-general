@@ -1839,6 +1839,22 @@ function resolveRefValue(f, rowScope, visiting){
 // 上位へ伝播させ、鎖のどこでゼロ除算が起きても最終的な表示側
 // (renderFieldInput/renderChatPalette)で検出できるようにしている。
 const DIV_BY_ZERO_ERROR = { divByZero: true };
+// 計算式・集計の各項の値を数値にする(2026-10-16)。数値型の値はそのまま、
+// 真偽値は1/0。文字列(データリスト由来の「1,014.4円」のように数値以外が
+// 混ざりうる値)は、スペース・タブ・カンマを無いものとして取り除いてから、
+// 先頭の符号(+/-)と数字(小数点以下を含む)だけを読み取り、数字以外が
+// 現れたらそこで止める。前ゼロはそのまま数値として読むので無視され、
+// 先頭(符号を除く)が数字でなければ0。スペースを先に取り除くため、
+// 符号と数字の間にスペースがあっても符号は効く。
+// 例: " 01,014.4円5"→1014.4、"- 01,014.4円5"→-1014.4、"円1014"→0、"1,000gp"→1000。
+function toCalcNumber(raw){
+  if(typeof raw === 'number') return Number.isNaN(raw) ? 0 : raw;
+  if(typeof raw === 'boolean') return raw ? 1 : 0;
+  if(typeof raw !== 'string') return 0;
+  const m = raw.replace(/[ \t,]/g, '').match(/^[+-]?\d+(\.\d+)?/);
+  const n = m ? Number(m[0]) : 0;
+  return Number.isFinite(n) ? n : 0;
+}
 // 数式の一般的な優先順位(×÷%を+-より先に計算する)に合わせるため、
 // 単純な左から右への逐次計算ではなく2段階で評価する。まず×÷%を前から
 // 順にたたみ込んで+-だけの列にし、それから+-を合算する(掛け算・割り算
@@ -1851,7 +1867,7 @@ function evalFormula(f, rowScope, visiting){
   for(const t of terms){
     const raw = t.field ? resolveTermValue(t.field, rowScope, visiting) : t.value;
     if(raw === DIV_BY_ZERO_ERROR) return DIV_BY_ZERO_ERROR;
-    values.push(Number(raw) || 0);
+    values.push(toCalcNumber(raw));
   }
   const reducedValues = [values[0]];
   const reducedOps = [];
@@ -4026,11 +4042,10 @@ function renderFormulaEditor(f){
     // (受動知覚の「10+判断力修正値」のような、定数を含む計算式のため)。
     // 両方の属性を同時に持たせると値の優先順位が分かりにくくなるため、
     // 切り替え時にsetFormulaTermMode()でもう片方を必ず消す。
+    // 切り替えUIは、既定を「枠を参照」とし、「値を直接入力」のチェックボックスを
+    // 入れた時だけ値の入力欄にする(2択のため、ドロップダウンから変更した、2026-10-16)。
     const isLiteral = Object.prototype.hasOwnProperty.call(t, 'value');
-    const modeSelect = `<select onchange="setFormulaTermMode('${f.id}',${i},this.value)">
-      <option value="field" ${!isLiteral ? 'selected' : ''}>枠を参照</option>
-      <option value="value" ${isLiteral ? 'selected' : ''}>値を直接入力</option>
-    </select>`;
+    const modeToggle = checkboxToggleHtml(isLiteral, `onchange="setFormulaTermMode('${f.id}',${i},this.checked?'value':'field')"`, '値を直接入力');
     const valueControl = isLiteral
       ? `<input type="number" step="any" value="${t.value ?? 0}" onchange="updateFormulaTerm('${f.id}',${i},'value',Number(this.value)||0)">`
       : `<select onchange="updateFormulaTerm('${f.id}',${i},'field',this.value)">
@@ -4043,7 +4058,7 @@ function renderFormulaEditor(f){
     const zeroDivWarning = (t.op === '÷↑' || t.op === '÷↓' || t.op === '%')
       ? `<p class="muted small term-warning">⚠ ${isLiteral ? 'この値が' : '参照先の値が'}0になるとゼロ除算エラーになります</p>` : '';
     return `<div class="term-row">
-      <div class="term-row-head">${opSelect}${modeSelect}<button onclick="removeFormulaTerm('${f.id}',${i})">×</button></div>
+      <div class="term-row-head">${opSelect}${modeToggle}<button onclick="removeFormulaTerm('${f.id}',${i})">×</button></div>
       <div class="term-row-value">${valueControl}</div>
       ${zeroDivWarning}
     </div>`;
@@ -4164,7 +4179,7 @@ function renderAggregateEditor(f){
   const st = sets.find(s => s.id === f.set);
   if(st){
     // チェックボックス(真偽値)も対象に選べるようにしている(2026-09-24)。
-    // evalFormula()の各項はNumber(v)||0で数値化するため、チェックボックス
+    // evalFormula()の各項はtoCalcNumber()で数値化するため、チェックボックス
     // はtrue→1/false→0としてそのまま計算式に使え、「値×チェックボックス」
     // でチェックが入っている行だけを合計に含める、という使い方ができる。
     const candidates = st.fields.filter(sf => (sf.type === 'number' || sf.type === 'boolean') && sf.id !== f.id);
@@ -4178,10 +4193,7 @@ function renderAggregateEditor(f){
         <option value="%" ${t.op === '%' ? 'selected' : ''}>%(余り)</option>
       </select>`;
       const isLiteral = Object.prototype.hasOwnProperty.call(t, 'value');
-      const modeSelect = `<select onchange="setFormulaTermMode('${f.id}',${i},this.value)">
-        <option value="field" ${!isLiteral ? 'selected' : ''}>枠を参照</option>
-        <option value="value" ${isLiteral ? 'selected' : ''}>値を直接入力</option>
-      </select>`;
+      const modeToggle = checkboxToggleHtml(isLiteral, `onchange="setFormulaTermMode('${f.id}',${i},this.checked?'value':'field')"`, '値を直接入力');
       const valueControl = isLiteral
         ? `<input type="number" step="any" value="${t.value ?? 0}" onchange="updateFormulaTerm('${f.id}',${i},'value',Number(this.value)||0)">`
         : `<select onchange="updateFormulaTerm('${f.id}',${i},'field',this.value)">
@@ -4191,7 +4203,7 @@ function renderAggregateEditor(f){
       const zeroDivWarning = (t.op === '÷↑' || t.op === '÷↓' || t.op === '%')
         ? `<p class="muted small term-warning">⚠ ${isLiteral ? 'この値が' : '参照先の値が'}0になるとゼロ除算エラーになります</p>` : '';
       return `<div class="term-row">
-        <div class="term-row-head">${opSelect}${modeSelect}<button onclick="removeFormulaTerm('${f.id}',${i})">×</button></div>
+        <div class="term-row-head">${opSelect}${modeToggle}<button onclick="removeFormulaTerm('${f.id}',${i})">×</button></div>
         <div class="term-row-value">${valueControl}</div>
         ${zeroDivWarning}
       </div>`;
