@@ -2945,13 +2945,22 @@ function renderSheet(){
 // 直接並べる。以前あった「中枠」による入れ子は廃止し、代わりに
 // インプット1つ1つが1〜3列分の幅(span)を持てるようにすることで、
 // 同じ表現力(部分的に幅を変えたい)をより単純な仕組みで実現する。
+// カテゴリーで「一行に並べる列数」の上限(2026-10-17、利用者の指示で10)。設定パネルの
+// 入力は、この範囲に収める(typed値も)。読み込んだテンプレートの値も、描画時にこの
+// 範囲に収める(上限を超える大きな値による、描画の負荷や崩れを防ぐ)。
+const MAX_SECTION_COLUMNS = 10;
+// fallback: 値が無い・数として読めない時の列数(描画時は既定の2、入力欄での不正な入力は1)
+function clampSectionColumns(v, fallback){
+  const n = Math.floor(Number(v));
+  return Math.min(MAX_SECTION_COLUMNS, Math.max(1, n || (fallback === undefined ? 2 : fallback)));
+}
 function renderSectionFrame(sec){
   const selected = state.selection && state.selection.kind === 'section' && state.selection.id === sec.id;
   const isCollapsed = state.mode === 'view' && sec.collapsible && state.collapsed[sec.id];
   const toggleBtn = (state.mode === 'view' && sec.collapsible)
     ? `<button class="collapse-btn" onclick="toggleCollapse('${sec.id}')">${isCollapsed ? '▶' : '▼'}</button>`
     : '';
-  const cols = sec.columns || 2;
+  const cols = clampSectionColumns(sec.columns);
   const fields = (sec.fields || []).map(f => renderFieldFrame(f, null, cols)).join('');
   const imageAreaHtml = renderCategoryImageArea(sec);
   const sets = sec.sets.map(renderSetFrame).join('');
@@ -4176,7 +4185,7 @@ function renderPanelBody(kind, f){
       ? `<label><span>画像エリアの幅(1〜50、カテゴリー幅に対する割合)</span><input type="number" min="1" max="50" value="${f.imageArea.width || 20}" onchange="updateImageAreaWidth('${f.id}',this.value)"></label>`
       : '';
     return labelInput
-      + `<label><span>一行に並べる列数</span><input type="number" min="1" max="6" value="${f.columns || 2}" onchange="applyPatch('section','${f.id}',{columns:Math.max(1,parseInt(this.value)||1)})"></label>`
+      + `<label><span>一行に並べる列数</span><input type="number" min="1" max="${MAX_SECTION_COLUMNS}" value="${clampSectionColumns(f.columns)}" onchange="applyPatch('section','${f.id}',{columns:clampSectionColumns(this.value, 1)})"></label>`
       + checkboxToggleHtml(f.collapsible, `onchange="applyPatch('section','${f.id}',{collapsible:this.checked})"`, '折りたたみ可能にする')
       + imageAreaWidthInput;
   }
