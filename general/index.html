@@ -2211,10 +2211,27 @@ function syncAdVisibility(){
 // 呼び出し側がrender({scrollTop:true})で明示する。初回の描画は対象外
 // (ブラウザ標準のスクロール復元に任せる)。
 let lastRenderedScreen = null;
+// URLの引数(?tpl= / ?char=等)は、ページを開いた直後の画面だけを指す。その後に
+// 画面が切り替わっても引数が残ったままだと、アドレスバーの表示と実際の画面が
+// 食い違い、再読み込みやURLのコピーで、意図しない画面(共有されたキャラクター等)に
+// 戻ってしまう(2026-10-17)。bootstrap()が引数付きで開いた時、その最初の描画で
+// 「入口の画面」を記録し(読み込みに失敗してトップ画面になった場合は、そのトップ
+// 画面。再読み込みで再試行できるよう、この間は引数を残す)、以降に別の画面へ
+// 移った時(同じ画面のままドキュメントが入れ替わる場合を含む)に、引数だけを外す。
+// history.replaceStateなので履歴は増えず、戻るボタンの挙動は変わらない。
+let pendingUrlEntry = false;
+let urlEntryScreen = null;
+function syncUrlWithScreen(moved){
+  if(pendingUrlEntry){ urlEntryScreen = state.screen; pendingUrlEntry = false; return; }
+  if(urlEntryScreen === null || !moved) return;
+  urlEntryScreen = null;
+  try{ history.replaceState(history.state, '', location.pathname); }catch(_e){ /* 失敗しても画面の動作には影響しない */ }
+}
 function render(opts){
   syncAdVisibility();
   const toTop = (lastRenderedScreen !== null && lastRenderedScreen !== state.screen) || !!(opts && opts.scrollTop);
   lastRenderedScreen = state.screen;
+  syncUrlWithScreen(toTop);
   const app = document.getElementById('app');
   // ゲート画面(トップ/一覧)はテンプレート・キャラクターのデータを
   // 一切必要としないシンプルな画面のため、シート描画一式(フォーカス
@@ -5119,6 +5136,8 @@ async function bootstrap(){
   const tpl = params.get('tpl');
   const char = params.get('char');
   state.loadError = '';
+  // 引数付きで開いた時、最初の描画の画面を「URLが指す画面」として記録する(syncUrlWithScreen参照)
+  pendingUrlEntry = !!window.location.search;
 
   if(char){
     try{
