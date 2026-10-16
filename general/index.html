@@ -290,9 +290,21 @@
      ここでのgrid-template-columns指定は(インラインstyleが無い万一の
      場合の)フォールバックにすぎない。 */
   .set-table-wrap{ overflow-x:auto; }
+  /* 列の最小幅(2026-10-16): 以前は、すべての列が一律に最小90pxだったため、項目が多い
+     インプットセット(10列を超えるもの)は、数字1桁の列も90pxを取って横スクロールに
+     なっていた。最小幅を「--set-col-min、または各項目の横幅の比(width)×--set-col-unit
+     (ただし--set-col-max以下)の大きい方」にし、比1=数字1桁程度(36px)、比2=全角3文字
+     ほど(64px)、比3以上=従来の90px、と、設定パネルの「横幅」で最小幅も作り分けられる
+     ようにした(比に応じて余った幅を配分するのは従来どおり)。最小幅は、どの比でも従来の
+     90px以下なので、既存のテンプレートが以前より窮屈になることはない。スマホ幅(760px
+     以下)は、従来どおり一律90px(狭い画面で列が潰れすぎないよう、横スクロールに任せる)。 */
   .set-table{
+    --set-col-min:36px; --set-col-unit:32px; --set-col-max:90px;
     display:grid; gap:6px 10px; align-items:center;
-    grid-template-columns:auto repeat(var(--set-cols,3), minmax(90px,1fr)) auto;
+    grid-template-columns:auto repeat(var(--set-cols,3), minmax(var(--set-col-min),1fr)) auto;
+  }
+  @media screen and (max-width:760px){
+    .set-table{ --set-col-min:90px; --set-col-unit:0px; }
   }
   .set-table-header{ display:contents; }
   .set-row{ display:contents; }
@@ -3232,7 +3244,7 @@ function renderSetFrame(set){
     // 反映したgrid-template-columnsを都度組み立てる(2026-09-25)。
     // 最低幅(90px)は今まで通り確保しつつ、width比率に応じて余った
     // スペースを配分する。両端のautoは操作列(左が⠿↑↓、右が−)。
-    const colTemplate = (state.readOnly ? '' : 'auto ') + set.fields.map(f => `minmax(90px, ${Math.max(1, parseInt(f.width) || 1)}fr)`).join(' ') + (state.readOnly ? '' : ' auto');
+    const colTemplate = (state.readOnly ? '' : 'auto ') + set.fields.map(f => { const w = Math.max(1, parseInt(f.width) || 1); return `minmax(max(var(--set-col-min), min(calc(var(--set-col-unit) * ${w}), var(--set-col-max))), ${w}fr)`; }).join(' ') + (state.readOnly ? '' : ' auto');
     body = `<div class="set-table-wrap"><div class="set-table" style="grid-template-columns:${colTemplate}">${header}${rowsHtml}</div></div>`;
     if(!state.readOnly) addRowBtn = `<button class="add-row-btn" onclick="addSetRow('${set.id}')">+ 行を追加</button>`;
   }
