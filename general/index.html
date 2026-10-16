@@ -4568,9 +4568,11 @@ function renderAggregateDataListEditor(f, st){
     }).join('');
     const valOptions = (dl.contentColumns || []).map(v => `<option value="${escAttr(v)}" ${f.output === v ? 'selected' : ''}>${esc(v)}</option>`).join('');
     html += `<label><span>集計する列</span><select onchange="applyPatch('field',${jsArg(f.id)},{output:this.value})"><option value="">(選択)</option>${valOptions}</select></label>`;
-    const countOptions = st.fields.filter(c => c.type === 'number' && c.id !== f.id)
+    // 個数のインプットには、数値に加えてチェックボックスも選べる(2026-10-16。「使用」のチェックが
+    // 入った行だけ合計する、という使い方のため。チェックボックスは、計算でtrue=1/false=0になる)。
+    const countOptions = st.fields.filter(c => (c.type === 'number' || c.type === 'boolean') && c.id !== f.id)
       .map(c => `<option value="${escAttr(c.id)}" ${f.countField === c.id ? 'selected' : ''}>${esc(c.label)}</option>`).join('');
-    html += `<label><span>個数のインプット(任意。各行の値に掛けてから合計します)</span><select onchange="applyPatch('field',${jsArg(f.id)},{countField:this.value})"><option value="">(なし)</option>${countOptions}</select></label>`;
+    html += `<label><span>個数・使用のインプット(任意。各行の値に掛けてから合計します。チェックボックスなら、チェックが入った行だけ合計します)</span><select onchange="applyPatch('field',${jsArg(f.id)},{countField:this.value})"><option value="">(なし)</option>${countOptions}</select></label>`;
   }
   return html;
 }
