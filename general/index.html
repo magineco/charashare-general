@@ -3049,6 +3049,22 @@ function renderFieldInput(f, rowScope){
     let options;
     if(f.kind === 'ref' && f.refType === 'listFilter') options = evalListFilter(f, rowScope);
     else options = (f.options || []).map(o => ({ value: o, label: o }));
+    // データリストの条件(キー項目)に従属するリスト(「データリストから選択」で
+    // 表示条件にインプットを対応させたもの)は、候補が0〜1件に絞られると、
+    // プルダウンにしても「(未選択)」しか選べない(0件)か、選んでも直後に
+    // 唯一の候補へ自動で戻される(1件、normalizeListFilterField)ため、選べる
+    // 意味が無く紛らわしい(2026-10-16、利用者指摘)。この場合はプルダウン
+    // にせず、計算式の枠と同じ固定表示(.ref-value)にする。値の補正・保存は
+    // 従来どおりnormalizeListFilterValues()が担う。候補が2件以上あって実際に
+    // 選ぶ必要がある時、条件の無いデータリスト選択、自由入力を許可している
+    // 時は、これまで通りプルダウン(入力欄)のまま。
+    if(f.kind === 'ref' && f.refType === 'listFilter' && (f.match || []).length && !f.allowCustomInput && options.length <= 1){
+      const errors = getFieldReferenceErrors(f);
+      if(errors.length){
+        return `<div class="field-value ref-value is-broken-value">⚠ ${errors.map(e => esc(e)).join('<br>⚠ ')}</div>`;
+      }
+      return `<div class="field-value ref-value">${esc(String(options.length ? (options[0].label ?? '') : ''))}</div>`;
+    }
     if(f.allowCustomInput){
       const listId = 'dl-opts-' + f.id + (rowScope ? '-' + rowScope.rowIndex : '');
       const datalistOptions = options.map(o => `<option value="${escAttr(o.value)}">${esc(o.label)}</option>`).join('');
