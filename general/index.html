@@ -1784,7 +1784,13 @@ function fieldDirectRefs(f){
   if(f.kind === 'ref'){
     if(f.refType === 'formula') refs.push(...(f.terms || []).map(t => t.field).filter(Boolean));
     if(f.refType === 'lookup' || f.refType === 'listFilter') refs.push(...(f.match || []).map(m => m.field).filter(Boolean));
-    if(f.refType === 'aggregateSum') refs.push(...(f.terms || []).map(t => t.field).filter(Boolean));
+    if(f.refType === 'aggregateSum'){
+      // 「データリストの列を集計する」モード(source:'dataList')は、照合に使うインプットと
+      // 個数のインプットが参照先。通常のモードは各項(terms)の参照先。
+      if(f.source === 'dataList') refs.push(...(f.match || []).map(m => m.field), f.countField);
+      else refs.push(...(f.terms || []).map(t => t.field));
+      for(let i = refs.length - 1; i >= 0; i--) if(!refs[i]) refs.splice(i, 1);
+    }
   }
   return refs;
 }
@@ -2070,12 +2076,39 @@ function normalizeLegacyAggregateTerms(){
 // いるのに合計だけは正常な数値に見えてしまう事故を避けるため)。
 function evalAggregateSum(f, visiting){
   const rows = (state.character.sets && state.character.sets[f.set]) || [];
+  if(f.source === 'dataList') return evalAggregateLookup(f, rows, visiting);
   let total = 0;
   for(let idx = 0; idx < rows.length; idx++){
     const rowScope = { setId: f.set, rowIndex: idx, row: rows[idx] };
     const rowResult = evalFormula(f, rowScope, visiting);
     if(rowResult === DIV_BY_ZERO_ERROR) return DIV_BY_ZERO_ERROR;
     total += rowResult;
+  }
+  return total;
+}
+// 集計(aggregateSum)のうち、f.source === 'dataList' のもの(2026-10-16追加)。
+// インプットセットの各行について、f.match(データリストの表示条件列と、照合に使う
+// インプットの対応。lookupと同じ形)でデータリストの行を引き、f.output(集計する列)
+// の値を取り出して、全行分を合計する。「特技」「装備」のようなセットに入れた名称を
+// データリストと照合して、ステータスの修正値などを自動で合算する用途のため。
+// - 照合に使うインプットは、そのセットの各行の項目(名称等)でも、セットの外のインプット
+//   でもよい(行の値はrowScope経由で、セットの外は通常の値で解決される)
+// - 見つからない行は0。名称が空(照合に使う値がすべて空)の行は、データリストの
+//   キーが空の行と偶然一致しないよう、照合自体を飛ばして0とする
+// - 取り出した値は計算式と同じtoCalcNumber()で数値にする(「+2」「1,000円」等も可)
+// - f.countField(任意、そのセットの数値のインプット)があれば、各行の値にその個数を
+//   掛けてから合計する(「同じ装備を2つ持っている」場合など)
+function evalAggregateLookup(f, rows, visiting){
+  const matches = f.match || [];
+  if(!matches.length) return 0;
+  let total = 0;
+  for(let idx = 0; idx < rows.length; idx++){
+    const rowScope = { setId: f.set, rowIndex: idx, row: rows[idx] };
+    const keyValues = matches.map(m => resolveTermValue(m.field, rowScope, visiting));
+    if(keyValues.every(v => v === undefined || v === null || v === '')) continue;
+    const value = toCalcNumber(evalLookup(f, rowScope, visiting));
+    const count = f.countField ? toCalcNumber(resolveTermValue(f.countField, rowScope, visiting)) : 1;
+    total += value * count;
   }
   return total;
 }
@@ -2935,6 +2968,20 @@ function getFieldReferenceErrors(f){
   if(f.refType === 'aggregateSum'){
     const st = findFrame('set', f.set);
     if(!st){ missing(f.set); return errors; }
+    if(f.source === 'dataList'){
+      // データリストの列を集計するモード: lookupと同じ検査(データリスト・出力する列・
+      // 照合の対応)に、個数のインプット(そのセットの項目)の検査を足す。
+      const dl = findDataList(f.dataList);
+      if(!dl){ missing(f.dataList); return errors; }
+      const allCols = [...(dl.conditionColumns || []), ...(dl.contentColumns || [])];
+      if(f.output && !allCols.includes(f.output)) missing(f.output);
+      (f.match || []).forEach(m => {
+        if(!isValidReferenceTarget(m.field)) missing(m.field);
+        if(!(dl.conditionColumns || []).includes(m.key)) missing(m.key);
+      });
+      if(f.countField && !st.fields.some(x => x.id === f.countField)) missing(f.countField);
+      return errors;
+    }
     (f.terms || []).forEach(t => {
       if(t.field && !st.fields.some(x => x.id === t.field)) missing(t.field);
     });
@@ -4070,6 +4117,7 @@ function changeNumberKind(id, kindValue){
   if(kindValue === 'input'){
     f.kind = 'input';
     delete f.refType; delete f.terms; delete f.dataList; delete f.match; delete f.output; delete f.set;
+    delete f.source; delete f.countField;
   } else {
     f.kind = 'ref'; f.refType = kindValue;
     delete f.defaultValue;
@@ -4088,6 +4136,12 @@ function changeNumberKind(id, kindValue){
       if(oldRefType !== 'aggregateSum') f.terms = [];
     } else {
       delete f.terms;
+    }
+    // 集計(データリストの列を集計するモード)と他の種類を行き来する時は、集計側だけが
+    // 使う設定(source・countField)と、データリストの設定(lookupと同じ名前の
+    // dataList・match・output。意味が違うため持ち越さない)を作り直す。
+    if(oldRefType !== kindValue && (oldRefType === 'aggregateSum' || kindValue === 'aggregateSum')){
+      delete f.source; delete f.countField; delete f.dataList; delete f.match; delete f.output;
     }
     if(kindValue === 'lookup'){ if(!f.dataList) f.dataList = ''; if(!f.match) f.match = []; if(!f.output) f.output = ''; }
   }
@@ -4182,7 +4236,7 @@ function renderLookupEditor(f){
     html += (dl.conditionColumns || []).map(key => {
       const m = (f.match || []).find(mm => mm.key === key) || { key, field: '' };
       return `<label><span>表示条件「${esc(key)}」に対応するインプット</span>
-        <select onchange="setLookupMatch('${f.id}','${key}',this.value)">
+        <select onchange="setLookupMatch(${jsArg(f.id)},${jsArg(key)},this.value)">
           <option value="">(選択)</option>
           ${candidates.map(c => `<option value="${c.id}" ${m.field === c.id ? 'selected' : ''}>${esc(c.label)}</option>`).join('')}
         </select></label>`;
@@ -4213,7 +4267,7 @@ function renderListFilterEditor(f){
     const candidates = referenceableFieldsFor(f.id).filter(c => c.id !== f.id);
     html += (dl.conditionColumns || []).map(key => {
       const m = (f.match || []).find(mm => mm.key === key) || { key, field: '' };
-      return `<label><span>表示条件「${esc(key)}」に対応するインプット</span><select onchange="setListFilterMatch('${f.id}','${key}',this.value)"><option value="">(選択)</option>${candidates.map(c => `<option value="${c.id}" ${m.field === c.id ? 'selected' : ''}>${esc(c.label)}</option>`).join('')}</select></label>`;
+      return `<label><span>表示条件「${esc(key)}」に対応するインプット</span><select onchange="setListFilterMatch(${jsArg(f.id)},${jsArg(key)},this.value)"><option value="">(選択)</option>${candidates.map(c => `<option value="${c.id}" ${m.field === c.id ? 'selected' : ''}>${esc(c.label)}</option>`).join('')}</select></label>`;
     }).join('');
     const allCols = [...(dl.conditionColumns || []), ...(dl.contentColumns || [])];
     html += `<label><span>選択肢として表示する列</span><select onchange="applyPatch('field','${f.id}',{optionLabel:this.value})"><option value="">(選択)</option>${allCols.map(c => `<option value="${escAttr(c)}" ${f.optionLabel === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select></label>`;
@@ -4261,6 +4315,11 @@ function renderAggregateEditor(f){
   let html = `<label><span>対象のインプットセット</span><select onchange="setAggregateSet('${f.id}',this.value)"><option value="">(選択)</option>${setOptions}</select></label>`;
   const st = sets.find(s => s.id === f.set);
   if(st){
+    // 集計する値の出どころは2択(各行の計算式/データリストの列)のため、既定を各行の
+    // 計算式とし、「データリストの列を集計する」のチェックボックスで切り替える
+    // (2026-10-16)。
+    html += checkboxToggleHtml(f.source === 'dataList', `onchange="setAggregateSource(${jsArg(f.id)},this.checked)"`, 'データリストの列を集計する(名称を照合)');
+    if(f.source === 'dataList') return html + renderAggregateDataListEditor(f, st);
     // チェックボックス(真偽値)も対象に選べるようにしている(2026-09-24)。
     // evalFormula()の各項はtoCalcNumber()で数値化するため、チェックボックス
     // はtrue→1/false→0としてそのまま計算式に使え、「値×チェックボックス」
@@ -4300,6 +4359,52 @@ function renderAggregateEditor(f){
 function setAggregateSet(id, setId){
   const f = findFrame('field', id); if(!f) return;
   f.set = setId; f.terms = [];
+  // データリストの列を集計するモードでは、照合・個数のインプットがセットの項目を指すため、
+  // セットを変えたら作り直す(データリストと集計する列はそのまま)。
+  if(f.source === 'dataList'){ f.match = []; delete f.countField; }
+  render();
+}
+// 集計(aggregateSum)の「データリストの列を集計する」モード(f.source === 'dataList')の
+// 設定欄(2026-10-16)。インプットセットの各行の名称等を、データリストの表示条件列と
+// 照合し、見つかった行の「集計する列」を全行分合計する。lookupの設定欄
+// (renderLookupEditor)と同じ項目(データリスト・表示条件に対応するインプット・
+// 出力する列)に、任意の「個数のインプット」を足した形。照合に使えるインプットは、
+// このセットの各行の項目と、セットの外のインプット。ハンドラへ渡す値は、テンプレート
+// 由来(列名等)なので、jsArg()で渡す。データリスト・表示条件との対応・出力する列の
+// 変更は、lookupと同じ関数(setLookupDataList/setLookupMatch)を流用している
+// (どちらもf.refTypeを見ず、f.dataList/f.match/f.outputを書き換えるだけの関数)。
+function renderAggregateDataListEditor(f, st){
+  const dataLists = state.template.dataLists || [];
+  const dlOptions = dataLists.map(d => `<option value="${escAttr(d.id)}" ${f.dataList === d.id ? 'selected' : ''}>${esc(d.label)}</option>`).join('');
+  let html = `<p class="muted small">このセットの各行の名称等を、データリストの表示条件列と照合し、見つかった行の「集計する列」の値を全行分合計します。見つからない行・名称が空の行は0として扱います。</p>`;
+  html += `<label><span>参照するデータリスト</span><select onchange="setLookupDataList(${jsArg(f.id)},this.value)"><option value="">(選択)</option>${dlOptions}</select></label>`;
+  const dl = dataLists.find(d => d.id === f.dataList);
+  if(dl){
+    const candidates = [...st.fields, ...globalInputFields()].filter(c => c.id !== f.id);
+    const candidateOptions = fieldId => candidates.map(c => `<option value="${escAttr(c.id)}" ${fieldId === c.id ? 'selected' : ''}>${esc(c.label)}</option>`).join('');
+    html += (dl.conditionColumns || []).map(key => {
+      const m = (f.match || []).find(mm => mm.key === key) || { key, field: '' };
+      return `<label><span>表示条件「${esc(key)}」に対応するインプット</span><select onchange="setLookupMatch(${jsArg(f.id)},${jsArg(key)},this.value)"><option value="">(選択)</option>${candidateOptions(m.field)}</select></label>`;
+    }).join('');
+    const valOptions = (dl.contentColumns || []).map(v => `<option value="${escAttr(v)}" ${f.output === v ? 'selected' : ''}>${esc(v)}</option>`).join('');
+    html += `<label><span>集計する列</span><select onchange="applyPatch('field',${jsArg(f.id)},{output:this.value})"><option value="">(選択)</option>${valOptions}</select></label>`;
+    const countOptions = st.fields.filter(c => c.type === 'number' && c.id !== f.id)
+      .map(c => `<option value="${escAttr(c.id)}" ${f.countField === c.id ? 'selected' : ''}>${esc(c.label)}</option>`).join('');
+    html += `<label><span>個数のインプット(任意。各行の値に掛けてから合計します)</span><select onchange="applyPatch('field',${jsArg(f.id)},{countField:this.value})"><option value="">(なし)</option>${countOptions}</select></label>`;
+  }
+  return html;
+}
+function setAggregateSource(id, fromDataList){
+  const f = findFrame('field', id); if(!f) return;
+  if(fromDataList){
+    f.source = 'dataList';
+    if(!f.dataList) f.dataList = '';
+    if(!f.match) f.match = [];
+    if(!f.output) f.output = '';
+  } else {
+    delete f.source; delete f.dataList; delete f.match; delete f.output; delete f.countField;
+    if(!Array.isArray(f.terms)) f.terms = [];
+  }
   render();
 }
 
@@ -4310,7 +4415,7 @@ function setAggregateSet(id, setId){
 // 見た読み取り専用のビューで、値の計算経路には一切関与しない。
 function refKindLabel(f){
   if(f.kind === 'ref'){
-    return { formula: '計算式', lookup: 'データリストから参照', listFilter: 'データリストから選択', aggregateSum: '集計' }[f.refType] || f.refType;
+    return { formula: '計算式', lookup: 'データリストから参照', listFilter: 'データリストから選択', aggregateSum: (f.source === 'dataList' ? '集計(データリスト)' : '集計') }[f.refType] || f.refType;
   }
   return '';
 }
