@@ -300,7 +300,7 @@
      以下)は、従来どおり一律90px(狭い画面で列が潰れすぎないよう、横スクロールに任せる)。 */
   .set-table{
     --set-col-min:36px; --set-col-unit:32px; --set-col-max:90px;
-    display:grid; gap:6px 10px; align-items:center;
+    display:grid; gap:0; align-items:center;
     grid-template-columns:auto repeat(var(--set-cols,3), minmax(var(--set-col-min),1fr)) auto;
   }
   @media screen and (max-width:760px){
@@ -309,10 +309,56 @@
   .set-table-header{ display:contents; }
   .set-row{ display:contents; }
   .set-cell{ min-width:0; }
-  .set-table-header .set-cell-label, .set-row .set-cell, .set-row .set-row-actions{
-    padding:6px 0; border-bottom:1px solid var(--line);
+  /* 行の見た目(2026-10-16): 以前は、各行の各セルに下線(1px)を引いていたが、セルごとの
+     高さの違い(計算式の枠・入力欄・折り返した見出し等)で、下線の高さが揃わず見づらかった。
+     行ごとの下線をやめ、代わりに1行おきに薄い背景(縞、.is-alt)を付ける。行(.set-row)は
+     display:contentsで自身の箱が無いため、背景は各セル・操作列に付ける。帯が途切れない
+     よう、グリッドの隙間(gap)は0にして、セルの間隔は各セルの余白(上下9px・左右5px)で
+     作っている(入力欄どうしの間隔は従来どおり、縦18px・横10px)。見出しの下線(2px、
+     アクセントカラー)は、見出しの行の下端に揃える(align-self:end)。折り返して高さが
+     違う見出しがあっても、下線が一直線になる。見出しは左右に5pxの余白(margin)を
+     取り、下線が隣の列とつながらないようにしている。 */
+  .set-row .set-cell, .set-row .set-row-actions{ padding:9px 5px; align-self:stretch; }
+  /* セルを行の高さに伸ばしても(帯・挿入先の線を一直線にするため)、中身は従来どおり縦中央に置く */
+  .set-row .set-cell{ display:flex; flex-direction:column; justify-content:center; }
+  .set-row.is-alt .set-cell, .set-row.is-alt .set-row-actions{
+    background:color-mix(in srgb, var(--surface), var(--text) 6%);
   }
-  .set-table-header .set-cell-label{ border-bottom:2px solid var(--accent); }
+  .set-table-header .set-cell-label{
+    padding:6px 0; margin:0 5px 3px; align-self:end;
+    border-bottom:2px solid var(--accent);
+  }
+  /* ドラッグ&ドロップ並べ替えの見た目(2026-10-16。JS側の「ドラッグ&ドロップ並べ替えの見た目(共通)」
+     のコメント参照)。動かしている項目は薄く(.is-dragging)、挿入先は項目と項目の間の線
+     (アクセントカラー、.drop-before/.drop-after)で示す。.dnd-ghostはポインタに付いて動く
+     カード(setDragImage()で使う、画面外に置いたものを一瞬だけ描画させる)。 */
+  .dnd-ghost{
+    position:fixed; top:-1000px; left:0; z-index:9999; max-width:280px;
+    padding:6px 12px; border:2px solid var(--accent); border-radius:6px;
+    background:var(--surface-2); color:var(--text); font-size:1rem; line-height:1.4;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; pointer-events:none;
+    box-shadow:0 4px 12px rgba(0,0,0,0.35);
+  }
+  .chat-line-group, .frame-field{ position:relative; }
+  .chat-line-group.is-dragging, .frame-field.is-dragging{ opacity:0.4; }
+  .set-row.is-dragging .set-cell, .set-row.is-dragging .set-row-actions{ opacity:0.4; }
+  /* チャットパレットの行: 上端・下端に、行と同じ幅の線 */
+  .chat-line-group.drop-before::before, .chat-line-group.drop-after::after{
+    content:''; position:absolute; left:0; right:0; height:3px; border-radius:2px;
+    background:var(--accent); pointer-events:none; z-index:5;
+  }
+  .chat-line-group.drop-before::before{ top:-5px; }
+  .chat-line-group.drop-after::after{ bottom:-5px; }
+  /* インプット: 左右にも並ぶため、左端・右端に縦線 */
+  .frame-field.drop-before::before, .frame-field.drop-after::after{
+    content:''; position:absolute; top:0; bottom:0; width:3px; border-radius:2px;
+    background:var(--accent); pointer-events:none; z-index:5;
+  }
+  .frame-field.drop-before::before{ left:-7px; }
+  .frame-field.drop-after::after{ right:-7px; }
+  /* インプットセットの行: 上端・下端(各セルの内側)に線。セルは行の高さに伸ばしてあるため、一直線になる */
+  .set-row.drop-before > *{ box-shadow:inset 0 3px 0 var(--accent); }
+  .set-row.drop-after > *{ box-shadow:inset 0 -3px 0 var(--accent); }
   /* 操作列(左端の⠿↑↓、右端の−)には見出し文字が無いため、装飾用の下線だけ消す
      (グリッドの行高さを揃えるため、セル自体は空のまま残す)。 */
   .set-table-header .set-cell-label.set-cell-label-spacer{ border-bottom-color:transparent; }
@@ -3037,7 +3083,7 @@ function renderFieldFrame(f, rowScope, containerCols){
     ? `<span class="chat-drag-handle field-drag-handle" draggable="true" title="ドラッグで並べ替え" onclick="event.preventDefault();event.stopPropagation();" ondragstart="handleFieldDragStart(event,'${f.id}')" ondragend="handleFieldDragEnd(event)">⠿</span>`
     : '';
   const dragTargetAttrs = state.mode === 'edit'
-    ? ` ondragover="handleFieldDragOver(event)" ondrop="handleFieldDrop(event,'${f.id}')"`
+    ? ` ondragover="handleFieldDragOver(event,'${f.id}')" ondrop="handleFieldDrop(event,'${f.id}')"`
     : '';
   return `<${tag} class="frame-field ${selected ? 'is-selected' : ''} ${broken ? 'is-broken' : ''}" ${frameAttrs('field', f.id)}${spanStyle}${dragTargetAttrs}>
     <span class="field-label-row"><span class="field-label-left">${dragHandle}<span class="field-label">${esc(f.label)}</span></span>${tsvCopyBtn}</span>
@@ -3265,7 +3311,7 @@ function renderSetRow(set, row, idx, rowCount){
   // 基準で行われ、通常のクリック等と違って親へのバブリングに頼れない
   // ことがある)と判明したため、行を構成する実体のある箱(各セル・
   // 操作列)それぞれに個別にondragover/ondropを持たせている。
-  const dropAttrs = ` ondragover="handleSetRowDragOver(event)" ondrop="handleSetRowDrop(event,'${set.id}',${idx})"`;
+  const dropAttrs = ` ondragover="handleSetRowDragOver(event,'${set.id}',${idx})" ondrop="handleSetRowDrop(event,'${set.id}',${idx})"`;
   const cells = set.fields.map(f => {
     const rowScope = { setId: set.id, rowIndex: idx, row };
     return `<div class="set-cell"${dropAttrs}>${renderFieldInput(f, rowScope)}</div>`;
@@ -3289,7 +3335,7 @@ function renderSetRow(set, row, idx, rowCount){
   const rightActions = state.readOnly ? '' : `<div class="set-row-actions set-row-actions-right"${dropAttrs}>
       <button class="remove-row-btn" onclick="removeSetRow('${set.id}',${idx})">−</button>
     </div>`;
-  return `<div class="set-row">${leftActions}${cells}${rightActions}</div>`;
+  return `<div class="set-row${idx % 2 === 1 ? ' is-alt' : ''}">${leftActions}${cells}${rightActions}</div>`;
 }
 
 /* ---------- チャットパレット ----------
@@ -3361,6 +3407,67 @@ function moveChatOrder(fieldId, dir){
   order.splice(j, 0, item);
   render();
 }
+/* ---------- ドラッグ&ドロップ並べ替えの見た目(共通、2026-10-16) ----------
+ * 「どこに入るのか分かりにくい」という指摘を受けて、デザインシステムの指針
+ * (Atlassian Pragmatic drag and drop・Productboard・Goldman Sachs等)に倣って、
+ * 並べ替え中の見た目を次のようにした。ブラウザ標準のHTML5 Drag and Drop APIのまま、
+ * ライブラリは増やさない。
+ * - 動かしている項目は、元の位置に薄く残す(.is-dragging、不透明度40%)
+ * - ポインタには、掴んでいる項目の中身を示す小さなカード(.dnd-ghost)を出す。
+ *   ブラウザ既定のドラッグ画像は、掴んだ「⠿」だけで何を動かしているのか分からない
+ *   ため、setDragImage()で差し替える
+ * - 挿入先は、項目と項目の間の線(アクセントカラー、3px)で示す。ポインタが対象の
+ *   前半にあるか後半にあるかで、前(.drop-before)/後(.drop-after)に切り替わる
+ *   (対象の中間点を越えた時に動く)。これで「最後に置く」こともできる
+ * - 置いても元の位置のままになる位置・置けない所(別のセット等)には、線を出さない
+ * - 見た目の更新はdragoverの位置から行う。子要素をまたぐとdragleaveが頻発して
+ *   ちらつくため、dragleaveでは何もしない。後片付けはdrop・dragendで行う
+ * - ドラッグ以外の手段(↑↓ボタン)は、そのまま残している
+ */
+function dndSetGhost(ev, text){
+  const ghost = document.createElement('div');
+  ghost.className = 'dnd-ghost';
+  ghost.textContent = text;
+  document.body.appendChild(ghost);
+  try{ ev.dataTransfer.setDragImage(ghost, 14, 14); }catch(e){ /* 未対応なら既定のドラッグ画像のまま */ }
+  setTimeout(() => ghost.remove(), 0);
+}
+function dndClear(){
+  document.querySelectorAll('.is-dragging, .drop-before, .drop-after')
+    .forEach(el => el.classList.remove('is-dragging', 'drop-before', 'drop-after'));
+}
+// 挿入先の線を、elの前(pos==='before')/後(pos==='after')に出す。elがnull(線を出さない
+// 位置)なら消す。dragoverは頻繁に呼ばれるため、変化が無ければ何もしない。
+function dndMark(el, pos){
+  const current = document.querySelectorAll('.drop-before, .drop-after');
+  if(el && pos && current.length === 1 && current[0] === el && el.classList.contains('drop-' + pos)) return;
+  current.forEach(x => x.classList.remove('drop-before', 'drop-after'));
+  if(el && pos) el.classList.add('drop-' + pos);
+}
+// ポインタが、対象の範囲(rect)の前半にあるか後半にあるか(axis: 'y'=縦並び、'x'=横並び)。
+function dndPos(ev, rect, axis){
+  return axis === 'x'
+    ? (ev.clientX < rect.left + rect.width / 2 ? 'before' : 'after')
+    : (ev.clientY < rect.top + rect.height / 2 ? 'before' : 'after');
+}
+// 動かす項目(インデックスfromIdx)を、対象(targetIdx)の前/後に置いた時の、取り除いた後の
+// 並びでの位置。fromIdxと同じなら、元の位置のまま(並べ替えにならない)。
+function dndInsertIndex(fromIdx, targetIdx, pos){
+  let ins = pos === 'before' ? targetIdx : targetIdx + 1;
+  if(fromIdx < ins) ins--;
+  return ins;
+}
+// display:contents(自身の箱が無い)の要素の範囲は、子要素の範囲をまとめて求める。
+function dndRect(el){
+  if(getComputedStyle(el).display !== 'contents') return el.getBoundingClientRect();
+  let top = Infinity, bottom = -Infinity, left = Infinity, right = -Infinity;
+  for(const c of el.children){
+    const r = c.getBoundingClientRect();
+    top = Math.min(top, r.top); bottom = Math.max(bottom, r.bottom);
+    left = Math.min(left, r.left); right = Math.max(right, r.right);
+  }
+  return { top, bottom, left, right, width: right - left, height: bottom - top };
+}
 // チャットパレットの並べ替え(ドラッグ&ドロップ版、2026-09-20追加)。
 // ブラウザ標準のHTML5 Drag and Drop APIのみで実装し(ライブラリ・
 // ビルドツールを増やさない、charashare全体の方針に合わせる)、
@@ -3373,28 +3480,48 @@ function handleChatOrderDragStart(ev, id){
   // 始まらないことがあるため、実際にはchatOrderDragId(クロージャ変数)を
   // 使う場合でも形式的にセットしておく。
   ev.dataTransfer.setData('text/plain', id);
+  // 掴んでいる項目の見た目(2026-10-16): ポインタには項目名のカード、元の位置は薄く。
+  const f = findFrame('field', id);
+  const ct = f ? null : findChatFreeText(id);
+  dndSetGhost(ev, f ? f.label : (ct ? '自由入力: ' + (String(ct.text || '').split('\n')[0].slice(0, 20) || '(空)') : id));
+  const group = ev.target.closest && ev.target.closest('.chat-line-group');
+  if(group) group.classList.add('is-dragging');
 }
-function handleChatOrderDragOver(ev){
+function handleChatOrderDragOver(ev, targetId){
+  if(!chatOrderDragId) return;
   // dragoverでpreventDefault()しないと、そもそもdropイベントが発火しない
   // (ブラウザの既定動作は「ここにはドロップさせない」)。
   ev.preventDefault();
   ev.dataTransfer.dropEffect = 'move';
+  const order = ensureChatOrder();
+  const fromIdx = order.indexOf(chatOrderDragId);
+  const toIdx = order.indexOf(targetId);
+  const group = ev.currentTarget;
+  if(fromIdx === -1 || toIdx === -1){ dndMark(null); return; }
+  const pos = dndPos(ev, group.getBoundingClientRect(), 'y');
+  dndMark(dndInsertIndex(fromIdx, toIdx, pos) === fromIdx ? null : group, pos);
 }
 function handleChatOrderDrop(ev, targetId){
   ev.preventDefault();
   const draggedId = chatOrderDragId;
   chatOrderDragId = null;
+  const group = ev.currentTarget;
+  dndClear();
   if(!draggedId || draggedId === targetId) return;
   const order = ensureChatOrder();
   const fromIdx = order.indexOf(draggedId);
   const toIdx = order.indexOf(targetId);
   if(fromIdx === -1 || toIdx === -1) return;
+  // 対象の前半に落とせば手前、後半に落とせば後ろに入る(以前は常に手前で、最後には置けなかった)。
+  const ins = dndInsertIndex(fromIdx, toIdx, dndPos(ev, group.getBoundingClientRect(), 'y'));
+  if(ins === fromIdx) return;
   order.splice(fromIdx, 1);
-  order.splice(order.indexOf(targetId), 0, draggedId);
+  order.splice(ins, 0, draggedId);
   render();
 }
 function handleChatOrderDragEnd(){
   chatOrderDragId = null;
+  dndClear();
 }
 function chatOrderLines(order){
   // 以前はカテゴリー(セクション)が切り替わるタイミングで
@@ -3534,7 +3661,7 @@ function renderChatPalette(){
       // 掴む場所を.chat-line-move(↑↓ボタンと同じ箱)だけに絞る。
       // ドロップ判定(dragover/drop)は行全体に付け、行のどこに落としても
       // その行の位置を基準に並べ替わるようにする。
-      return `<div class="chat-line-group" data-chat-order-id="${id}" ondragover="handleChatOrderDragOver(event)" ondrop="handleChatOrderDrop(event,'${id}')">
+      return `<div class="chat-line-group" data-chat-order-id="${id}" ondragover="handleChatOrderDragOver(event,'${id}')" ondrop="handleChatOrderDrop(event,'${id}')">
         <div class="chat-line-move" draggable="true" ondragstart="handleChatOrderDragStart(event,'${id}')" ondragend="handleChatOrderDragEnd(event)">
           <span class="chat-drag-handle" title="ドラッグで並べ替え">⠿</span>
           <button class="row-move-btn" ${upDisabled} onclick="moveChatOrder('${id}',-1)">↑</button>
@@ -3718,25 +3845,48 @@ function handleSetRowDragStart(ev, setId, idx){
   dragSetRowInfo = { setId, idx };
   ev.dataTransfer.effectAllowed = 'move';
   ev.dataTransfer.setData('text/plain', String(idx));
+  // 掴んでいる行の見た目(2026-10-16): ポインタにはその行の中身(入力済みの値を3つまで)の
+  // カード、元の位置は薄く。何も入力していない行は「n行目」。
+  const set = findFrame('set', setId);
+  const row = (state.character.sets[setId] || [])[idx] || {};
+  const values = set
+    ? set.fields.map(f => row[f.id]).filter(v => v !== undefined && v !== null && v !== '' && typeof v !== 'boolean' && !Array.isArray(v)).slice(0, 3).map(String)
+    : [];
+  dndSetGhost(ev, values.length ? values.join(' / ') : `${idx + 1}行目`);
+  const rowEl = ev.target.closest && ev.target.closest('.set-row');
+  if(rowEl) rowEl.classList.add('is-dragging');
 }
-function handleSetRowDragOver(ev){
+function handleSetRowDragOver(ev, setId, targetIdx){
+  const info = dragSetRowInfo;
+  // 別のセットの行・行以外のもの(ファイル等)は、ここには置けない(線も出さない)。
+  if(!info || info.setId !== setId) return;
   ev.preventDefault();
   ev.dataTransfer.dropEffect = 'move';
+  const rowEl = ev.currentTarget.closest('.set-row');
+  if(!rowEl) return;
+  const pos = dndPos(ev, dndRect(rowEl), 'y');
+  dndMark(dndInsertIndex(info.idx, targetIdx, pos) === info.idx ? null : rowEl, pos);
 }
 function handleSetRowDrop(ev, setId, targetIdx){
   ev.preventDefault();
   const info = dragSetRowInfo;
   dragSetRowInfo = null;
-  if(!info || info.setId !== setId || info.idx === targetIdx) return;
+  const rowEl = ev.currentTarget.closest('.set-row');
+  dndClear();
+  if(!info || info.setId !== setId) return;
   const rows = state.character.sets[setId];
   if(!rows) return;
+  // 対象の行の前半に落とせば手前、後半に落とせば後ろに入る(以前は常に手前で、最後には置けなかった)。
+  const pos = rowEl ? dndPos(ev, dndRect(rowEl), 'y') : 'before';
+  const ins = dndInsertIndex(info.idx, targetIdx, pos);
+  if(ins === info.idx) return;
   const [row] = rows.splice(info.idx, 1);
-  const insertAt = info.idx < targetIdx ? targetIdx - 1 : targetIdx;
-  rows.splice(insertAt, 0, row);
+  rows.splice(ins, 0, row);
   render();
 }
 function handleSetRowDragEnd(){
   dragSetRowInfo = null;
+  dndClear();
 }
 function removeSetRow(setId, idx){
   if(!confirmDelete('この行を削除しますか？入力した内容は元に戻せません。')) return;
@@ -3887,27 +4037,45 @@ function handleFieldDragStart(ev, id){
   dragFieldId = id;
   ev.dataTransfer.effectAllowed = 'move';
   ev.dataTransfer.setData('text/plain', id);
+  // 掴んでいるインプットの見た目(2026-10-16): ポインタには名称のカード、元の位置は薄く。
+  const f = findFrame('field', id);
+  dndSetGhost(ev, f ? f.label : id);
+  const el = ev.target.closest && ev.target.closest('.frame-field');
+  if(el) el.classList.add('is-dragging');
 }
-function handleFieldDragOver(ev){
+function handleFieldDragOver(ev, targetId){
+  if(!dragFieldId) return;
+  const from = findContainer('field', dragFieldId);
+  const to = findContainer('field', targetId);
+  // 別の入れ物(カテゴリー・インプットセット)をまたぐ移動はできない(線も出さない)。
+  if(!from || !to || from.arr !== to.arr) return;
   ev.preventDefault();
   ev.dataTransfer.dropEffect = 'move';
+  // インプットは左右にも並ぶため、対象の左半分なら手前(左端)、右半分なら後ろ(右端)に線を出す。
+  const el = ev.currentTarget;
+  const pos = dndPos(ev, el.getBoundingClientRect(), 'x');
+  dndMark(dndInsertIndex(from.idx, to.idx, pos) === from.idx ? null : el, pos);
 }
 function handleFieldDrop(ev, targetId){
   ev.preventDefault();
   const draggedId = dragFieldId;
   dragFieldId = null;
+  const el = ev.currentTarget;
+  dndClear();
   if(!draggedId || draggedId === targetId) return;
   const from = findContainer('field', draggedId);
   const to = findContainer('field', targetId);
   if(!from || !to || from.arr !== to.arr) return;
+  const ins = dndInsertIndex(from.idx, to.idx, dndPos(ev, el.getBoundingClientRect(), 'x'));
+  if(ins === from.idx) return;
   const arr = from.arr;
   const [item] = arr.splice(from.idx, 1);
-  const targetIdx = arr.findIndex(f => f.id === targetId);
-  arr.splice(targetIdx === -1 ? from.idx : targetIdx, 0, item);
+  arr.splice(ins, 0, item);
   render();
 }
 function handleFieldDragEnd(){
   dragFieldId = null;
+  dndClear();
 }
 function applyPatch(kind, id, patch){
   const f = findFrame(kind, id);
