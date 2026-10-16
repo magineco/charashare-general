@@ -474,6 +474,14 @@
   .term-row-head{ display:flex; gap:6px; align-items:center; }
   .term-row-head select{ width:auto; flex:0 1 auto; min-width:0; }
   .term-row-head button{ flex:0 0 auto; margin-left:auto; }
+  /* 「値を直接入力」のチェックボックスを、前後の演算子の選択・削除ボタンと
+     上下中央で揃える(2026-10-16)。設定パネルの`.panel-body label`が
+     ラベルに下余白10px、`.panel-body label > *:first-child`が最初の子
+     (チェックボックス部品)に下余白3pxを付けるため、そのままだと中央揃えの
+     計算にこの余白が含まれて、チェックボックスが5px前後上に寄って見えていた。
+     この行の中だけ余白を打ち消す。 */
+  .term-row-head label.checkbox{ margin:0; white-space:nowrap; }
+  .term-row-head label.checkbox > .checkbox-visual{ margin-bottom:0; }
   .term-row-value{ margin-top:4px; }
   .term-row-value select, .term-row-value input{ width:100%; }
   .term-row .term-warning{ margin-bottom:0; }
@@ -2075,8 +2083,19 @@ function syncAdVisibility(){
   document.body.classList.toggle('ads-hidden', !adsAllowed);
   (window.adsbygoogle = window.adsbygoogle || []).pauseAdRequests = adsAllowed ? 0 : 1;
 }
+// 画面(state.screen)が切り替わった描画では、以前の画面でのスクロール位置を
+// 持ち越さず、最上部から表示する(2026-10-16。スクロールしてから一覧→
+// テンプレート編集のように遷移すると、新しい画面が途中の位置で表示されて
+// しまっていた)。同じ画面内での再描画(値の入力・一覧の読み込み完了等)
+// ではスクロール位置を保つ。同じ画面のまま中身のドキュメントだけが
+// 入れ替わる場合(編集画面での「テンプレート/キャラクターを読み込み」)は、
+// 呼び出し側がrender({scrollTop:true})で明示する。初回の描画は対象外
+// (ブラウザ標準のスクロール復元に任せる)。
+let lastRenderedScreen = null;
 function render(opts){
   syncAdVisibility();
+  const toTop = (lastRenderedScreen !== null && lastRenderedScreen !== state.screen) || !!(opts && opts.scrollTop);
+  lastRenderedScreen = state.screen;
   const app = document.getElementById('app');
   // ゲート画面(トップ/一覧)はテンプレート・キャラクターのデータを
   // 一切必要としないシンプルな画面のため、シート描画一式(フォーカス
@@ -2090,6 +2109,7 @@ function render(opts){
     // ていなかったことをきっかけに発見・修正)。
     app.innerHTML = renderLoadErrorBanner() + renderGateScreen();
     applyTemplateColors(true);
+    if(toTop) window.scrollTo(0, 0);
     return;
   }
   // 編集可能な画面(テンプレート編集・キャラクター編集)でのみ未保存
@@ -2122,7 +2142,7 @@ function render(opts){
   applyTemplateColors(false);
   app.querySelectorAll('textarea').forEach(autoResizeTextarea);
   restoreFocus();
-  window.scrollTo(0, scrollY);
+  window.scrollTo(0, toTop ? 0 : scrollY);
 }
 function goToScreen(screen){ state.screen = screen; render({ skipDirty: true }); }
 // 新規テンプレート作成時の初期状態。空のテンプレートではなく、実際に
@@ -4028,7 +4048,10 @@ function changeListKind(id, v){
   render();
 }
 function renderFormulaEditor(f){
-  const candidates = referenceableFieldsFor(f.id, ['number', 'boolean']).filter(c => c.id !== f.id);
+  // 項に選べるのは、数値・チェックボックスに加えて、文字列・リストから選ぶ枠も
+  // (2026-10-16)。数値以外の値は、計算の時にtoCalcNumber()が先頭の数字を
+  // 読み取って数値として扱う。
+  const candidates = referenceableFieldsFor(f.id, ['number', 'boolean', 'string', 'list']).filter(c => c.id !== f.id);
   const rows = (f.terms || []).map((t, i) => {
     const opSelect = i === 0 ? '' : `<select onchange="updateFormulaTerm('${f.id}',${i},'op',this.value)">
       <option value="+" ${t.op === '+' ? 'selected' : ''}>+</option>
@@ -4684,7 +4707,7 @@ function handleImportTemplateFile(input){
       state.mode = 'edit';
       state.screen = 'templateEditor';
       state.dirty = false;
-      render({ skipDirty: true });
+      render({ skipDirty: true, scrollTop: true });
     } catch(e){ alert('テンプレートJSONの読み込みに失敗しました: ' + e.message); }
   };
   reader.readAsText(file);
@@ -4709,7 +4732,7 @@ function handleImportCharacterFile(input){
       state.screen = 'characterEditor';
       state.dirty = false;
       checkTemplateSnapshotDiff();
-      render({ skipDirty: true });
+      render({ skipDirty: true, scrollTop: true });
     } catch(e){ alert('キャラクターJSONの読み込みに失敗しました: ' + e.message); }
   };
   reader.readAsText(file);
