@@ -673,6 +673,8 @@
      space-betweenが効くのは「見出し」と「ボタン群」の2つの間だけになる。 */
   .gate-list-head-actions{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
   .gate-list-divider{ border:none; border-top:1px solid var(--line); margin:32px 0; }
+  /* 一覧画面のページ内アンカー(テンプレート一覧)に合わせてスクロールした時の、上の余白 */
+  #browse-templates{ scroll-margin-top:24px; }
   .dl-block{
     background:var(--surface); border:1px solid var(--line); border-radius:10px;
     padding:12px 14px; margin-bottom:14px;
@@ -1008,6 +1010,7 @@ async function exchangeAuthCode(code, redirectUri){
 async function runPendingLoginAction(action){
   if(action === 'saveTemplate') await saveTemplateToDrive();
   else if(action === 'openDriveBrowser') openDriveBrowser();
+  else if(action === 'openDriveBrowserTemplates') openDriveBrowser('templates');
   else if(action === 'saveCharacter') await saveCharacterToDrive();
   else if(action === 'shareTemplate') await shareTemplate();
   else if(action === 'shareCharacter') await shareCharacter();
@@ -1208,8 +1211,16 @@ async function saveTemplateToDrive(){
 // キャラクター・テンプレート両方の取得を(awaitせず)並行して走らせ、
 // それぞれが完了した時点で個別に再描画する(今までの「読み込み中…」の
 // 挙動を、2セクション独立のまま維持するため)。
-function openDriveBrowser(){
-  if(!state.accessToken){ loginAndThen('openDriveBrowser'); return; }
+//
+// target: 一覧画面のどこまでスクロールするか。'templates'なら下段の「テンプレート一覧」
+// (ページ内アンカー#browse-templates)、無指定なら先頭のまま(2026-10-17。トップ画面の
+// 「テンプレートを作る」からログインして入った時は、そのまま作業を始められるよう、
+// テンプレート一覧に合わせる)。上段のキャラクター一覧の読み込み完了で下段の位置が
+// ずれるため、両方の一覧の読み込みが終わるまで、描画のたびに合わせ直す
+// (alignBrowseScroll参照)。
+function openDriveBrowser(target){
+  if(!state.accessToken){ loginAndThen(target === 'templates' ? 'openDriveBrowserTemplates' : 'openDriveBrowser'); return; }
+  browseScrollTarget = target || null;
   state.driveBrowser = {
     characters: { loading: true, files: [], error: '', sortBy: 'modifiedTime', sortOrder: 'desc', filterSystem: '' },
     templates: { loading: true, files: [], error: '', sortBy: 'modifiedTime', sortOrder: 'desc' },
@@ -2227,8 +2238,24 @@ function syncUrlWithScreen(moved){
   urlEntryScreen = null;
   try{ history.replaceState(history.state, '', location.pathname); }catch(_e){ /* 失敗しても画面の動作には影響しない */ }
 }
+// 一覧画面を開いた直後に合わせるスクロール先('templates'=下段のテンプレート一覧)。
+// 利用者がスクロール等の操作を始めたら、その操作を優先して合わせるのをやめる。
+let browseScrollTarget = null;
+['wheel', 'touchstart', 'keydown', 'mousedown'].forEach(ev => {
+  window.addEventListener(ev, () => { browseScrollTarget = null; }, { passive: true, capture: true });
+});
+function alignBrowseScroll(){
+  if(!browseScrollTarget) return;
+  const el = document.getElementById('browse-' + browseScrollTarget);
+  if(el) el.scrollIntoView({ block: 'start' });
+  const b = state.driveBrowser;
+  // 両方の一覧と、キャラクター一覧の各行のプレビュー(行の高さが変わりうる)の読み込み
+  // (成功・失敗とも)が終わったら、合わせるのは終わり
+  if(b && !b.characters.loading && !b.templates.loading && b.characters.files.every(f => f.preview !== undefined)) browseScrollTarget = null;
+}
 function render(opts){
   syncAdVisibility();
+  if(state.screen !== 'browse') browseScrollTarget = null;
   const toTop = (lastRenderedScreen !== null && lastRenderedScreen !== state.screen) || !!(opts && opts.scrollTop);
   lastRenderedScreen = state.screen;
   syncUrlWithScreen(toTop);
@@ -2246,6 +2273,7 @@ function render(opts){
     app.innerHTML = renderLoadErrorBanner() + renderGateScreen();
     applyTemplateColors(true);
     if(toTop) window.scrollTo(0, 0);
+    alignBrowseScroll();
     return;
   }
   // 編集可能な画面(テンプレート編集・キャラクター編集)でのみ未保存
@@ -2429,7 +2457,7 @@ function renderTopScreen(){
     <div class="gate-section-box">
       <h2 class="gate-title">テンプレートを作る</h2>
       <div class="gate-actions">
-        <button class="gate-primary-btn" onclick="loginAndThen('openDriveBrowser')">Googleでログイン</button>
+        <button class="gate-primary-btn" onclick="loginAndThen('openDriveBrowserTemplates')">Googleでログイン</button>
         <button onclick="startNewTemplateNoLogin()">ログインなしで作る</button>
         <button onclick="document.getElementById('gate-tpl-file').click()">読み込みして開く</button>
         <input id="gate-tpl-file" type="file" accept="application/json" style="display:none" onchange="handleImportTemplateFile(this)">
@@ -2641,7 +2669,7 @@ function renderBrowseScreen(){
     <hr class="gate-list-divider">
     ${renderCharacterListSection(b && b.characters)}
     <hr class="gate-list-divider">
-    ${renderTemplateListSection(b && b.templates)}
+    <div id="browse-templates">${renderTemplateListSection(b && b.templates)}</div>
   </div>`;
 }
 // 値を1つ変えるだけでrender()がDOM全体を作り直すため、何もしなければ
