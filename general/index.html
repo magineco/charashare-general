@@ -381,7 +381,14 @@
   .panel-head{ display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; }
   .panel-body label{ margin-bottom:10px; }
   .panel-body label > span, .panel-body label > *:first-child{ display:block; margin-bottom:3px; color:var(--muted); }
+  /* 設定パネルのON/OFFトグル(label.checkbox)では、最初の子=チェックボックス部品にも
+     上の行で下余白3pxが付いてしまい、文字との上下中央がずれて(約1.3px上に寄って)
+     見えていた(2026-10-16)。トグルでは余白を打ち消す。 */
+  .panel-body label.checkbox > .checkbox-visual{ margin-bottom:0; }
   .panel-actions{ display:flex; gap:6px; flex-wrap:wrap; border-top:1px solid var(--line); padding-top:8px; margin-top:8px; }
+  /* 上下の並べ替え(↑↓)は左、削除は右端に置く(キャラシェアシリーズ共通の
+     並べ替えUIのルール、2026-10-16。ルートのCLAUDE.md参照)。 */
+  .panel-actions .danger-btn{ margin-left:auto; }
   .color-presets{ display:flex; gap:6px; flex-wrap:wrap; margin:10px 0 16px; }
   .color-row{
     display:flex !important; align-items:center; justify-content:space-between;
@@ -493,13 +500,12 @@
   .term-row-head select{ width:auto; flex:0 1 auto; min-width:0; }
   .term-row-head button{ flex:0 0 auto; margin-left:auto; }
   /* 「値を直接入力」のチェックボックスを、前後の演算子の選択・削除ボタンと
-     上下中央で揃える(2026-10-16)。設定パネルの`.panel-body label`が
-     ラベルに下余白10px、`.panel-body label > *:first-child`が最初の子
-     (チェックボックス部品)に下余白3pxを付けるため、そのままだと中央揃えの
-     計算にこの余白が含まれて、チェックボックスが5px前後上に寄って見えていた。
-     この行の中だけ余白を打ち消す。 */
+     上下中央で揃える(2026-10-16)。設定パネルの`.panel-body label`がラベルに
+     下余白10pxを付けるため、そのままだと中央揃えの計算にこの余白が含まれて、
+     チェックボックスが5px前後上に寄って見えていた。この行の中だけラベルの
+     余白を打ち消す(最初の子=チェックボックス部品の下余白3pxは、設定パネル
+     全体のトグル共通の`.panel-body label.checkbox > .checkbox-visual`で打ち消す)。 */
   .term-row-head label.checkbox{ margin:0; white-space:nowrap; }
-  .term-row-head label.checkbox > .checkbox-visual{ margin-bottom:0; }
   .term-row-value{ margin-top:4px; }
   .term-row-value select, .term-row-value input{ width:100%; }
   .term-row .term-warning{ margin-bottom:0; }
@@ -4017,10 +4023,10 @@ function renderFieldTypeEditor(f){
     }
   } else if(f.type === 'list'){
     const isFiltered = f.kind === 'ref' && f.refType === 'listFilter';
-    html += `<label><span>選択肢の種類</span><select onchange="changeListKind('${f.id}',this.value)">
-      <option value="fixed" ${!isFiltered ? 'selected' : ''}>選択肢を直接入力</option>
-      <option value="filtered" ${isFiltered ? 'selected' : ''}>データリストから選択</option>
-    </select></label>`;
+    // 選択肢の作り方は2択(選択肢を直接入力/データリストから選択)のため、
+    // 既定を「選択肢を直接入力」とし、「データリストから選択」のチェックボックス
+    // で切り替える(2026-10-16。計算式の項の「値を直接入力」と同じ考え方)。
+    html += checkboxToggleHtml(isFiltered, `onchange="changeListKind('${f.id}',this.checked?'filtered':'fixed')"`, 'データリストから選択');
     if(!isFiltered){
       html += `<label><span>選択肢(カンマ区切り)</span><input type="text" value="${escAttr((f.options || []).join(','))}" onchange="applyPatch('field','${f.id}',{options:this.value.split(',').map(s=>s.trim()).filter(Boolean)})"></label>`;
       // 固定の選択肢の時だけ初期値を選べる。データリストからの絞り込み
@@ -4259,7 +4265,9 @@ function renderAggregateEditor(f){
     // evalFormula()の各項はtoCalcNumber()で数値化するため、チェックボックス
     // はtrue→1/false→0としてそのまま計算式に使え、「値×チェックボックス」
     // でチェックが入っている行だけを合計に含める、という使い方ができる。
-    const candidates = st.fields.filter(sf => (sf.type === 'number' || sf.type === 'boolean') && sf.id !== f.id);
+    // 計算式(renderFormulaEditor)と同じく、文字列・リストから選ぶ枠も選べる
+    // (2026-10-16)。数値以外の値は先頭の数字を読み取って数値として扱う。
+    const candidates = st.fields.filter(sf => ['number', 'boolean', 'string', 'list'].includes(sf.type) && sf.id !== f.id);
     const rows = (f.terms || []).map((t, i) => {
       const opSelect = i === 0 ? '' : `<select onchange="updateFormulaTerm('${f.id}',${i},'op',this.value)">
         <option value="+" ${t.op === '+' ? 'selected' : ''}>+</option>
