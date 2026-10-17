@@ -238,6 +238,8 @@
      ようにする(2026-09-20、ハンドル追加時)。 */
   .field-label-left{ display:flex; align-items:center; gap:4px; min-width:0; }
   .tsv-tab-copy-btn{ flex:0 0 auto; padding:3px 8px; font-size:0.9rem; }
+  /* 設定パネルの、表(TSV)の初期値の下の「タブ記号をコピー」ボタンの行 */
+  .tsv-default-tools{ margin:-4px 0 10px; }
   /* 読み取り専用の欄(計算式・lookup・集計、および閲覧専用画面での
      入力枠(renderReadOnlyFieldValue)も同じクラスを使う)は、入力できる
      欄(surface-2の箱)と同じ箱の形のまま、背景をカテゴリー自体の背景
@@ -4421,6 +4423,14 @@ function renderFieldTypeEditor(f){
     html += `<label><span>最低行数</span><input type="number" min="1" max="20" value="${Math.max(1, parseInt(f.minRows) || 3)}" onchange="applyPatch('field','${f.id}',{minRows:Math.max(1,parseInt(this.value)||1)})"></label>`;
     html += `<label><span>初期値</span><textarea rows="2" onchange="applyPatch('field','${f.id}',{defaultValue:this.value})">\n${esc(f.defaultValue ?? '')}</textarea></label>`;
     html += `<label><span>空欄の時に表示する入力例（任意）</span><input type="text" value="${escAttr(f.placeholder ?? '')}" onchange="applyPatch('field','${f.id}',{placeholder:this.value})"></label>`;
+  } else if(f.type === 'table'){
+    // 表(TSV)の初期値(2026-10-17)。以前は設定パネルに欄が無く、JSONの`defaultValue`を直接
+    // 書くしか無かった(確認画面で表を編集しても、確認用のキャラクターの値になるだけ)。
+    // 編集の仕方は、キャラクター側の表(クリックしてTSVを入力)と同じ: タブ区切りで入力・貼り付け、
+    // 1行目は見出し行、Tabキーはタブ文字の挿入(handleDataListTsvTabKey)、Tabキーが無い
+    // ソフトウェアキーボード用に「タブ記号をコピー」ボタン。空にした時は、初期値なし(undefined)にする。
+    html += `<label><span>初期値（タブ区切り。1行目は見出し行）</span><textarea class="dl-tsv-input" rows="6" placeholder="タブ区切りで入力・貼り付け" onkeydown="handleDataListTsvTabKey(event)" onchange="applyPatch('field','${f.id}',{defaultValue:this.value ? this.value : undefined})">\n${esc(f.defaultValue ?? '')}</textarea></label>`;
+    html += `<div class="tsv-default-tools">${tsvTabCopyButtonHtml()}</div>`;
   }
   return html;
 }
