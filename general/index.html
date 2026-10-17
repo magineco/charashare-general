@@ -356,6 +356,23 @@
   }
   .frame-field.drop-before::before{ left:-7px; }
   .frame-field.drop-after::after{ right:-7px; }
+  /* 区切り線(2026-10-17。カテゴリー内のインプットの並びを、横いっぱいの線で区切る。
+     グリッドの全列にまたがるので、線より後ろのインプットは次の行から並ぶ。
+     .frame-fieldではなく専用のクラスにして、モバイル幅の.group-grid > .frame-field
+     の指定(1列に強制)や、インプット用の各種ルールが効かないようにしている)。 */
+  .group-grid > .frame-divider{ grid-column:1 / -1; }
+  .frame-divider{ position:relative; display:flex; align-items:center; gap:6px; min-height:14px; }
+  .mode-edit .frame-divider{ min-height:30px; }
+  .frame-divider .divider-line{ flex:1 1 auto; border-top:1px solid var(--line); }
+  .frame-divider .divider-caption{ flex:0 0 auto; }
+  .frame-divider.is-dragging{ opacity:0.4; }
+  /* 区切り線は縦に並ぶため、挿入先の線は、上端・下端に横線(チャットパレットの行と同じ) */
+  .frame-divider.drop-before::before, .frame-divider.drop-after::after{
+    content:''; position:absolute; left:0; right:0; height:3px; border-radius:2px;
+    background:var(--accent); pointer-events:none; z-index:5;
+  }
+  .frame-divider.drop-before::before{ top:-5px; }
+  .frame-divider.drop-after::after{ bottom:-5px; }
   /* インプットセットの行: 上端・下端(各セルの内側)に線。セルは行の高さに伸ばしてあるため、一直線になる */
   .set-row.drop-before > *{ box-shadow:inset 0 3px 0 var(--accent); }
   .set-row.drop-after > *{ box-shadow:inset 0 -3px 0 var(--accent); }
@@ -1825,6 +1842,7 @@ function isFieldInsideSet(fieldId){
 // セット内部のスコープ制限(別行・セット外からセット内へは直接参照
 // できない等)は、この関数とは別の話として引き続き適用される。
 function fieldMatchesTypeFilter(f, typeFilter){
+  if(f.kind === 'divider') return false; // 区切り線はインプットではない(参照の候補に出さない)
   if(!typeFilter) return true;
   return Array.isArray(typeFilter) ? typeFilter.includes(f.type) : f.type === typeFilter;
 }
@@ -2966,6 +2984,7 @@ function renderSectionFrame(sec){
   const sets = sec.sets.map(renderSetFrame).join('');
   const addFieldBtn = state.mode === 'edit' ? `<button class="add-frame-btn small" onclick="event.stopPropagation();addFieldToSection('${sec.id}')">+ インプットを追加</button>` : '';
   const addImageAreaBtn = (state.mode === 'edit' && !sec.imageArea) ? `<button class="add-frame-btn small" onclick="event.stopPropagation();addCategoryImageArea('${sec.id}')">+ 画像エリアを追加</button>` : '';
+  const addDividerBtn = state.mode === 'edit' ? `<button class="add-frame-btn small" onclick="event.stopPropagation();addDividerToSection(${jsArg(sec.id)})">+ 区切り線を追加</button>` : '';
   const addSetBtn = state.mode === 'edit' ? `<button class="add-frame-btn small" onclick="event.stopPropagation();addSetDef('${sec.id}')">+ インプットセットを追加</button>` : '';
   return `<section class="frame-section ${selected ? 'is-selected' : ''}" ${frameAttrs('section', sec.id)}>
     <h2 class="section-title">${toggleBtn}${esc(sec.label)}${sec.collapsible ? ' <span class="muted small">(折りたたみ可)</span>' : ''}</h2>
@@ -2974,7 +2993,7 @@ function renderSectionFrame(sec){
         ${imageAreaHtml}
         <div class="group-grid" style="--cols:${cols}">${fields}</div>
       </div>
-      ${sets}${addFieldBtn}${addSetBtn}${addImageAreaBtn}
+      ${sets}${addFieldBtn}${addDividerBtn}${addSetBtn}${addImageAreaBtn}
     </div>
   </section>`;
 }
@@ -3104,7 +3123,24 @@ function getFieldReferenceErrors(f){
 function isFieldReferenceBroken(f){
   return getFieldReferenceErrors(f).length > 0;
 }
+// 区切り線(kind:'divider'。2026-10-17)。カテゴリー直下のインプットの並び(sec.fields)の中に、
+// インプットと同じように並べられる(並べ替え・ドラッグ・削除も同じ仕組み)。データは持たず、
+// 値の保存・参照・チャットパレットの対象にならない。編集モードでは、クリックで設定パネルを開け、
+// ⠿でドラッグできる。ハンドラに渡すidはjsArg()を通す(テンプレート由来の値の決まり)。
+function renderDividerFrame(f){
+  const edit = state.mode === 'edit';
+  const selected = state.selection && state.selection.kind === 'field' && state.selection.id === f.id;
+  const handle = edit
+    ? `<span class="chat-drag-handle field-drag-handle" draggable="true" title="ドラッグで並べ替え" onclick="event.preventDefault();event.stopPropagation();" ondragstart="handleFieldDragStart(event,${jsArg(f.id)})" ondragend="handleFieldDragEnd(event)">⠿</span>`
+    : '';
+  const dragTargetAttrs = edit
+    ? ` ondragover="handleFieldDragOver(event,${jsArg(f.id)})" ondrop="handleFieldDrop(event,${jsArg(f.id)})"`
+    : '';
+  const caption = edit ? '<span class="divider-caption muted small">区切り線</span>' : '';
+  return `<div class="frame-divider ${selected ? 'is-selected' : ''}" ${frameAttrs('field', f.id)}${dragTargetAttrs}>${handle}<span class="divider-line"></span>${caption}</div>`;
+}
 function renderFieldFrame(f, rowScope, containerCols){
+  if(f.kind === 'divider') return renderDividerFrame(f);
   const selected = state.selection && state.selection.kind === 'field' && state.selection.id === f.id;
   const broken = isFieldReferenceBroken(f);
   const span = Math.max(1, Math.min(parseInt(f.span) || 1, containerCols || 3));
@@ -4058,6 +4094,22 @@ function addFieldToSection(sectionId){
   state.selection = { kind: 'field', id: f.id };
   render();
 }
+// 区切り線を足す(2026-10-17)。このカテゴリーのインプットを選択中なら、その直後に入れる
+// (「ここで区切りたい」という操作の流れに合う)。無ければ末尾。追加したら、その設定パネルを開く
+// (addFieldToSection()と同じ扱い)。
+function addDividerToSection(sectionId){
+  const s = findFrame('section', sectionId); if(!s) return;
+  if(!s.fields) s.fields = [];
+  const d = { id: uid('f'), kind: 'divider', label: '' };
+  let idx = s.fields.length;
+  if(state.selection && state.selection.kind === 'field'){
+    const i = s.fields.findIndex(x => x.id === state.selection.id);
+    if(i > -1) idx = i + 1;
+  }
+  s.fields.splice(idx, 0, d);
+  state.selection = { kind: 'field', id: d.id };
+  render();
+}
 function addFieldToSet(setId){
   const st = findFrame('set', setId); if(!st) return;
   const f = { id: uid('f'), label: '新しいインプット', type: 'string', kind: 'input' };
@@ -4093,8 +4145,8 @@ function handleFieldDragStart(ev, id){
   ev.dataTransfer.setData('text/plain', id);
   // 掴んでいるインプットの見た目(2026-10-16): ポインタには名称のカード、元の位置は薄く。
   const f = findFrame('field', id);
-  dndSetGhost(ev, f ? f.label : id);
-  const el = ev.target.closest && ev.target.closest('.frame-field');
+  dndSetGhost(ev, f ? (f.kind === 'divider' ? '区切り線' : f.label) : id);
+  const el = ev.target.closest && ev.target.closest('.frame-field, .frame-divider');
   if(el) el.classList.add('is-dragging');
 }
 function handleFieldDragOver(ev, targetId){
@@ -4107,7 +4159,8 @@ function handleFieldDragOver(ev, targetId){
   ev.dataTransfer.dropEffect = 'move';
   // インプットは左右にも並ぶため、対象の左半分なら手前(左端)、右半分なら後ろ(右端)に線を出す。
   const el = ev.currentTarget;
-  const pos = dndPos(ev, el.getBoundingClientRect(), 'x');
+  // 区切り線は横いっぱいの行なので、上半分なら手前、下半分なら後ろ(縦方向)で判定する
+  const pos = dndPos(ev, el.getBoundingClientRect(), el.classList.contains('frame-divider') ? 'y' : 'x');
   dndMark(dndInsertIndex(from.idx, to.idx, pos) === from.idx ? null : el, pos);
 }
 function handleFieldDrop(ev, targetId){
@@ -4120,7 +4173,7 @@ function handleFieldDrop(ev, targetId){
   const from = findContainer('field', draggedId);
   const to = findContainer('field', targetId);
   if(!from || !to || from.arr !== to.arr) return;
-  const ins = dndInsertIndex(from.idx, to.idx, dndPos(ev, el.getBoundingClientRect(), 'x'));
+  const ins = dndInsertIndex(from.idx, to.idx, dndPos(ev, el.getBoundingClientRect(), el.classList.contains('frame-divider') ? 'y' : 'x'));
   if(ins === from.idx) return;
   const arr = from.arr;
   const [item] = arr.splice(from.idx, 1);
@@ -4149,9 +4202,11 @@ function renderPanel(){
   const { kind, id } = state.selection;
   const f = findFrame(kind, id);
   if(!f){ state.selection = null; return ''; }
-  const delLabel = panelTitle(kind).replace('の設定', '');
+  const isDivider = kind === 'field' && f.kind === 'divider';
+  const title = isDivider ? '区切り線の設定' : panelTitle(kind);
+  const delLabel = isDivider ? '区切り線' : panelTitle(kind).replace('の設定', '');
   return `<div class="panel-pane">
-    <div class="panel-head"><strong>${esc(panelTitle(kind))}</strong><button class="icon-btn" onclick="closePanel()">×</button></div>
+    <div class="panel-head"><strong>${esc(title)}</strong><button class="icon-btn" onclick="closePanel()">×</button></div>
     <div class="panel-body">${renderPanelBody(kind, f)}</div>
     <div class="panel-actions">
       <button onclick="moveFrame('${kind}','${id}',-1)">↑ 上へ</button>
@@ -4194,6 +4249,9 @@ function renderPanelBody(kind, f){
     // (インプットセットのタイトル行、renderSetFrame()参照)へ移したため、
     // ここには置かない。
     return labelInput + `<p class="muted small">表示画面上でも、各項目をクリックすると編集できます。</p>`;
+  }
+  if(kind === 'field' && f.kind === 'divider'){
+    return `<p class="muted small">カテゴリー内で、インプットの並びを横いっぱいの線で区切ります。この線より後ろのインプットは、次の行から並びます。「⠿」をドラッグするか、下の「↑ 上へ」「↓ 下へ」で位置を動かせます。</p>`;
   }
   if(kind === 'field'){
     // カテゴリー直下のインプットは、横幅をカテゴリーの列数を単位とした
@@ -4966,7 +5024,7 @@ function renderDataListEditorBlock(dl){
 function allFieldsInTemplate(){
   const out = [];
   for(const s of state.template.sections){
-    for(const f of s.fields) out.push(f);
+    for(const f of s.fields) if(f.kind !== 'divider') out.push(f); // 区切り線はインプットではない
     for(const st of s.sets) for(const f of st.fields) out.push(f);
   }
   return out;
@@ -4976,7 +5034,7 @@ function allFieldsInTemplate(){
 function templateFieldLabelMap(tpl){
   const map = {};
   (tpl.sections || []).forEach(s => {
-    (s.fields || []).forEach(f => { map[f.id] = f.label; });
+    (s.fields || []).forEach(f => { if(f.kind !== 'divider') map[f.id] = f.label; }); // 区切り線は、追加・削除の通知の対象にしない
     (s.sets || []).forEach(st => (st.fields || []).forEach(f => { map[f.id] = f.label; }));
   });
   return map;
