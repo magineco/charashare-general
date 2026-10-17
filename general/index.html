@@ -201,7 +201,15 @@
   .section-title{ display:flex; align-items:center; gap:6px; }
   .collapse-btn{ padding:2px 6px; }
   .section-body{ display:flex; flex-direction:column; gap:12px; }
-  .group-grid{ display:grid; grid-template-columns:repeat(var(--cols,2),1fr); gap:10px; }
+  /* 列の幅は、中身(表・入力欄等)の大きさで広がらないよう、minmax(0,1fr)の均等割りにする。
+     以前は1fr(=minmax(auto,1fr))で、中身の最小幅が列の幅を押し広げられた。Firefoxでは、
+     「表(TSV)」のインプットの横幅(span)がカテゴリーの列数より小さい時(例: 5列のうち3列)に、
+     表(table-layout:fixed、width:100%)の最小幅が極端に大きく見積もられ、カテゴリーの内側が
+     数百万pxに広がって枠からはみ出した(2026-10-17、カルカミの「攻撃方法」で報告)。
+     グリッドの子(.frame-field等)にもmin-width:0を付け、中身が収まらない時は、列の外へ
+     はみ出す代わりに、その枠の中で折り返す・縮む。 */
+  .group-grid{ display:grid; grid-template-columns:repeat(var(--cols,2),minmax(0,1fr)); gap:10px; }
+  .group-grid > *{ min-width:0; }
   /* .group-gridはCSS Gridのため、同じ行の中で最も高さのある欄(長いラベルが
      折り返した場合など)に合わせて、他の欄も既定でその行の高さまで
      伸ばされる(align-items:stretchの既定動作)。.frame-field自身は
@@ -392,7 +400,12 @@
     padding:3px 8px; font-size:0.9rem; height:fit-content; flex:0 0 auto;
   }
   .category-body-row{ display:flex; gap:10px; align-items:stretch; }
-  .category-body-row .group-grid{ flex:1 1 auto; min-width:0; }
+  /* flex-basisは、auto(=グリッドの中身の最大幅)ではなく0にする。autoだと、Firefoxでは、
+     表(TSV)のインプットの横幅(span)がカテゴリーの列数より小さい時に、中身の最大幅が極端に
+     大きく見積もられ(幅100%の表の幅が、利用できる幅を「無限」として解決される)、縮めても
+     元に戻らず、カテゴリーの内側が数百万pxに広がった(2026-10-17)。0なら、残りの幅をそのまま
+     もらうだけで、見た目はこれまでと同じ。 */
+  .category-body-row .group-grid{ flex:1 1 0; min-width:0; }
   .category-image-area{ flex:0 0 20%; display:flex; flex-direction:column; gap:6px; }
   /* フィフス版のportrait-frameと同じ「枠はoverflow:hidden固定、imgは
      絶対配置+data-fitに応じて高さ100%/幅auto または 幅100%/高さautoで
@@ -676,6 +689,8 @@
   /* .share-btnと同じ理由(強調色1色化でホバーの色変更が無効化していた)で、
      色ではなく明るさ・浮き上がりのデザイン変化にした(2026-09-22)。 */
   .gate-primary-btn:hover{ filter:brightness(1.12); transform:translateY(-1px); box-shadow:0 3px 10px rgba(0,0,0,0.3); }
+  /* ログイン状態を確認中(押せない)。ホバーの浮き上がりも無くす。 */
+  .gate-primary-btn:disabled, .gate-primary-btn:disabled:hover{ opacity:0.6; cursor:default; filter:none; transform:none; box-shadow:none; }
   .gate-note{ margin-top:14px; color:var(--muted); font-size:0.85rem; max-width:50ch; }
   .gate-list{ max-width:760px; margin:40px auto; padding:0 20px 40px; }
   .gate-list-auth{ display:flex; justify-content:flex-end; align-items:center; gap:10px; margin-bottom:16px; }
@@ -972,6 +987,7 @@ const state = {
   colorPanelOpen: false, // テンプレート編集画面(確認画面含む)での色調整パネル
   chatPaletteOpen: false, // キャラクター編集/表示画面でのフローティングチャットパレット
   dirty: false, // 未保存の変更があるか(beforeunloadの警告判定に使う)
+  restoring: false, // ページを開いた直後の、ログイン状態の自動復元(無言ログイン)の確認中か
   // Google Drive連携
   accessToken: null,        // メモリ上のみ保持(localStorage等には保存しない)
   pendingLoginAction: null, // ログイン後に自動で行う操作名(未ログイン時に保存/一覧ボタンを押した場合)
@@ -1087,6 +1103,14 @@ function loginAndThen(action){
   // 修正)。
   if(state.accessToken){
     runPendingLoginAction(action);
+    return;
+  }
+  // 自動復元の確認中(ページを開いて1秒前後)に、ここでログインを始めると、復元が
+  // 成功してもGoogleのログインポップアップが出てしまう(2026-10-17、「デプロイすると
+  // ログインが切れている」という報告。サーバーのログでは、復元は成功していたのに、
+  // その直後に手動のログインが行われていた)。確認が終わるまでは始めない。
+  if(state.restoring){
+    setStatus('ログイン状態を確認しています。少し待ってからもう一度お試しください。', '');
     return;
   }
   if(!window.google || !google.accounts || !google.accounts.oauth2){
@@ -2458,15 +2482,24 @@ function handleImportAnyJsonFile(input){
 // 各セクションのリード文には、以前トップ共通のタグライン説明文として
 // 出していた2種類の文言(テンプレート作者向け/プレイヤー向け)を
 // そのまま転用している(ユーザー指示、2026-09-22)。
+// トップ画面の主ボタン(ログイン)。ログイン状態に応じて、確認中は押せない表示に、ログイン済みは
+// 「Driveの一覧を開く」にする(2026-10-17。以前は、ログイン済みでも常に「Googleでログイン」と出ており、
+// ログインが切れていると見えてしまった)。押した時の動作は、どの状態でもloginAndThen()。
+function renderGateLoginBtn(action){
+  if(state.accessToken) return `<button class="gate-primary-btn" onclick="loginAndThen('${action}')">Driveの一覧を開く</button>`;
+  if(state.restoring) return `<button class="gate-primary-btn" disabled title="ログイン状態を確認しています">ログイン状態を確認中…</button>`;
+  return `<button class="gate-primary-btn" onclick="loginAndThen('${action}')">Googleでログイン</button>`;
+}
 function renderTopScreen(){
   return `${renderGateHeroBanner()}<div class="gate-page">
     ${renderGateBrand()}
+    ${state.accessToken ? renderGateListAuthBar() : ''}
     ${renderGateTagline()}
     ${renderGateDataNote()}
     <div class="gate-section-box">
       <h2 class="gate-title">キャラクターを開く</h2>
       <div class="gate-actions">
-        <button class="gate-primary-btn" onclick="loginAndThen('openDriveBrowser')">Googleでログイン</button>
+        ${renderGateLoginBtn('openDriveBrowser')}
         <button onclick="document.getElementById('gate-char-file').click()">読み込みして開く</button>
         <input id="gate-char-file" type="file" accept="application/json" style="display:none" onchange="handleImportAnyJsonFile(this)">
       </div>
@@ -2475,7 +2508,7 @@ function renderTopScreen(){
     <div class="gate-section-box">
       <h2 class="gate-title">テンプレートを作る</h2>
       <div class="gate-actions">
-        <button class="gate-primary-btn" onclick="loginAndThen('openDriveBrowserTemplates')">Googleでログイン</button>
+        ${renderGateLoginBtn('openDriveBrowserTemplates')}
         <button onclick="startNewTemplateNoLogin()">ログインなしで作る</button>
         <button onclick="document.getElementById('gate-tpl-file').click()">読み込みして開く</button>
         <input id="gate-tpl-file" type="file" accept="application/json" style="display:none" onchange="handleImportTemplateFile(this)">
@@ -2806,7 +2839,9 @@ function renderToolbar(){
   }
   const authHtml = state.accessToken
     ? `<button onclick="logout()">ログアウト</button>`
-    : `<button onclick="login()">Googleでログイン</button>`;
+    : (state.restoring
+      ? `<button disabled title="ログイン状態を確認しています">ログイン状態を確認中…</button>`
+      : `<button onclick="login()">Googleでログイン</button>`);
   if(state.screen === 'characterEditor'){
     // キャラクター編集画面には、テンプレートの構造編集に関わるボタンは
     // 一切出さない(プレイヤーが誤ってテンプレート構造を触れないように)。
@@ -5221,9 +5256,18 @@ function blankCharacter(){
 // 状態を復元する。初回描画をブロックしないよう、bootstrap側ではawaitせず
 // 呼びっぱなしにする(失敗しても今まで通り「未ログイン」のままなだけで、
 // 何も壊れない)。成功したら再描画してツールバーの表示を更新する。
+//
+// 確認中(state.restoring)の間は、ログインのボタンを押せない表示にする(loginAndThen()・
+// renderToolbar()・renderGateLoginBtn()参照)。確認が終わったら、成功・失敗とも再描画して
+// 表示を戻す。通信が返らない場合に、ボタンが押せないままにならないよう、6秒で確認を打ち切る
+// (打ち切った後に復元が成功した場合は、アクセストークンは入り、次の描画から反映される)。
+// state.restoringは、bootstrap()の最初に立てる(最初の描画から「確認中」にするため)。
 function attemptSilentSessionRestore(){
-  tryRefreshAccessToken().then((ok) => {
-    if(ok) render({ skipDirty: true });
+  state.restoring = true;
+  const timeout = new Promise((resolve) => setTimeout(() => resolve(false), 6000));
+  Promise.race([tryRefreshAccessToken(), timeout]).then(() => {
+    state.restoring = false;
+    render({ skipDirty: true });
   });
 }
 async function bootstrap(){
@@ -5231,6 +5275,7 @@ async function bootstrap(){
   const tpl = params.get('tpl');
   const char = params.get('char');
   state.loadError = '';
+  state.restoring = true; // 最初の描画から、ログイン状態の確認中として表示する(attemptSilentSessionRestore参照)
   // 引数付きで開いた時、最初の描画の画面を「URLが指す画面」として記録する(syncUrlWithScreen参照)
   pendingUrlEntry = !!window.location.search;
 
