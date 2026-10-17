@@ -667,7 +667,7 @@
      共通トップ(../index.html)の.heroと同じ役割で、その画面固有の
      見出し(.gate-title)より上に置く「サービス全体の一言」。 */
   .gate-tagline{ font-size:1.7rem; line-height:1.3; margin-bottom:28px; }
-  .gate-tagline-desc{ color:var(--muted); margin-bottom:28px; }
+
   /* ボタンを縦積みフル幅(旧デザイン)ではなく、フィフス版の
      .login-guest-rowのように横並び・幅は内容なりにすることで、
      画面の高さを大きく節約する。 */
@@ -868,8 +868,24 @@
 </footer>
 <script>
 /* =========================================================
-   general/ 汎用テンプレートエンジン 試作(EXPERIMENTAL)
-   general/CLAUDE.md の設計方針に基づく、動作検証用のプロトタイプ。
+   キャラシェア・ジェネラル(汎用テンプレートエンジン)
+   設計方針・変更の経緯は general/CLAUDE.md を参照。HTML/CSS/JSを1ファイルに内包し、
+   ビルドツール・フレームワークは使わない(バニラJS)。
+
+   このスクリプトの構成(「/* ---------- 」で始まる見出し順):
+     1. 設定・Google認証・Driveとの通信(Google Drive連携の設定/Google認証/Drive: 保存・読み込み)
+     2. 共有(テンプレート・キャラクター。share-proxyの暗号化トークン)
+     3. 汎用ヘルパー・テンプレート内の枠を探す関数・値の取得と計算エンジン
+     4. 描画(全体・ゲート画面(トップ/一覧)・シート・チャットパレット・ドラッグ&ドロップの見た目)
+     5. 値の更新(入力モード)・モード切替・選択・テンプレートの配色
+     6. 構造編集(追加・削除・並べ替え)・設定パネル(インプット/カテゴリー/セットの設定)
+     7. 参照の一覧・データリストの編集(モーダル)
+     8. 入出力(JSONの読み込み・書き出し)
+     9. 初期化(bootstrap)
+
+   状態は、画面の切り替えを含めて、グローバルの state オブジェクト1つに持つ。
+   値が変わるたびに render() が #app を作り直す(差分更新はしない)ため、
+   フォーカス・スクロール位置の保持は render() 側で行う。
    ========================================================= */
 
 /* ---------- Google Drive連携の設定 ----------
@@ -1328,9 +1344,7 @@ async function openTemplateFromDrive(fileId){
     state.templateShareToken = props.shareToken || '';
     state.templateShareUrl = (state.templateShared && state.templateShareToken)
       ? templateShareUrlFor(state.templateShareToken) : '';
-    state.characterFileId = null;
-    state.characterShared = false;
-    state.characterShareToken = '';
+    detachCharacterFromDrive();
     state.selection = null;
     state.dataListTsvEditing = {};
     state.driveBrowser = null;
@@ -2352,7 +2366,7 @@ function render(opts){
   restoreFocus();
   window.scrollTo(0, toTop ? 0 : scrollY);
 }
-function goToScreen(screen){ state.screen = screen; render({ skipDirty: true }); }
+
 // 新規テンプレート作成時の初期状態。空のテンプレートではなく、実際に
 // 動くサンプル(画像エリア・lookup・インプットセット・集計を一通り
 // 含む)を最初から表示することで、作者がゼロから組み立てなくても
@@ -2408,17 +2422,26 @@ function sampleCharacterScaffold(){
     ]},
   };
 }
-function startNewTemplateNoLogin(){
-  state.template = sampleTemplateScaffold();
-  state.character = sampleCharacterScaffold();
+// Driveとの紐づき(どのファイルを開いているか・共有の状態)を外す。ローカルのファイルや新規作成など、
+// Driveのファイルと無関係な内容に切り替える時に呼ぶ(そのままだと、「Driveに保存」で別のファイルを
+// 上書きしてしまう)。templateShareTokenには、読み込んだ内容が持っていたトークンがあれば渡す。
+function detachTemplateFromDrive(shareToken){
   state.templateFileId = null;
   state.templateFileMine = false;
   state.templateShared = false;
   state.templateShareUrl = '';
-  state.templateShareToken = '';
+  state.templateShareToken = shareToken || '';
+}
+function detachCharacterFromDrive(){
   state.characterFileId = null;
   state.characterShared = false;
   state.characterShareToken = '';
+}
+function startNewTemplateNoLogin(){
+  state.template = sampleTemplateScaffold();
+  state.character = sampleCharacterScaffold();
+  detachTemplateFromDrive();
+  detachCharacterFromDrive();
   state.selection = null;
   state.dataListTsvEditing = {};
   state.mode = 'edit';
@@ -2439,11 +2462,7 @@ function handleImportAnyJsonFile(input){
         parsed.dataLists = parsed.dataLists || [];
         parsed.chatFreeTexts = parsed.chatFreeTexts || [];
         state.template = assertSafeTemplateIds(parsed);
-        state.templateFileId = null;
-        state.templateFileMine = false;
-        state.templateShared = false;
-        state.templateShareUrl = '';
-        state.templateShareToken = '';
+        detachTemplateFromDrive();
         state.character = blankCharacter();
       } else if(parsed.values !== undefined){
         if(!parsed.templateSnapshot){
@@ -2451,11 +2470,7 @@ function handleImportAnyJsonFile(input){
           return;
         }
         state.template = assertSafeTemplateIds(parsed.templateSnapshot);
-        state.templateFileId = null;
-        state.templateShareToken = parsed.templateShareToken || '';
-        state.templateFileMine = false;
-        state.templateShared = false;
-        state.templateShareUrl = '';
+        detachTemplateFromDrive(parsed.templateShareToken);
         parsed.values = parsed.values || {};
         parsed.sets = parsed.sets || {};
         state.character = parsed;
@@ -2463,9 +2478,7 @@ function handleImportAnyJsonFile(input){
         alert('テンプレート・キャラクターのどちらのJSONとしても認識できませんでした。');
         return;
       }
-      state.characterFileId = null;
-      state.characterShared = false;
-      state.characterShareToken = '';
+      detachCharacterFromDrive();
       state.selection = null;
       state.dataListTsvEditing = {};
       state.readOnly = false;
@@ -2619,6 +2632,16 @@ function setTemplateListSortOrder(value){
   state.driveBrowser.templates.sortOrder = sortOrder;
   render({ skipDirty: true });
 }
+// 一覧の「並び替え」の選択肢(更新日時/作成日時 × 新しい→古い/古い→新しい)。キャラクター一覧・
+// テンプレート一覧で共通。
+function sortOrderOptionsHtml(sortBy, sortOrder){
+  return [
+    ['modifiedTime', 'desc', '更新日時(新しい→古い)'],
+    ['modifiedTime', 'asc', '更新日時(古い→新しい)'],
+    ['createdTime', 'desc', '作成日時(新しい→古い)'],
+    ['createdTime', 'asc', '作成日時(古い→新しい)'],
+  ].map(([by, ord, label]) => `<option value="${by}_${ord}" ${sortBy === by && sortOrder === ord ? 'selected' : ''}>${label}</option>`).join('\n          ');
+}
 function renderCharacterListSection(b){
   let controls = '';
   let body;
@@ -2633,10 +2656,7 @@ function renderCharacterListSection(b){
     controls = `<div class="char-list-controls">
       <label><span>並び替え</span>
         <select onchange="setCharacterListSortOrder(this.value)">
-          <option value="modifiedTime_desc" ${sortBy === 'modifiedTime' && sortOrder === 'desc' ? 'selected' : ''}>更新日時(新しい→古い)</option>
-          <option value="modifiedTime_asc" ${sortBy === 'modifiedTime' && sortOrder === 'asc' ? 'selected' : ''}>更新日時(古い→新しい)</option>
-          <option value="createdTime_desc" ${sortBy === 'createdTime' && sortOrder === 'desc' ? 'selected' : ''}>作成日時(新しい→古い)</option>
-          <option value="createdTime_asc" ${sortBy === 'createdTime' && sortOrder === 'asc' ? 'selected' : ''}>作成日時(古い→新しい)</option>
+          ${sortOrderOptionsHtml(sortBy, sortOrder)}
         </select>
       </label>
       <label><span>システムで絞り込み</span>
@@ -2685,10 +2705,7 @@ function renderTemplateListSection(b){
     controls = `<div class="char-list-controls">
       <label><span>並び替え</span>
         <select onchange="setTemplateListSortOrder(this.value)">
-          <option value="modifiedTime_desc" ${sortBy === 'modifiedTime' && sortOrder === 'desc' ? 'selected' : ''}>更新日時(新しい→古い)</option>
-          <option value="modifiedTime_asc" ${sortBy === 'modifiedTime' && sortOrder === 'asc' ? 'selected' : ''}>更新日時(古い→新しい)</option>
-          <option value="createdTime_desc" ${sortBy === 'createdTime' && sortOrder === 'desc' ? 'selected' : ''}>作成日時(新しい→古い)</option>
-          <option value="createdTime_asc" ${sortBy === 'createdTime' && sortOrder === 'asc' ? 'selected' : ''}>作成日時(古い→新しい)</option>
+          ${sortOrderOptionsHtml(sortBy, sortOrder)}
         </select>
       </label>
     </div>`;
@@ -4498,12 +4515,10 @@ function changeListKind(id, v){
   }
   render();
 }
-function renderFormulaEditor(f){
-  // 項に選べるのは、数値・チェックボックスに加えて、文字列・リストから選ぶ枠も
-  // (2026-10-16)。数値以外の値は、計算の時にtoCalcNumber()が先頭の数字を
-  // 読み取って数値として扱う。
-  const candidates = referenceableFieldsFor(f.id, ['number', 'boolean', 'string', 'list']).filter(c => c.id !== f.id);
-  const rows = (f.terms || []).map((t, i) => {
+// 計算式の項(f.terms)の並びの編集欄。計算式(renderFormulaEditor)と、集計の各行の計算式
+// (renderAggregateEditor)で共通。candidatesは、「枠を参照」で選べるインプットの一覧。
+function renderFormulaTermRows(f, candidates){
+  return (f.terms || []).map((t, i) => {
     const opSelect = i === 0 ? '' : `<select onchange="updateFormulaTerm('${f.id}',${i},'op',this.value)">
       <option value="+" ${t.op === '+' ? 'selected' : ''}>+</option>
       <option value="-" ${t.op === '-' ? 'selected' : ''}>−</option>
@@ -4537,6 +4552,13 @@ function renderFormulaEditor(f){
       ${zeroDivWarning}
     </div>`;
   }).join('');
+}
+function renderFormulaEditor(f){
+  // 項に選べるのは、数値・チェックボックスに加えて、文字列・リストから選ぶ枠も
+  // (2026-10-16)。数値以外の値は、計算の時にtoCalcNumber()が先頭の数字を
+  // 読み取って数値として扱う。
+  const candidates = referenceableFieldsFor(f.id, ['number', 'boolean', 'string', 'list']).filter(c => c.id !== f.id);
+  const rows = renderFormulaTermRows(f, candidates);
   return `<div class="formula-editor"><p class="muted small">計算式</p>${rows}<button onclick="addFormulaTerm('${f.id}')">+ 項を追加</button></div>`;
 }
 function addFormulaTerm(id){
@@ -4664,31 +4686,7 @@ function renderAggregateEditor(f){
     // 計算式(renderFormulaEditor)と同じく、文字列・リストから選ぶ枠も選べる
     // (2026-10-16)。数値以外の値は先頭の数字を読み取って数値として扱う。
     const candidates = st.fields.filter(sf => ['number', 'boolean', 'string', 'list'].includes(sf.type) && sf.id !== f.id);
-    const rows = (f.terms || []).map((t, i) => {
-      const opSelect = i === 0 ? '' : `<select onchange="updateFormulaTerm('${f.id}',${i},'op',this.value)">
-        <option value="+" ${t.op === '+' ? 'selected' : ''}>+</option>
-        <option value="-" ${t.op === '-' ? 'selected' : ''}>−</option>
-        <option value="×" ${t.op === '×' ? 'selected' : ''}>×</option>
-        <option value="÷↑" ${t.op === '÷↑' ? 'selected' : ''}>÷切り上げ</option>
-        <option value="÷↓" ${t.op === '÷↓' ? 'selected' : ''}>÷切り捨て</option>
-        <option value="%" ${t.op === '%' ? 'selected' : ''}>%(余り)</option>
-      </select>`;
-      const isLiteral = Object.prototype.hasOwnProperty.call(t, 'value');
-      const modeToggle = checkboxToggleHtml(isLiteral, `onchange="setFormulaTermMode('${f.id}',${i},this.checked?'value':'field')"`, '値を直接入力');
-      const valueControl = isLiteral
-        ? `<input type="number" step="any" value="${t.value ?? 0}" onchange="updateFormulaTerm('${f.id}',${i},'value',Number(this.value)||0)">`
-        : `<select onchange="updateFormulaTerm('${f.id}',${i},'field',this.value)">
-            <option value="">(選択)</option>
-            ${candidates.map(c => `<option value="${c.id}" ${t.field === c.id ? 'selected' : ''}>${esc(c.label)}</option>`).join('')}
-          </select>`;
-      const zeroDivWarning = (t.op === '÷↑' || t.op === '÷↓' || t.op === '%')
-        ? `<p class="muted small term-warning">⚠ ${isLiteral ? 'この値が' : '参照先の値が'}0になるとゼロ除算エラーになります</p>` : '';
-      return `<div class="term-row">
-        <div class="term-row-head">${opSelect}${modeToggle}<button onclick="removeFormulaTerm('${f.id}',${i})">×</button></div>
-        <div class="term-row-value">${valueControl}</div>
-        ${zeroDivWarning}
-      </div>`;
-    }).join('');
+    const rows = renderFormulaTermRows(f, candidates);
     html += `<div class="formula-editor"><p class="muted small">各行の計算式(行ごとに計算してから、全行の結果を合計します)</p>${rows}<button onclick="addFormulaTerm('${f.id}')">+ 項を追加</button></div>`;
   }
   return html;
@@ -5202,14 +5200,8 @@ function handleImportTemplateFile(input){
       // ローカルファイルから読み込んだ時点で、以前Driveに紐づいていた
       // テンプレート・キャラクターとは別物として扱う(そのままだと
       // 「Driveに保存」で意図せず別のファイルを上書きしてしまう)。
-      state.templateFileId = null;
-      state.templateFileMine = false;
-      state.templateShared = false;
-      state.templateShareUrl = '';
-      state.templateShareToken = '';
-      state.characterFileId = null;
-      state.characterShared = false;
-      state.characterShareToken = '';
+      detachTemplateFromDrive();
+      detachCharacterFromDrive();
       state.mode = 'edit';
       state.screen = 'templateEditor';
       state.dirty = false;
@@ -5230,9 +5222,7 @@ function handleImportCharacterFile(input){
       // ローカルファイルから読み込んだ時点で、以前Driveに紐づいていた
       // キャラクターとは別物として扱う(「Driveに保存」での意図しない
       // 上書きを防ぐ)。
-      state.characterFileId = null;
-      state.characterShared = false;
-      state.characterShareToken = '';
+      detachCharacterFromDrive();
       state.readOnly = false;
       state.mode = 'view';
       state.screen = 'characterEditor';
@@ -5280,6 +5270,13 @@ function attemptSilentSessionRestore(){
     render({ skipDirty: true });
   });
 }
+// どの入口(共有リンク・トップ・テンプレートのリンク)でも、最初の描画のあとに、Googleログインの準備と、
+// ログイン状態の無言復元を始める。
+function finishBootstrap(renderOpts){
+  render(renderOpts);
+  initGoogle();
+  attemptSilentSessionRestore();
+}
 async function bootstrap(){
   const params = new URLSearchParams(window.location.search);
   const tpl = params.get('tpl');
@@ -5319,17 +5316,13 @@ async function bootstrap(){
       state.screen = 'top';
       state.loadError = e.message;
     }
-    render();
-    initGoogle();
-    attemptSilentSessionRestore();
+    finishBootstrap();
     return;
   }
 
   if(tpl === 'author'){
     state.screen = 'top';
-    render();
-    initGoogle();
-    attemptSilentSessionRestore();
+    finishBootstrap();
     return;
   }
 
@@ -5350,16 +5343,12 @@ async function bootstrap(){
       state.screen = 'top';
       state.loadError = e.message;
     }
-    render({ skipDirty: true });
-    initGoogle();
-    attemptSilentSessionRestore();
+    finishBootstrap({ skipDirty: true });
     return;
   }
 
   state.screen = 'top';
-  render();
-  initGoogle();
-  attemptSilentSessionRestore();
+  finishBootstrap();
 }
 // タブを閉じる・再読み込みする・別サイトへ移動する等をした場合のみ、
 // ブラウザ標準の確認ダイアログを出す(アプリ内の画面遷移はページ遷移を
