@@ -4891,7 +4891,7 @@ function renderListFilterEditor(f){
     }
     // 「リストからランダム」だけ: 出現確率(重み)の列(2026-10-18)。選ばなければ全て同じ確率。
     if(isRandomListField(f)){
-      html += `<label><span>出現確率の列（任意。選ばなければ、全て同じ確率）</span><select onchange="applyPatch('field','${f.id}',{randomWeight:this.value || undefined})"><option value="">(選ばない)</option>${allCols.map(c => `<option value="${escAttr(c)}" ${f.randomWeight === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select></label>`;
+      html += `<label><span>出現確率の列（選ばなければ、等しい確率）</span><select onchange="applyPatch('field','${f.id}',{randomWeight:this.value || undefined})"><option value="">(選ばない)</option>${allCols.map(c => `<option value="${escAttr(c)}" ${f.randomWeight === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select></label>`;
     }
   }
   return html;
