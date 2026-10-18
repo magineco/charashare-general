@@ -238,6 +238,23 @@
      ようにする(2026-09-20、ハンドル追加時)。 */
   .field-label-left{ display:flex; align-items:center; gap:4px; min-width:0; }
   .tsv-tab-copy-btn{ flex:0 0 auto; padding:3px 8px; font-size:0.9rem; }
+  /* 「リストからランダム」のインプットの🎲ボタン(2026-10-18)。インプットの名称の後ろに置く
+     (前だと、1桁の数字の名称がマウスカーソルで隠れるため。インプットセットの行の中では、入力欄の右)。強調はせず、通常のボタンの見た目のまま
+     (利用者指定)。押せない時(候補なし・テンプレートの編集中)は薄くする。
+     ツールバーの全体用「🎲ランダム（全て）」(.random-all-btn)は、通常の大きさのボタン。 */
+  .random-btn{ flex:0 0 auto; white-space:nowrap; padding:0 6px; font-size:0.9rem; line-height:1.45; }
+  .random-btn:disabled{ opacity:0.45; cursor:not-allowed; box-shadow:none; }
+  .random-all-btn{ padding:5px 9px; font-size:1rem; line-height:inherit; }
+  /* 「🎲ランダム（全て）」の確認ダイアログの、対象の一覧 */
+  .random-confirm-list{ margin:8px 0 14px; padding-left:20px; max-height:50vh; overflow:auto; }
+  .random-confirm-list li{ margin:2px 0; }
+  .random-confirm-where{ color:var(--muted); font-size:0.9rem; }
+  .random-confirm-actions{ display:flex; gap:8px; justify-content:flex-end; }
+  .random-result-value{ font-weight:600; }
+  .random-result-value::before{ content:"→ "; color:var(--muted); font-weight:400; }
+  /* インプットセットの行の中: 🎲ボタンと入力欄を横に並べる */
+  .field-with-random{ display:flex; gap:6px; align-items:stretch; }
+  .field-with-random > select, .field-with-random > input, .field-with-random > .field-value{ flex:1 1 0; min-width:0; width:auto; }
   /* 設定パネルの、表(TSV)の初期値の下の「タブ記号をコピー」ボタンの行 */
   .tsv-default-tools{ margin:-4px 0 10px; }
   /* 読み取り専用の欄(計算式・lookup・集計、および閲覧専用画面での
@@ -814,7 +831,7 @@
   @media print{
     .toolbar, .toolbar-row, .panel-pane, .modal-backdrop,
     .add-frame-btn, .add-row-btn, .remove-row-btn, .row-move-btn,
-    .collapse-btn, .field-image-actions, .chat-palette-block button{
+    .collapse-btn, .field-image-actions, .random-btn, .chat-palette-block button{
       display:none !important;
     }
     /* インプットセットの行の操作列(左端の⠿↑↓・右端の−)は、中身だけ消して
@@ -1002,6 +1019,8 @@ const state = {
   dataListTsvEditing: {},
   tableEditing: {},
   refListModalOpen: false,
+  randomConfirmOpen: false, // 「🎲ランダム（全て）」の確認ダイアログ
+  randomResult: null, // 「🎲ランダム（全て）」の実行後の結果画面(表示する結果の配列。閉じるとnull)
   colorPanelOpen: false, // テンプレート編集画面(確認画面含む)での色調整パネル
   chatPaletteOpen: false, // キャラクター編集/表示画面でのフローティングチャットパレット
   dirty: false, // 未保存の変更があるか(beforeunloadの警告判定に使う)
@@ -2081,7 +2100,9 @@ function evalListFilter(f, rowScope, visiting){
   const valueCol = f.optionValue || f.optionLabel;
   return dl.rows
     .filter(r => matches.every(m => String(r[m.key]) === String(resolveTermValue(m.field, rowScope, visiting))))
-    .map(r => ({ value: r[valueCol], label: r[f.optionLabel] }));
+    .map(r => f.randomWeight
+      ? { value: r[valueCol], label: r[f.optionLabel], weight: r[f.randomWeight] }
+      : { value: r[valueCol], label: r[f.optionLabel] });
 }
 // データリストで絞り込まれるリスト型インプット(listFilter)の値を、レンダリング
 // の直前に補正する。候補が1件だけに絞り込まれた場合は自動的にそれを
@@ -2360,6 +2381,8 @@ function render(opts){
     (state.screen === 'templateEditor' ? (state.colorPanelOpen ? renderColorPanel() : renderPanel()) : '') +
     renderDataListModal() +
     renderRefListModal() +
+    renderRandomConfirmModal() +
+    renderRandomResultModal() +
     (isCharacterScreen ? renderFloatingChatPalette() : '');
   applyTemplateColors(false);
   app.querySelectorAll('textarea').forEach(autoResizeTextarea);
@@ -2390,6 +2413,10 @@ function sampleTemplateScaffold(){
           { id: 'f_bodyBase', label: '肉体基本値', type: 'number', kind: 'input', span: 1, defaultValue: 10 },
           // 「3で割って切り上げ」を計算式の÷切り上げ演算子でそのまま表現する。
           { id: 'f_bodyMod', label: '肉体修正値', type: 'number', kind: 'ref', refType: 'formula', terms: [{ op: null, field: 'f_bodyBase' }, { op: '÷↑', value: 3 }], span: 1, chatEnabled: true, chatTemplate: '2d6+[この値] 肉体判定' },
+          // 「リストからランダム」の例(2026-10-18、利用者指定の並び)。同じ値を複数回並べると、その回数だけ
+          // 選ばれやすくなる(2d6は、中央の値ほど多く並べて山型にしている)。
+          { id: 'f_d6', label: '1d6', type: 'list', kind: 'input', span: 1, options: ['1', '2', '3', '4', '5', '6'], randomButton: true },
+          { id: 'f_2d6', label: '2d6', type: 'list', kind: 'input', span: 1, options: '1,2,2,3,3,3,4,4,4,4,5,5,5,5,5,6,6,6,6,6,6,7,7,7,7,7,7,7,8,8,8,8,8,9,9,9,9,10,10,10,11,11,12'.split(','), randomButton: true },
           { id: 'f_memo', label: 'メモ', type: 'multiline', kind: 'input', span: 4, minRows: 3, defaultValue: '' },
           { id: 'f_freeTable', label: '自由入力表', type: 'table', kind: 'input', span: 4 },
         ],
@@ -2877,6 +2904,7 @@ function renderToolbar(){
     </header>
     <div class="toolbar-row">
       ${chatBtn}
+      ${randomAllButtonHtml()}
       <button onclick="document.getElementById('char-file').click()">キャラクターを読み込み</button>
       <input id="char-file" type="file" accept="application/json" style="display:none" onchange="handleImportCharacterFile(this)">
       <button onclick="exportCharacter()">キャラクターをダウンロード</button>
@@ -2904,6 +2932,7 @@ function renderToolbar(){
     ${templateDeleteBtn}
   </div>
   <div class="toolbar-row">
+    ${randomAllButtonHtml()}
     <button onclick="toggleDataListModal()">データリストを編集</button>
     <button onclick="toggleRefListModal()">参照を一覧で確認</button>
     <button class="${state.colorPanelOpen ? 'share-btn' : ''}" onclick="toggleColorPanel()">シートの色を変更</button>
@@ -3144,6 +3173,7 @@ function getFieldReferenceErrors(f){
     if(f.refType === 'lookup' && f.output && !allCols.includes(f.output)) missing(f.output);
     if(f.refType === 'listFilter' && f.optionLabel && !allCols.includes(f.optionLabel)) missing(f.optionLabel);
     if(f.refType === 'listFilter' && f.optionValue && !allCols.includes(f.optionValue)) missing(f.optionValue);
+    if(f.refType === 'listFilter' && f.randomWeight && !allCols.includes(f.randomWeight)) missing(f.randomWeight);
     (f.match || []).forEach(m => {
       if(!isValidReferenceTarget(m.field)) missing(m.field);
       if(!(dl.conditionColumns || []).includes(m.key)) missing(m.key);
@@ -3210,7 +3240,13 @@ function renderFieldFrame(f, rowScope, containerCols){
   // 挙動は残ってしまっていた、2026-09-19に発見・修正)。他の入力型は
   // 「ラベル文字をクリックすると入力欄にフォーカスが移る」という一般的な
   // 挙動を活かすため、<label>のままにしている。
+  // 「リストからランダム」は🎲ボタンを含む。<label>は、forが無いと枠内の最初の操作部品を
+  // 活性化するため、名称の文字等をクリックした時に🎲ボタンが押されて抽選されてしまう。
+  // これを避けつつ「名称をクリックすると入力欄にフォーカスが移る」挙動も残すため、<label>の
+  // forで入力欄を明示する(入力欄側のidはfieldDomAttrs()が付ける)。
+  const randomBtn = randomButtonHtml(f, rowScope);
   const tag = f.type === 'boolean' ? 'div' : 'label';
+  const forAttr = (tag === 'label' && randomBtn) ? ` for="${escAttr(fieldInputDomId(f))}"` : '';
   // ドラッグ&ドロップでの並べ替え(2026-09-20追加)。インプットの枠自体は
   // クリックで設定パネルを開く役目を持っているため、掴む場所をハンドル
   // (⠿)だけに絞り、「ハンドルを触った=ドラッグ、それ以外を触った=
@@ -3229,8 +3265,8 @@ function renderFieldFrame(f, rowScope, containerCols){
   const dragTargetAttrs = state.mode === 'edit'
     ? ` ondragover="handleFieldDragOver(event,'${f.id}')" ondrop="handleFieldDrop(event,'${f.id}')"`
     : '';
-  return `<${tag} class="frame-field ${selected ? 'is-selected' : ''} ${broken ? 'is-broken' : ''}" ${frameAttrs('field', f.id)}${spanStyle}${dragTargetAttrs}>
-    <span class="field-label-row"><span class="field-label-left">${dragHandle}<span class="field-label">${esc(f.label)}</span></span>${tsvCopyBtn}</span>
+  return `<${tag} class="frame-field ${selected ? 'is-selected' : ''} ${broken ? 'is-broken' : ''}"${forAttr} ${frameAttrs('field', f.id)}${spanStyle}${dragTargetAttrs}>
+    <span class="field-label-row"><span class="field-label-left">${dragHandle}<span class="field-label">${esc(f.label)}</span>${randomBtn}</span>${tsvCopyBtn}</span>
     ${renderFieldInput(f, rowScope)}
   </${tag}>`;
 }
@@ -3244,9 +3280,59 @@ function inputChangeAttr(f, rowScope){
 // 毎回別物になる。再描画後に「同じ入力欄」を探して手を返せるよう、識別用の
 // data属性を振っておく(renderで使うfocus復元とセットで機能する)。
 function fieldDomAttrs(f, rowScope){
-  return rowScope
-    ? `data-field-id="${escAttr(f.id)}" data-set-id="${escAttr(rowScope.setId)}" data-row-index="${rowScope.rowIndex}"`
-    : `data-field-id="${escAttr(f.id)}"`;
+  if(rowScope) return `data-field-id="${escAttr(f.id)}" data-set-id="${escAttr(rowScope.setId)}" data-row-index="${rowScope.rowIndex}"`;
+  // 「リストからランダム」の入力欄だけ、枠の<label for>から指すためのidを持つ(renderFieldFrame参照)。
+  const idAttr = isRandomListField(f) ? ` id="${escAttr(fieldInputDomId(f))}"` : '';
+  return `data-field-id="${escAttr(f.id)}"${idAttr}`;
+}
+function fieldInputDomId(f){ return 'fld-input-' + f.id; }
+// リスト型インプットの、今この時点の選択肢({value,label}の配列)。データリストから選ぶ
+// もの(listFilter)は、他のインプットの値による絞り込みの結果(rowScopeは、インプット
+// セットの行の中にある場合の行)。
+function listOptionsOf(f, rowScope){
+  if(f.kind === 'ref' && f.refType === 'listFilter') return evalListFilter(f, rowScope);
+  return (f.options || []).map(o => ({ value: o, label: o }));
+}
+// 「リストからランダム」のインプット(2026-10-18)。内部では、リスト型(type:'list')に
+// randomButton:trueを付けたもの。設定パネルの「データの種類」では、「リストから選ぶ」とは
+// 別の選択肢として出す(fieldTypeKeyOf)。値の形・計算・チャットパレット・パーティー
+// ビューでの扱いは、リスト型と全く同じ。
+function isRandomListField(f){ return !!(f && f.kind !== 'divider' && f.type === 'list' && f.randomButton); }
+function hasRandomListFields(){
+  return state.template.sections.some(s => s.fields.some(isRandomListField) || s.sets.some(st => st.fields.some(isRandomListField)));
+}
+// 抽選の対象になる選択肢。値が空の選択肢(データリストの空行等)は選ばない。同じ値の
+// 選択肢が複数あれば、その数だけ選ばれやすくなる(重複を除かない。これで2d6のような
+// 偏りのある分布も、選択肢の個数で表せる)。
+// データリストから選ぶもので「出現確率の列」(f.randomWeight)を選んでいる時は、その列の値(数字)を
+// 重みとして使う: 重みが大きい行ほど出やすい(合計に対する割合。100の合計でなくてよい)。
+// 数字として読めない・0以下・空欄の行は、重み0として抽選から外す(toCalcNumberの読み方)。
+// 列を選んでいなければ、全て同じ確率。
+function randomCandidates(f, rowScope){
+  const options = listOptionsOf(f, rowScope).filter(o => o.value !== '' && o.value != null);
+  if(!(f.kind === 'ref' && f.refType === 'listFilter' && f.randomWeight)) return options;
+  return options.map(o => ({ ...o, w: toCalcNumber(o.weight) })).filter(o => o.w > 0);
+}
+function pickRandom(candidates){
+  if(candidates.every(o => typeof o.w === 'number')){
+    let r = Math.random() * candidates.reduce((sum, o) => sum + o.w, 0);
+    for(const o of candidates){ r -= o.w; if(r < 0) return o; }
+    return candidates[candidates.length - 1];
+  }
+  return candidates[Math.floor(Math.random() * candidates.length)];
+}
+// 「リストからランダム」のインプット1つ分の🎲ボタン。名称の後ろ(renderFieldFrame)と、
+// インプットセットの行の入力欄の右(renderSetRow)に置く。読み取り専用の閲覧には付けない。
+// テンプレートの編集画面(編集中)では、押しても抽選せず、他の部分と同じく設定パネルを開く
+// (onclickなし)。抽選できる候補が無い間は押せなくする(絞り込みが変わると必ず再描画される
+// ので、状態は追従する)。
+function randomButtonHtml(f, rowScope){
+  if(!isRandomListField(f) || state.readOnly) return '';
+  let attrs;
+  if(state.mode === 'edit') attrs = ' title="確認画面に切り替えると押せます"';
+  else if(!randomCandidates(f, rowScope).length) attrs = ' disabled title="選べる候補がありません"';
+  else attrs = ` title="ランダムに選ぶ" onclick="rollRandomField(${jsArg(f.id)},${rowScope ? jsArg(rowScope.setId) + ',' + rowScope.rowIndex : 'null,0'})"`;
+  return `<button type="button" class="random-btn" aria-label="ランダムに選ぶ"${attrs}>🎲</button>`;
 }
 function renderFieldInput(f, rowScope){
   if(f.kind === 'ref' && (f.refType === 'formula' || f.refType === 'lookup' || f.refType === 'aggregateSum')){
@@ -3301,9 +3387,7 @@ function renderFieldInput(f, rowScope){
     return `<textarea rows="${minRows}" oninput="autoResizeTextarea(this)"${ph} ${domAttrs} ${change}>\n${esc(val ?? '')}</textarea>`;
   }
   if(f.type === 'list'){
-    let options;
-    if(f.kind === 'ref' && f.refType === 'listFilter') options = evalListFilter(f, rowScope);
-    else options = (f.options || []).map(o => ({ value: o, label: o }));
+    const options = listOptionsOf(f, rowScope);
     // データリストの条件(キー項目)に従属するリスト(「データリストから選択」で
     // 表示条件にインプットを対応させたもの)は、候補が0〜1件に絞られると、
     // プルダウンにしても「(未選択)」しか選べない(0件)か、選んでも直後に
@@ -3458,7 +3542,11 @@ function renderSetRow(set, row, idx, rowCount){
   const dropAttrs = ` ondragover="handleSetRowDragOver(event,'${set.id}',${idx})" ondrop="handleSetRowDrop(event,'${set.id}',${idx})"`;
   const cells = set.fields.map(f => {
     const rowScope = { setId: set.id, rowIndex: idx, row };
-    return `<div class="set-cell"${dropAttrs}>${renderFieldInput(f, rowScope)}</div>`;
+    // 「リストからランダム」は、入力欄の右に🎲ボタンを置く(見出しは表の先頭に1回だけなので、
+    // 名称の後ろではなく、行ごとのこの位置。名称の後ろに置くのと同じく、入力欄の値をカーソルで隠さない)。
+    const randomBtn = randomButtonHtml(f, rowScope);
+    const input = renderFieldInput(f, rowScope);
+    return `<div class="set-cell"${dropAttrs}>${randomBtn ? `<div class="field-with-random">${input}${randomBtn}</div>` : input}</div>`;
   }).join('');
   const upDisabled = idx === 0 ? 'disabled' : '';
   const downDisabled = idx === rowCount - 1 ? 'disabled' : '';
@@ -3919,6 +4007,156 @@ function updateSetRowValue(setId, rowIndex, fieldId, raw){
   state.character.sets[setId][rowIndex][fieldId] = v;
   render();
 }
+// 「リストからランダム」の🎲ボタン(2026-10-18)。押した時点の選択肢(データリストで絞り込んで
+// いるものは、絞り込まれた後の候補)から、1つを均等な確率で選んで入れる。通常の入力と同じ
+// updateValue/updateSetRowValueを通すので、他のインプットへの反映・絞り込みの補正も同じ。
+function rollRandomField(fieldId, setId, rowIndex){
+  let f, rowScope = null;
+  if(setId){
+    const st = findFrame('set', setId);
+    f = st && st.fields.find(x => x.id === fieldId);
+    const row = (state.character.sets[setId] || [])[rowIndex];
+    if(!row) return;
+    rowScope = { setId, rowIndex, row };
+  } else {
+    f = findFrame('field', fieldId);
+  }
+  if(!isRandomListField(f)) return;
+  const candidates = randomCandidates(f, rowScope);
+  if(!candidates.length) return;
+  const picked = pickRandom(candidates);
+  if(rowScope) updateSetRowValue(setId, rowIndex, fieldId, picked.value);
+  else updateValue(fieldId, picked.value);
+}
+// ツールバーの「🎲ランダム」(2026-10-18)。シート中の「リストからランダム」のインプットを、
+// 全部まとめてランダムに入力する(インプットセットの中は、行ごと)。テンプレートの編集画面では、確認画面
+// (state.mode==='view')の時だけ押せる(ボタン側で止めているが、ここでも見る)。
+// 他の「リストからランダム」の値で絞り込む(データリストの表示条件に、そのインプットを対応させた)
+// インプットは、絞り込みのもとになる方を先に振る。そうしないと、先に振った値が、後から変わった
+// 絞り込みの条件で外れて空に戻ってしまう。互いに依存し合う(循環)場合だけは、並び順のまま。
+// 1つ振るごとに絞り込みの補正(normalizeListFilterValues)をかけ、途中の(ランダムではない)
+// データリスト絞り込みの自動選択も、次の抽選に反映させる。再描画は最後に1回だけ。
+function collectRandomTargets(){
+  const targets = [];
+  for(const s of state.template.sections){
+    for(const f of s.fields){ if(isRandomListField(f)) targets.push({ f, rowScope: null, where: s.label }); }
+    for(const st of s.sets){
+      (state.character.sets[st.id] || []).forEach((row, idx) => {
+        for(const f of st.fields){
+          if(isRandomListField(f)) targets.push({ f, rowScope: { setId: st.id, rowIndex: idx, row }, where: `${s.label} > ${st.label} ${idx + 1}行目` });
+        }
+      });
+    }
+  }
+  return targets;
+}
+function orderRandomTargets(targets){
+  const keysOf = t => (t.f.kind === 'ref' && t.f.refType === 'listFilter') ? (t.f.match || []).map(m => m.field) : [];
+  const rest = targets.slice();
+  const ordered = [];
+  const waiting = t => keysOf(t).some(id => rest.some(o => o !== t && o.f.id === id));
+  while(rest.length){
+    let i = rest.findIndex(t => !waiting(t));
+    if(i < 0) i = 0;
+    ordered.push(rest.splice(i, 1)[0]);
+  }
+  return ordered;
+}
+function rollAllRandomFields(){
+  if(state.mode === 'edit' || state.readOnly) return;
+  const targets = collectRandomTargets();
+  const rolled = new Set();
+  for(const t of orderRandomTargets(targets)){
+    const candidates = randomCandidates(t.f, t.rowScope);
+    if(!candidates.length) continue;
+    setInputValueQuiet(t.f.id, pickRandom(candidates).value, t.rowScope);
+    rolled.add(t);
+    normalizeListFilterValues();
+  }
+  // 結果画面(renderRandomResultModal)に出す内容。全部振り終わった後の最終的な値を、プルダウンに
+  // 出ている表示(選択肢の表示文字)で記録する(後から絞り込みの補正で変わった場合も、実際の値と一致する)。
+  state.randomResult = targets.map(t => {
+    if(!rolled.has(t)) return { label: t.f.label, where: t.where, text: '', skipped: true };
+    const value = getInputValue(t.f.id, t.rowScope);
+    const opt = listOptionsOf(t.f, t.rowScope).find(o => String(o.value) === String(value));
+    return { label: t.f.label, where: t.where, text: String(opt ? opt.label : (value ?? '')), skipped: false };
+  });
+  render();
+}
+// ツールバーの全体用ボタン「🎲ランダム（全て）」。押すとすぐには振らず、対象の一覧を含む確認
+// ダイアログ(renderRandomConfirmModal)を出す(今の値が一斉に上書きされるため)。
+// 「リストからランダム」のインプットが1つも無いシートには、キャラクター編集画面にも
+// テンプレート編集画面にも出さない(押しても何も起きないため。チャットパレットのボタンと同じ
+// 考え方。利用者指定)。テンプレートの編集画面では、編集中は押せない状態にする
+// (確認画面で押せることを、titleで知らせる)。
+function randomAllButtonHtml(){
+  if(!hasRandomListFields()) return '';
+  let attrs;
+  if(state.screen === 'templateEditor' && state.mode === 'edit') attrs = ' disabled title="確認画面に切り替えると押せます"';
+  else attrs = ' title="「リストからランダム」のインプットを、まとめてランダムに入力する" onclick="openRandomConfirm()"';
+  return `<button type="button" class="random-btn random-all-btn"${attrs}>🎲ランダム（全て）</button>`;
+}
+function openRandomConfirm(){
+  if(state.mode === 'edit' || state.readOnly || !hasRandomListFields()) return;
+  state.randomConfirmOpen = true;
+  render({ skipDirty: true });
+}
+function closeRandomConfirm(){
+  state.randomConfirmOpen = false;
+  render({ skipDirty: true });
+}
+function confirmRollAll(){
+  state.randomConfirmOpen = false;
+  rollAllRandomFields();
+}
+// 確認ダイアログ。対象(「リストからランダム」のインプット)を、場所つきで並べる。候補が無くて
+// 振れないものが実際にあるかは、他のインプットを先に振った後の絞り込み次第で変わり、開いた
+// 時点では分からないため、一覧には付けず、説明文で一般的に触れるだけにする。
+function renderRandomConfirmModal(){
+  if(!state.randomConfirmOpen) return '';
+  const items = collectRandomTargets().map(({ f, where }) =>
+    `<li><span class="random-confirm-where">${esc(where)}</span> ${esc(f.label)}</li>`
+  ).join('');
+  return `<div class="modal-backdrop" onclick="closeRandomConfirm()">
+    <div class="modal-box" onclick="event.stopPropagation()">
+      <div class="modal-head"><strong>🎲ランダム（全て）</strong><button class="icon-btn" onclick="closeRandomConfirm()">×</button></div>
+      <div class="modal-body">
+        <p>次の全てをランダムで、候補の中から一つ、現在の値に入力します。</p>
+        <ul class="random-confirm-list">${items}</ul>
+        <div class="random-confirm-actions">
+          <button type="button" onclick="closeRandomConfirm()">キャンセル</button>
+          <button type="button" class="share-btn" onclick="confirmRollAll()">実行</button>
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+// 「🎲ランダム（全て）」の実行後に出す結果画面。入力された値を、インプット名・場所とともに並べる。
+// 候補が無くて振れなかったものは、その旨を出す(値は変わっていない)。「閉じる」・×・背景のクリックで閉じる。
+function closeRandomResult(){
+  state.randomResult = null;
+  render({ skipDirty: true });
+}
+function renderRandomResultModal(){
+  if(!state.randomResult) return '';
+  const items = state.randomResult.map(r =>
+    `<li><span class="random-confirm-where">${esc(r.where)}</span> ${esc(r.label)} ${r.skipped
+      ? '<span class="random-confirm-where">選べる候補が無いため、変わりません</span>'
+      : `<span class="random-result-value">${esc(r.text)}</span>`}</li>`
+  ).join('');
+  return `<div class="modal-backdrop" onclick="closeRandomResult()">
+    <div class="modal-box" onclick="event.stopPropagation()">
+      <div class="modal-head"><strong>🎲ランダム（全て）の結果</strong><button class="icon-btn" onclick="closeRandomResult()">×</button></div>
+      <div class="modal-body">
+        <p>ランダムで次の通り入力しました。</p>
+        <ul class="random-confirm-list">${items}</ul>
+        <div class="random-confirm-actions">
+          <button type="button" onclick="closeRandomResult()">閉じる</button>
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
 // 真偽値インプットでcheckboxCountが2以上の場合の、チェックボックス1個
 // 分の更新(updateValue/updateSetRowValueは単一のtrue/falseしか
 // 扱えないため専用の関数にした)。既存の値が配列でなくても(未入力・
@@ -4249,8 +4487,11 @@ function panelTitle(kind){
   return { section: 'カテゴリーの設定', set: 'インプットセットの設定', field: 'インプットの設定' }[kind] || '設定';
 }
 function fieldTypeLabel(t){
-  return { number: '数値', string: '文字列', multiline: '複数行テキスト', boolean: 'チェックボックス', list: 'リストから選ぶ', table: '表(TSV)', image: '画像' }[t] || t;
+  return { number: '数値', string: '文字列', multiline: '複数行テキスト', boolean: 'チェックボックス', list: 'リストから選ぶ', randomList: 'リストからランダム', table: '表(TSV)', image: '画像' }[t] || t;
 }
+// 設定パネルの「データの種類」の選択値。「リストからランダム」は、内部ではリスト型
+// (type:'list')にrandomButton:trueを付けたもの(isRandomListField)。
+function fieldTypeKeyOf(f){ return isRandomListField(f) ? 'randomList' : f.type; }
 function renderPanel(){
   if(!state.selection) return '';
   const { kind, id } = state.selection;
@@ -4385,8 +4626,9 @@ function updateChatTemplate(id, value){
   render();
 }
 function renderFieldTypeEditor(f){
-  const typeOptions = ['number', 'string', 'multiline', 'boolean', 'list', 'table']
-    .map(t => `<option value="${t}" ${f.type === t ? 'selected' : ''}>${fieldTypeLabel(t)}</option>`).join('');
+  const typeKey = fieldTypeKeyOf(f);
+  const typeOptions = ['number', 'string', 'multiline', 'boolean', 'list', 'randomList', 'table']
+    .map(t => `<option value="${t}" ${typeKey === t ? 'selected' : ''}>${fieldTypeLabel(t)}</option>`).join('');
   let html = `<label><span>データの種類</span><select onchange="changeFieldType('${f.id}',this.value)">${typeOptions}</select></label>`;
   if(f.type === 'number'){
     const kindOptions = [['input', '入力値'], ['formula', '計算式'], ['lookup', 'データリストから参照']];
@@ -4451,15 +4693,27 @@ function renderFieldTypeEditor(f){
   }
   return html;
 }
-function changeFieldType(id, newType){
+function changeFieldType(id, newTypeKey){
   const f = findFrame('field', id); if(!f) return;
+  // 「リストからランダム」(randomList)は、内部ではリスト型+randomButton(isRandomListField)。
+  const toRandom = newTypeKey === 'randomList';
+  const newType = toRandom ? 'list' : newTypeKey;
+  // 「リストから選ぶ」と「リストからランダム」の行き来は、選択肢・データリストなどの設定を
+  // 持ち越したまま(自由入力の許可・入力例も含む)、randomButtonの有無だけを切り替える。
+  if(f.type === 'list' && newType === 'list'){
+    if(toRandom) f.randomButton = true;
+    else { delete f.randomButton; delete f.randomWeight; }
+    render();
+    return;
+  }
   f.type = newType;
   f.kind = 'input';
   delete f.refType; delete f.terms; delete f.dataList; delete f.match; delete f.output; delete f.set;
-  delete f.optionLabel; delete f.optionValue;
+  delete f.optionLabel; delete f.optionValue; delete f.randomWeight;
   delete f.defaultValue; delete f.placeholder;
   if(newType === 'list' && !f.options) f.options = ['選択肢A', '選択肢B'];
-  if(newType !== 'list'){ delete f.options; delete f.allowCustomInput; }
+  if(newType !== 'list'){ delete f.options; delete f.allowCustomInput; delete f.randomButton; }
+  if(toRandom) f.randomButton = true;
   if(newType === 'multiline' && !f.minRows) f.minRows = 3;
   if(newType !== 'multiline') delete f.minRows;
   if(newType !== 'boolean') delete f.checkboxCount;
@@ -4505,7 +4759,7 @@ function changeListKind(id, v){
   const f = findFrame('field', id); if(!f) return;
   if(v === 'fixed'){
     f.kind = 'input';
-    delete f.refType; delete f.dataList; delete f.match; delete f.optionLabel; delete f.optionValue;
+    delete f.refType; delete f.dataList; delete f.match; delete f.optionLabel; delete f.optionValue; delete f.randomWeight;
     if(!f.options) f.options = ['選択肢A', '選択肢B'];
   } else {
     f.kind = 'ref'; f.refType = 'listFilter';
@@ -4635,6 +4889,10 @@ function renderListFilterEditor(f){
     if(hasCustomValue){
       html += `<label><span>保存する値の列</span><select onchange="applyPatch('field','${f.id}',{optionValue:this.value})"><option value="">(選択)</option>${allCols.map(c => `<option value="${escAttr(c)}" ${f.optionValue === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select></label>`;
     }
+    // 「リストからランダム」だけ: 出現確率(重み)の列(2026-10-18)。選ばなければ全て同じ確率。
+    if(isRandomListField(f)){
+      html += `<label><span>出現確率の列（任意。選ばなければ、全て同じ確率）</span><select onchange="applyPatch('field','${f.id}',{randomWeight:this.value || undefined})"><option value="">(選ばない)</option>${allCols.map(c => `<option value="${escAttr(c)}" ${f.randomWeight === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select></label>`;
+    }
   }
   return html;
 }
@@ -4646,7 +4904,7 @@ function toggleListFilterCustomValue(id, checked){
 }
 function setListFilterDataList(id, dlId){
   const f = findFrame('field', id); if(!f) return;
-  f.dataList = dlId; f.match = []; f.optionLabel = ''; delete f.optionValue;
+  f.dataList = dlId; f.match = []; f.optionLabel = ''; delete f.optionValue; delete f.randomWeight;
   render();
 }
 function setListFilterMatch(id, key, fieldId){
@@ -4994,6 +5252,7 @@ function commitDataListTsv(dlId, textareaEl){
       if(f.output in renameMap) f.output = renameMap[f.output];
       if(f.optionLabel in renameMap) f.optionLabel = renameMap[f.optionLabel];
       if(f.optionValue in renameMap) f.optionValue = renameMap[f.optionValue];
+      if(f.randomWeight in renameMap) f.randomWeight = renameMap[f.randomWeight];
     });
   }
   dl.conditionColumns = parsed.conditionColumns;
@@ -5119,6 +5378,7 @@ function findColumnReferences(dlId, columnName){
     if(f.refType === 'lookup' && f.output === columnName) refs.push(`インプット「${label}」の出力する列`);
     if(f.refType === 'listFilter' && f.optionLabel === columnName) refs.push(`インプット「${label}」の表示に使う列`);
     if(f.refType === 'listFilter' && f.optionValue === columnName) refs.push(`インプット「${label}」の値として使う列`);
+    if(f.refType === 'listFilter' && f.randomWeight === columnName) refs.push(`インプット「${label}」の出現確率に使う列`);
   });
   return refs;
 }
