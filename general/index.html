@@ -4487,11 +4487,19 @@ function panelTitle(kind){
   return { section: 'カテゴリーの設定', set: 'インプットセットの設定', field: 'インプットの設定' }[kind] || '設定';
 }
 function fieldTypeLabel(t){
-  return { number: '数値', string: '文字列', multiline: '複数行テキスト', boolean: 'チェックボックス', list: 'リストから選ぶ', randomList: 'リストからランダム', table: '表(TSV)', image: '画像' }[t] || t;
+  return { numberInput: '数値の入力', stringInput: '文字の入力', calc: '計算', boolean: 'チェックボックス', list: 'リストから選ぶ', randomList: 'リストからランダム', table: '表(TSV)', image: '画像' }[t] || t;
 }
-// 設定パネルの「データの種類」の選択値。「リストからランダム」は、内部ではリスト型
-// (type:'list')にrandomButton:trueを付けたもの(isRandomListField)。
-function fieldTypeKeyOf(f){ return isRandomListField(f) ? 'randomList' : f.type; }
+// 設定パネルの「データの種類」の選択値(2026-10-18)。内部の保存形式(type・kind)は変えず、
+// 画面上の分け方だけを次のように対応づける:
+// - 数値の入力 = type:'number'・kind:'input' / 計算 = type:'number'・kind:'ref'(計算式・データリスト参照・集計)
+// - 文字の入力 = type:'string'または'multiline'(複数行は、文字の入力の「複数行にする」)
+// - リストからランダム = type:'list'にrandomButton:true(isRandomListField)
+function fieldTypeKeyOf(f){
+  if(isRandomListField(f)) return 'randomList';
+  if(f.type === 'number') return f.kind === 'input' ? 'numberInput' : 'calc';
+  if(f.type === 'string' || f.type === 'multiline') return 'stringInput';
+  return f.type;
+}
 function renderPanel(){
   if(!state.selection) return '';
   const { kind, id } = state.selection;
@@ -4627,26 +4635,33 @@ function updateChatTemplate(id, value){
 }
 function renderFieldTypeEditor(f){
   const typeKey = fieldTypeKeyOf(f);
-  const typeOptions = ['number', 'string', 'multiline', 'boolean', 'list', 'randomList', 'table']
+  const typeOptions = ['stringInput', 'numberInput', 'calc', 'boolean', 'list', 'randomList', 'table']
     .map(t => `<option value="${t}" ${typeKey === t ? 'selected' : ''}>${fieldTypeLabel(t)}</option>`).join('');
   let html = `<label><span>データの種類</span><select onchange="changeFieldType('${f.id}',this.value)">${typeOptions}</select></label>`;
-  if(f.type === 'number'){
-    const kindOptions = [['input', '入力値'], ['formula', '計算式'], ['lookup', 'データリストから参照']];
+  if(f.type === 'number' && f.kind === 'input'){
+    // 数値の入力。初期値は入力値(kind:'input')の時のみ意味を持つ。
+    html += `<label><span>初期値</span><input type="number" step="any" value="${f.defaultValue ?? 0}" onchange="applyPatch('field','${f.id}',{defaultValue:Number(this.value)||0})"></label>`;
+  } else if(f.type === 'number'){
+    // 計算(2026-10-18): 計算式・データリストから参照・集計。入力値は「数値の入力」。
+    const kindOptions = [['formula', '計算式'], ['lookup', 'データリストから参照']];
     if(!isFieldInsideSet(f.id)) kindOptions.push(['aggregateSum', '集計(インプットセットの合計)']);
-    const currentKind = f.kind === 'input' ? 'input' : f.refType;
     html += `<label><span>計算方法</span><select onchange="changeNumberKind('${f.id}',this.value)">${
-      kindOptions.map(([v, l]) => `<option value="${v}" ${currentKind === v ? 'selected' : ''}>${l}</option>`).join('')
+      kindOptions.map(([v, l]) => `<option value="${v}" ${f.refType === v ? 'selected' : ''}>${l}</option>`).join('')
     }</select></label>`;
-    // 初期値は入力値(kind:'input')の時のみ意味を持つ。
-    // 計算式・lookup・集計は値が自動的に決まるため設定不要。
-    if(currentKind === 'input'){
-      html += `<label><span>初期値</span><input type="number" step="any" value="${f.defaultValue ?? 0}" onchange="applyPatch('field','${f.id}',{defaultValue:Number(this.value)||0})"></label>`;
+    if(f.refType === 'formula') html += renderFormulaEditor(f);
+    if(f.refType === 'lookup') html += renderLookupEditor(f);
+    if(f.refType === 'aggregateSum') html += renderAggregateEditor(f);
+  } else if(f.type === 'string' || f.type === 'multiline'){
+    // 文字の入力(2026-10-18)。「複数行にする」で、1行の入力欄と複数行の入力欄(以前の「複数行テキスト」)を
+    // 切り替える(内部ではtype:'string'/'multiline'。初期値・入力例は切り替えても持ち越す)。
+    const multi = f.type === 'multiline';
+    html += checkboxToggleHtml(multi, `onchange="setStringMultiline('${f.id}',this.checked)"`, '複数行にする');
+    if(multi){
+      html += `<label><span>最低行数</span><input type="number" min="1" max="20" value="${Math.max(1, parseInt(f.minRows) || 3)}" onchange="applyPatch('field','${f.id}',{minRows:Math.max(1,parseInt(this.value)||1)})"></label>`;
+      html += `<label><span>初期値</span><textarea rows="2" onchange="applyPatch('field','${f.id}',{defaultValue:this.value})">\n${esc(f.defaultValue ?? '')}</textarea></label>`;
+    } else {
+      html += `<label><span>初期値</span><input type="text" value="${escAttr(f.defaultValue ?? '')}" onchange="applyPatch('field','${f.id}',{defaultValue:this.value})"></label>`;
     }
-    if(f.kind === 'ref' && f.refType === 'formula') html += renderFormulaEditor(f);
-    if(f.kind === 'ref' && f.refType === 'lookup') html += renderLookupEditor(f);
-    if(f.kind === 'ref' && f.refType === 'aggregateSum') html += renderAggregateEditor(f);
-  } else if(f.type === 'string'){
-    html += `<label><span>初期値</span><input type="text" value="${escAttr(f.defaultValue ?? '')}" onchange="applyPatch('field','${f.id}',{defaultValue:this.value})"></label>`;
     html += `<label><span>空欄の時に表示する入力例（任意）</span><input type="text" value="${escAttr(f.placeholder ?? '')}" onchange="applyPatch('field','${f.id}',{placeholder:this.value})"></label>`;
   } else if(f.type === 'boolean'){
     const count = checkboxCountOf(f);
@@ -4678,10 +4693,6 @@ function renderFieldTypeEditor(f){
     if(f.allowCustomInput){
       html += `<label><span>空欄の時に表示する入力例（任意）</span><input type="text" value="${escAttr(f.placeholder ?? '')}" onchange="applyPatch('field','${f.id}',{placeholder:this.value})"></label>`;
     }
-  } else if(f.type === 'multiline'){
-    html += `<label><span>最低行数</span><input type="number" min="1" max="20" value="${Math.max(1, parseInt(f.minRows) || 3)}" onchange="applyPatch('field','${f.id}',{minRows:Math.max(1,parseInt(this.value)||1)})"></label>`;
-    html += `<label><span>初期値</span><textarea rows="2" onchange="applyPatch('field','${f.id}',{defaultValue:this.value})">\n${esc(f.defaultValue ?? '')}</textarea></label>`;
-    html += `<label><span>空欄の時に表示する入力例（任意）</span><input type="text" value="${escAttr(f.placeholder ?? '')}" onchange="applyPatch('field','${f.id}',{placeholder:this.value})"></label>`;
   } else if(f.type === 'table'){
     // 表(TSV)の初期値(2026-10-17)。以前は設定パネルに欄が無く、JSONの`defaultValue`を直接
     // 書くしか無かった(確認画面で表を編集しても、確認用のキャラクターの値になるだけ)。
@@ -4693,11 +4704,27 @@ function renderFieldTypeEditor(f){
   }
   return html;
 }
+// 文字の入力の「複数行にする」(type:'string'⇄'multiline')。初期値・入力例は持ち越す。
+function setStringMultiline(id, on){
+  const f = findFrame('field', id); if(!f) return;
+  f.type = on ? 'multiline' : 'string';
+  if(on){ if(!f.minRows) f.minRows = 3; }
+  else delete f.minRows;
+  render();
+}
 function changeFieldType(id, newTypeKey){
   const f = findFrame('field', id); if(!f) return;
-  // 「リストからランダム」(randomList)は、内部ではリスト型+randomButton(isRandomListField)。
+  // 画面上の種類(fieldTypeKeyOf)から、内部のtypeへ。「リストからランダム」(randomList)は、内部では
+  // リスト型+randomButton(isRandomListField)。
   const toRandom = newTypeKey === 'randomList';
-  const newType = toRandom ? 'list' : newTypeKey;
+  const newType = { numberInput: 'number', calc: 'number', stringInput: 'string', randomList: 'list' }[newTypeKey] || newTypeKey;
+  // 数値の入力⇄計算は、どちらも内部ではtype:'number'(kindだけが違う)。計算方法の切り替えと同じ処理にする。
+  if(f.type === 'number' && newType === 'number'){
+    changeNumberKind(id, newTypeKey === 'numberInput' ? 'input' : 'formula');
+    return;
+  }
+  // 文字の入力は、文字列・複数行テキストのどちらも含む(切り替えるものが無い)。
+  if((f.type === 'string' || f.type === 'multiline') && newType === 'string') return;
   // 「リストから選ぶ」と「リストからランダム」の行き来は、選択肢・データリストなどの設定を
   // 持ち越したまま(自由入力の許可・入力例も含む)、randomButtonの有無だけを切り替える。
   if(f.type === 'list' && newType === 'list'){
@@ -4717,6 +4744,8 @@ function changeFieldType(id, newTypeKey){
   if(newType === 'multiline' && !f.minRows) f.minRows = 3;
   if(newType !== 'multiline') delete f.minRows;
   if(newType !== 'boolean') delete f.checkboxCount;
+  // 計算は、最初は計算式から(changeNumberKindが描画まで行う)。
+  if(newTypeKey === 'calc'){ changeNumberKind(id, 'formula'); return; }
   render();
 }
 function changeNumberKind(id, kindValue){
