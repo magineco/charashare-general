@@ -2336,6 +2336,8 @@ function syncAdVisibility(){
 // 呼び出し側がrender({scrollTop:true})で明示する。初回の描画は対象外
 // (ブラウザ標準のスクロール復元に任せる)。
 let lastRenderedScreen = null;
+// 折りたたみの開閉の状態(state.collapsed)が、どのテンプレートのものか(render()が、別のテンプレートに替わったら初期表示に戻す)
+let collapsedFor = null;
 // URLの引数(?tpl= / ?char=等)は、ページを開いた直後の画面だけを指す。その後に
 // 画面が切り替わっても引数が残ったままだと、アドレスバーの表示と実際の画面が
 // 食い違い、再読み込みやURLのコピーで、意図しない画面(共有されたキャラクター等)に
@@ -2395,6 +2397,10 @@ function render(opts){
   if(!(opts && opts.skipDirty) && (state.screen === 'templateEditor' || state.screen === 'characterEditor')){
     state.dirty = true;
   }
+  // 折りたたみの開閉の状態は、開いているテンプレートごと。別のテンプレートを開いた(state.templateが
+  // 別のオブジェクトになった)ら、初期表示(initialCollapsed)に戻す。以前は、別のシートを開いても、
+  // 同じカテゴリーIDの開閉の状態が残っていた。同じテンプレートを編集している間は変わらない。
+  if(collapsedFor !== state.template){ state.collapsed = {}; collapsedFor = state.template; }
   ensureInitialSetRows();
   materializeDefaultValues();
   normalizeListFilterValues();
@@ -3090,9 +3096,15 @@ function clampSectionColumns(v, fallback){
   const n = Math.floor(Number(v));
   return Math.min(MAX_SECTION_COLUMNS, Math.max(1, n || (fallback === undefined ? 2 : fallback)));
 }
+// カテゴリーが今、折りたたまれているか(2026-10-18)。利用者が開閉した後は、その状態(state.collapsed)。
+// まだ開閉していなければ、設定の「初期表示」(initialCollapsed:trueなら閉じる、無ければ開く)。
+function isSectionCollapsed(sec){
+  const v = state.collapsed[sec.id];
+  return v === undefined ? !!sec.initialCollapsed : !!v;
+}
 function renderSectionFrame(sec){
   const selected = state.selection && state.selection.kind === 'section' && state.selection.id === sec.id;
-  const isCollapsed = state.mode === 'view' && sec.collapsible && state.collapsed[sec.id];
+  const isCollapsed = state.mode === 'view' && sec.collapsible && isSectionCollapsed(sec);
   const toggleBtn = (state.mode === 'view' && sec.collapsible)
     ? `<button class="collapse-btn" onclick="toggleCollapse('${sec.id}')">${isCollapsed ? '▶' : '▼'}</button>`
     : '';
@@ -4359,7 +4371,26 @@ function removeSetRow(setId, idx){
   if(state.character.sets[setId]) state.character.sets[setId].splice(idx, 1);
   render();
 }
-function toggleCollapse(id){ state.collapsed[id] = !state.collapsed[id]; render({ skipDirty: true }); }
+function toggleCollapse(id){
+  const sec = findFrame('section', id);
+  state.collapsed[id] = !(sec ? isSectionCollapsed(sec) : state.collapsed[id]);
+  render({ skipDirty: true });
+}
+// 設定パネルの「折りたたみ可能にする」(オフにしたら、初期表示の設定は捨てる)と「初期表示」。
+// 確認画面にすぐ反映されるよう、そのカテゴリーの開閉の状態は、初期表示に戻す。
+function setSectionCollapsible(id, on){
+  const sec = findFrame('section', id); if(!sec) return;
+  sec.collapsible = on;
+  if(!on) delete sec.initialCollapsed;
+  delete state.collapsed[id];
+  render();
+}
+function setSectionInitialCollapsed(id, closed){
+  const sec = findFrame('section', id); if(!sec) return;
+  if(closed) sec.initialCollapsed = true; else delete sec.initialCollapsed;
+  delete state.collapsed[id];
+  render();
+}
 
 /* ---------- モード切替・選択 ---------- */
 function toggleMode(){
@@ -4647,7 +4678,10 @@ function renderPanelBody(kind, f){
       : '';
     return labelInput
       + `<label><span>一行に並べる列数</span><input type="number" min="1" max="${MAX_SECTION_COLUMNS}" value="${clampSectionColumns(f.columns)}" onchange="applyPatch('section','${f.id}',{columns:clampSectionColumns(this.value, 1)})"></label>`
-      + checkboxToggleHtml(f.collapsible, `onchange="applyPatch('section','${f.id}',{collapsible:this.checked})"`, '折りたたみ可能にする')
+      + checkboxToggleHtml(f.collapsible, `onchange="setSectionCollapsible('${f.id}',this.checked)"`, '折りたたみ可能にする')
+      + (f.collapsible
+        ? `<label><span>初期表示</span><select onchange="setSectionInitialCollapsed('${f.id}',this.value==='closed')"><option value="open" ${f.initialCollapsed ? '' : 'selected'}>開く</option><option value="closed" ${f.initialCollapsed ? 'selected' : ''}>閉じる</option></select></label>`
+        : '')
       + imageAreaWidthInput;
   }
   if(kind === 'set'){
