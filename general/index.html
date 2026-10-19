@@ -298,12 +298,20 @@
   .field-value.ref-value.is-broken-value{ border-color:var(--danger); border-style:solid; color:var(--danger); }
   .set-schema-field.is-broken{ border-color:var(--danger); color:var(--danger); }
   .frame-set{ background:var(--surface); border-radius:8px; padding:10px; }
-  .set-header{ display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:8px; }
+  .set-header{ display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; margin-bottom:8px; }
   .set-header .set-title{ margin-bottom:0; }
+  .set-header-actions{ display:flex; flex-wrap:wrap; gap:8px; }
   .set-schema-row{ display:flex; flex-wrap:wrap; gap:8px; }
   .set-schema-field{
     background:var(--surface-2); border:1px dashed var(--line); border-radius:5px;
     padding:4px 8px; cursor:pointer;
+  }
+  /* インプットセットの「改行」(2026-10-18)。編集中は、インプットの並びの中に、1行いっぱいの
+     チップとして出す(ここから後ろのインプットは、次の段に並ぶ。区切り線のように、選んで
+     「↑ 上へ」「↓ 下へ」で位置を動かせる)。 */
+  .set-schema-break{
+    flex:1 0 100%; text-align:center; color:var(--muted);
+    border:1px dashed var(--line); border-radius:5px; padding:2px 8px; cursor:pointer;
   }
   /* インプットセットの行は、行ごとに見出しを繰り返さず1番上に1回だけ
      出す表形式。.set-tableを1つのCSS Gridにし、見出し行・各データ行
@@ -346,9 +354,20 @@
      違う見出しがあっても、下線が一直線になる。見出しは左右に5pxの余白(margin)を
      取り、下線が隣の列とつながらないようにしている。 */
   .set-row .set-cell, .set-row .set-row-actions{ padding:9px 5px; align-self:stretch; }
+  /* 改行のあるインプットセットの、2段目以降(2026-10-18)。表のグリッドの、1段目の列の幅いっぱいに
+     またがる1つの箱(renderSetRow()が、行・列を指定して置く)。中に、その段のインプットだけの
+     グリッドを持ち、各インプットの左に見出し(名称)を出す(「メモ[入力欄] 備考[入力欄]」の形。
+     1段目の見出しは表の先頭にある)。 */
+  .set-row .set-subline{ min-width:0; padding:0 5px 9px; align-self:stretch; }
+  .set-subline-grid{ display:grid; column-gap:10px; align-items:start; }
+  /* 見出しは左に折り返さず1行で、入力欄は残りの幅いっぱい。複数行の入力欄でも、見出しは上に揃える
+     (見出しの上の余白は、入力欄の上の余白(枠1px+余白5px)に合わせる)。 */
+  .set-subcell{ min-width:0; display:flex; flex-direction:row; align-items:flex-start; gap:6px; }
+  .set-subcell .set-cell-label{ flex:0 0 auto; white-space:nowrap; padding-top:6px; }
+  .set-subcell > :not(.set-cell-label){ flex:1 1 0; min-width:0; }
   /* セルを行の高さに伸ばしても(帯・挿入先の線を一直線にするため)、中身は従来どおり縦中央に置く */
   .set-row .set-cell{ display:flex; flex-direction:column; justify-content:center; }
-  .set-row.is-alt .set-cell, .set-row.is-alt .set-row-actions{
+  .set-row.is-alt .set-cell, .set-row.is-alt .set-row-actions, .set-row.is-alt .set-subline{
     background:color-mix(in srgb, var(--surface), var(--text) 6%);
   }
   .set-table-header .set-cell-label{
@@ -368,7 +387,7 @@
   }
   .chat-line-group, .frame-field{ position:relative; }
   .chat-line-group.is-dragging, .frame-field.is-dragging{ opacity:0.4; }
-  .set-row.is-dragging .set-cell, .set-row.is-dragging .set-row-actions{ opacity:0.4; }
+  .set-row.is-dragging .set-cell, .set-row.is-dragging .set-row-actions, .set-row.is-dragging .set-subline{ opacity:0.4; }
   /* チャットパレットの行: 上端・下端に、行と同じ幅の線 */
   .chat-line-group.drop-before::before, .chat-line-group.drop-after::after{
     content:''; position:absolute; left:0; right:0; height:3px; border-radius:2px;
@@ -401,8 +420,9 @@
   .frame-divider.drop-before::before{ top:-5px; }
   .frame-divider.drop-after::after{ bottom:-5px; }
   /* インプットセットの行: 上端・下端(各セルの内側)に線。セルは行の高さに伸ばしてあるため、一直線になる */
-  .set-row.drop-before > *{ box-shadow:inset 0 3px 0 var(--accent); }
-  .set-row.drop-after > *{ box-shadow:inset 0 -3px 0 var(--accent); }
+  /* 改行のある行は、上端は1段目のセルと操作列、下端は最後の段(.is-last-line)と操作列(全段にまたがる)に付ける */
+  .set-row.drop-before > :not(.set-subline){ box-shadow:inset 0 3px 0 var(--accent); }
+  .set-row.drop-after > .is-last-line, .set-row.drop-after > .set-row-actions{ box-shadow:inset 0 -3px 0 var(--accent); }
   /* 操作列(左端の⠿↑↓、右端の−)には見出し文字が無いため、装飾用の下線だけ消す
      (グリッドの行高さを揃えるため、セル自体は空のまま残す)。 */
   .set-table-header .set-cell-label.set-cell-label-spacer{ border-bottom-color:transparent; }
@@ -452,21 +472,15 @@
   .mode-edit [data-frame-id]{ cursor:pointer; }
   .mode-edit [data-frame-id]:hover{ outline:2px dashed var(--accent); outline-offset:2px; }
   .mode-edit [data-frame-id].is-selected{ outline:2px solid var(--accent); outline-offset:2px; }
+  /* テンプレート編集中の入力欄は、値を直接いじれないプレビュー(クリックは枠の選択になる)。
+     以前は、それを示すために入力欄をopacity:0.8でうっすら暗くしていたが、確認画面の入力欄と
+     背景・枠線・文字の色が微妙に違って見えるため、透明度はやめた(2026-10-18、利用者指定)。
+     色は確認画面と同じで、値をいじれないこと(pointer-events:none)だけが違う。
+     なお、以前は真偽値の<input type="checkbox">(本来はopacity:0で隠し、見た目は.checkbox-boxで描く)が
+     この透明度で薄く見える不具合があり、それを避ける上書きルールを持っていたが、透明度が無くなったため不要。 */
   .mode-edit .frame-field input, .mode-edit .frame-field select, .mode-edit .frame-field textarea{
-    pointer-events:none; opacity:0.8;
+    pointer-events:none;
   }
-  /* 上のルールは「テンプレート編集中は値を直接いじれないプレビュー」を
-     示すため見た目のinputをうっすら不透明度0.8で暗くする意図だが、
-     真偽値インプットの<input type="checkbox">は本来opacity:0で完全に
-     透明にし、見た目は隣接する.checkbox-boxだけで描く設計になっている
-     (.checkbox-visual input[type="checkbox"]参照)。同じ詳細度
-     (クラス2つ+要素1つ)のセレクタ同士でCSSの後勝ちが働き、テンプレート
-     編集画面でだけ透明なはずのチェックボックス本体がopacity:0.8で
-     薄く見えてしまい(下敷きの.checkbox-boxの枠線色と重なって色が
-     濁る)、キャラクター編集/閲覧画面のチェックボックスと微妙に違う色に
-     見える不具合があった(2026-09-21指摘)。詳細度をこちらの方が高くなる
-     セレクタにし、テンプレート編集画面でもopacity:0を保つようにする。 */
-  .mode-edit .checkbox-visual input[type="checkbox"]{ opacity:0; }
 
   /* 編集パネル: メインカラムの位置には影響させず、右側に固定表示する */
   /* 中央カラム(#app、max-width:1100px)のすぐ右にパネルを表示する。
@@ -1555,7 +1569,7 @@ function buildCharacterPreview(characterObj){
       if(texts.length >= 3) break;
       const firstRow = (sets[st.id] || [])[0];
       if(!firstRow) continue;
-      for(const f of (st.fields || [])){
+      for(const f of setInputFieldsOf(st)){
         if(texts.length >= 3) break;
         considerField(f, firstRow[f.id]);
       }
@@ -1900,8 +1914,23 @@ function isFieldInsideSet(fieldId){
 // isFieldInCycle()で検出し、参照エラーとして表示する(下記参照)。
 // セット内部のスコープ制限(別行・セット外からセット内へは直接参照
 // できない等)は、この関数とは別の話として引き続き適用される。
+// インプットセットの「改行」(kind:'break'、2026-10-18)は、sets[].fieldsの中にインプットと並ぶが、
+// インプットではない(値を持たず、参照・計算・チャットパレットの対象にならない)。
+function setInputFieldsOf(st){ return st.fields.filter(f => f.kind !== 'break'); }
+// 改行で区切った、インプットの並び(段ごとの配列)。先頭・末尾・連続する改行が作る空の段は、無いものとして飛ばす。
+// 改行が無ければ、全インプットの1段だけ(従来どおりの表)。
+function setLinesOf(st){
+  const lines = [];
+  let cur = [];
+  for(const f of st.fields){
+    if(f.kind === 'break'){ if(cur.length) lines.push(cur); cur = []; }
+    else cur.push(f);
+  }
+  if(cur.length) lines.push(cur);
+  return lines;
+}
 function fieldMatchesTypeFilter(f, typeFilter){
-  if(f.kind === 'divider') return false; // 区切り線はインプットではない(参照の候補に出さない)
+  if(f.kind === 'divider' || f.kind === 'break') return false; // 区切り線・改行はインプットではない(参照の候補に出さない)
   if(!typeFilter) return true;
   return Array.isArray(typeFilter) ? typeFilter.includes(f.type) : f.type === typeFilter;
 }
@@ -2154,11 +2183,17 @@ function normalizeListFilterValues(){
 // か[](意図的に空にした)か」の違いによって、「初期状態としては1行ある
 // 方が自然だが、編集の途中で0行になるのはあり得る」という区別を実現
 // している。
+// 初期の行数は、インプットセットの設定(initialRows)で変えられる(2026-10-18。無ければ1)。
+const MAX_INITIAL_SET_ROWS = 50;
+function initialRowsOf(st){
+  const n = parseInt(st.initialRows);
+  return Number.isFinite(n) ? Math.max(0, Math.min(MAX_INITIAL_SET_ROWS, n)) : 1;
+}
 function ensureInitialSetRows(){
   for(const s of state.template.sections){
     for(const st of s.sets){
       if(state.character.sets[st.id] === undefined){
-        state.character.sets[st.id] = [buildDefaultSetRow(st)];
+        state.character.sets[st.id] = Array.from({ length: initialRowsOf(st) }, () => buildDefaultSetRow(st));
       }
     }
   }
@@ -3487,6 +3522,7 @@ function renderSetFrame(set){
     // .is-selectedが、他の枠と共通で担う。
     body = `<div class="set-schema-row">${set.fields.map(f => {
       const fieldSelected = state.selection && state.selection.kind === 'field' && state.selection.id === f.id;
+      if(f.kind === 'break') return `<span class="set-schema-break ${fieldSelected ? 'is-selected' : ''}" data-frame-id="${f.id}" onclick="selectFrame(event,'field','${f.id}')">↵ 改行</span>`;
       return `<span class="set-schema-field ${fieldSelected ? 'is-selected' : ''} ${isFieldReferenceBroken(f) ? 'is-broken' : ''}" data-frame-id="${f.id}" onclick="selectFrame(event,'field','${f.id}')">${esc(f.label)}</span>`;
     }).join('')}</div>`;
     // 以前は設定パネル(右カラム)にあった「+ インプットを追加」を、
@@ -3494,7 +3530,8 @@ function renderSetFrame(set){
     // frameAttrs()によりインプットセットの枠全体がクリックで設定パネルを
     // 開くため、このボタン自体のクリックが誤ってパネルを開かないよう
     // stopPropagation()する(他の「+ ○○を追加」系ボタンと同じ作法)。
-    addFieldBtn = `<button class="add-frame-btn small" onclick="event.stopPropagation();addFieldToSet('${set.id}')">+ セットにインプットを追加</button>`;
+    addFieldBtn = `<button class="add-frame-btn small" onclick="event.stopPropagation();addFieldToSet('${set.id}')">+ セットにインプットを追加</button>`
+      + `<button class="add-frame-btn small" onclick="event.stopPropagation();addBreakToSet('${set.id}')">+ 改行を追加</button>`;
   } else {
     // 行ごとに見出し(品名・重量…)を繰り返さず、1番上に1回だけ出す。
     // .set-table全体を1つのCSS Gridにし、見出し行・各データ行は
@@ -3509,7 +3546,9 @@ function renderSetFrame(set){
     // colTemplate)で左右の操作列の有無を必ず揃える。読み取り専用の時は
     // どちらの列も作らない。
     const spacerCell = '<span class="set-cell-label set-cell-label-spacer"></span>';
-    const headerCells = (state.readOnly ? '' : spacerCell) + set.fields.map(f =>
+    // 改行で複数の段に分けたセットでは、表の先頭の見出しと列は1段目のインプットだけ(2段目以降は各行の中に見出しを出す。renderSetRow())
+    const firstLine = setLinesOf(set)[0] || [];
+    const headerCells = (state.readOnly ? '' : spacerCell) + firstLine.map(f =>
       `<span class="set-cell-label${isFieldReferenceBroken(f) ? ' is-broken' : ''}">${esc(f.label)}</span>`
     ).join('') + (state.readOnly ? '' : spacerCell);
     const header = rows.length ? `<div class="set-table-header">${headerCells}</div>` : '';
@@ -3518,17 +3557,22 @@ function renderSetFrame(set){
     // 反映したgrid-template-columnsを都度組み立てる(2026-09-25)。
     // 最低幅(90px)は今まで通り確保しつつ、width比率に応じて余った
     // スペースを配分する。両端のautoは操作列(左が⠿↑↓、右が−)。
-    const colTemplate = (state.readOnly ? '' : 'auto ') + set.fields.map(f => { const w = Math.max(1, parseInt(f.width) || 1); return `minmax(max(var(--set-col-min), min(calc(var(--set-col-unit) * ${w}), var(--set-col-max))), ${w}fr)`; }).join(' ') + (state.readOnly ? '' : ' auto');
+    const colTemplate = (state.readOnly ? '' : 'auto ') + firstLine.map(setColTrack).join(' ') + (state.readOnly ? '' : ' auto');
     body = `<div class="set-table-wrap"><div class="set-table" style="grid-template-columns:${colTemplate}">${header}${rowsHtml}</div></div>`;
     if(!state.readOnly) addRowBtn = `<button class="add-row-btn" onclick="addSetRow('${set.id}')">+ 行を追加</button>`;
   }
   return `<div class="frame-set ${selected ? 'is-selected' : ''}" ${frameAttrs('set', set.id)}>
     <div class="set-header">
       <h3 class="set-title">${esc(set.label)}</h3>
-      ${addRowBtn}${addFieldBtn}
+      <div class="set-header-actions">${addRowBtn}${addFieldBtn}</div>
     </div>
     ${body}
   </div>`;
+}
+// インプット1つぶんの列の幅(fr値と最低幅)。表の列(renderSetFrame)と、改行の2段目以降(renderSetRow)で共通。
+function setColTrack(f){
+  const w = Math.max(1, parseInt(f.width) || 1);
+  return `minmax(max(var(--set-col-min), min(calc(var(--set-col-unit) * ${w}), var(--set-col-max))), ${w}fr)`;
 }
 function renderSetRow(set, row, idx, rowCount){
   // ドラッグ&ドロップでの並べ替え(2026-09-20追加、チャットパレットと
@@ -3540,14 +3584,36 @@ function renderSetRow(set, row, idx, rowCount){
   // ことがある)と判明したため、行を構成する実体のある箱(各セル・
   // 操作列)それぞれに個別にondragover/ondropを持たせている。
   const dropAttrs = ` ondragover="handleSetRowDragOver(event,'${set.id}',${idx})" ondrop="handleSetRowDrop(event,'${set.id}',${idx})"`;
-  const cells = set.fields.map(f => {
+  const lines = setLinesOf(set);
+  const firstLine = lines[0] || [];
+  // 改行のあるセット(2段以上)は、この行を、表のグリッドの中で段の数だけ縦にまたがらせる(2026-10-18)。
+  // 見出し行が1行目なので、この行の1段目は2+行の番号×段の数行目。操作列(左・右)は全段にまたがり、
+  // 1段目のセルは各列に、2段目以降は1段目の列の幅いっぱいの1つの箱(.set-subline)にする。
+  // 改行が無いセットは、従来どおり(位置の指定なし)。
+  const multi = lines.length > 1;
+  const gridRow = 2 + idx * lines.length;
+  const colOffset = state.readOnly ? 0 : 1;
+  const cells = firstLine.map((f, k) => {
     const rowScope = { setId: set.id, rowIndex: idx, row };
     // 「リストからランダム」は、入力欄の右に🎲ボタンを置く(見出しは表の先頭に1回だけなので、
     // 名称の後ろではなく、行ごとのこの位置。名称の後ろに置くのと同じく、入力欄の値をカーソルで隠さない)。
     const randomBtn = randomButtonHtml(f, rowScope);
     const input = renderFieldInput(f, rowScope);
-    return `<div class="set-cell"${dropAttrs}>${randomBtn ? `<div class="field-with-random">${input}${randomBtn}</div>` : input}</div>`;
+    const place = multi ? ` style="grid-column:${k + colOffset + 1};grid-row:${gridRow}"` : '';
+    const lastLine = lines.length === 1 ? ' is-last-line' : '';
+    return `<div class="set-cell${lastLine}"${place}${dropAttrs}>${randomBtn ? `<div class="field-with-random">${input}${randomBtn}</div>` : input}</div>`;
   }).join('');
+  const sublines = lines.slice(1).map((line, j) => {
+    const rowScope = { setId: set.id, rowIndex: idx, row };
+    const subcells = line.map(f => {
+      const randomBtn = randomButtonHtml(f, rowScope);
+      const input = renderFieldInput(f, rowScope);
+      return `<div class="set-subcell"><span class="set-cell-label${isFieldReferenceBroken(f) ? ' is-broken' : ''}">${esc(f.label)}</span>${randomBtn ? `<div class="field-with-random">${input}${randomBtn}</div>` : input}</div>`;
+    }).join('');
+    const lastLine = j === lines.length - 2 ? ' is-last-line' : '';
+    return `<div class="set-subline${lastLine}" style="grid-column:${colOffset + 1} / ${colOffset + firstLine.length + 1};grid-row:${gridRow + j + 1}"${dropAttrs}><div class="set-subline-grid" style="grid-template-columns:${line.map(setColTrack).join(' ')}">${subcells}</div></div>`;
+  }).join('');
+  const actionsPlace = col => multi ? ` style="grid-column:${col};grid-row:${gridRow} / span ${lines.length}"` : '';
   const upDisabled = idx === 0 ? 'disabled' : '';
   const downDisabled = idx === rowCount - 1 ? 'disabled' : '';
   // 並べ替え(⠿ドラッグ・↑↓)は行の左端、削除(−)は右端に分けて置く
@@ -3559,15 +3625,15 @@ function renderSetRow(set, row, idx, rowCount){
   // 掴む場所はハンドル(⠿)のみに絞り、↑↓−ボタンの誤操作誘発や
   // テキスト選択との競合を避ける。ドロップ判定は両方の操作列にも持たせる。
   const dragHandle = `<span class="chat-drag-handle" draggable="true" title="ドラッグで並べ替え" ondragstart="handleSetRowDragStart(event,'${set.id}',${idx})" ondragend="handleSetRowDragEnd(event)">⠿</span>`;
-  const leftActions = state.readOnly ? '' : `<div class="set-row-actions set-row-actions-left"${dropAttrs}>
+  const leftActions = state.readOnly ? '' : `<div class="set-row-actions set-row-actions-left"${actionsPlace(1)}${dropAttrs}>
       ${dragHandle}
       <button class="row-move-btn" ${upDisabled} onclick="moveSetRow('${set.id}',${idx},-1)">↑</button>
       <button class="row-move-btn" ${downDisabled} onclick="moveSetRow('${set.id}',${idx},1)">↓</button>
     </div>`;
-  const rightActions = state.readOnly ? '' : `<div class="set-row-actions set-row-actions-right"${dropAttrs}>
+  const rightActions = state.readOnly ? '' : `<div class="set-row-actions set-row-actions-right"${actionsPlace(firstLine.length + 2)}${dropAttrs}>
       <button class="remove-row-btn" onclick="removeSetRow('${set.id}',${idx})">−</button>
     </div>`;
-  return `<div class="set-row${idx % 2 === 1 ? ' is-alt' : ''}">${leftActions}${cells}${rightActions}</div>`;
+  return `<div class="set-row${idx % 2 === 1 ? ' is-alt' : ''}">${leftActions}${cells}${sublines}${rightActions}</div>`;
 }
 
 /* ---------- チャットパレット ----------
@@ -3951,7 +4017,7 @@ function resolveChatText(f, rowScope, st){
     text = text.replace(/\[#(\d+)\]/g, (m, n) => {
       const num = parseInt(n, 10);
       if(num === 0) return String(rowScope.rowIndex + 1);
-      const target = st.fields[num - 1];
+      const target = setInputFieldsOf(st)[num - 1];
       if(!target) return '';
       const tv = getEffectiveValue(target, rowScope);
       return tv === DIV_BY_ZERO_ERROR ? 'ゼロで割っています' : String(tv ?? '');
@@ -4193,9 +4259,27 @@ function setFieldValueByScope(fieldId, scopeKey, value){
     state.character.values[fieldId] = value;
   }
 }
+// インプットセットの「初期の行数」の変更(2026-10-18)。空欄・数字でない時は、設定なし(=1行)に戻す。
+// テンプレートの編集画面の確認用キャラクターは、新しいキャラクターを作らないと初期の行数が
+// 反映されないため、変えた直後に分かるよう、このセットの行数を増やす(空の行を足す)か減らす
+// (後ろから削る)。確認用なので、行の中身が消えても構わない。
+function setSetInitialRows(setId, raw){
+  const st = findFrame('set', setId); if(!st) return;
+  const n = parseInt(raw);
+  if(Number.isFinite(n)) st.initialRows = Math.max(0, Math.min(MAX_INITIAL_SET_ROWS, n));
+  else delete st.initialRows;
+  if(state.screen === 'templateEditor' && state.character && state.character.sets){
+    const want = initialRowsOf(st);
+    const rows = state.character.sets[setId] || [];
+    while(rows.length < want) rows.push(buildDefaultSetRow(st));
+    rows.length = Math.min(rows.length, want);
+    state.character.sets[setId] = rows;
+  }
+  render();
+}
 function buildDefaultSetRow(st){
   const row = {};
-  st.fields.forEach(f => {
+  setInputFieldsOf(st).forEach(f => {
     row[f.id] = f.defaultValue !== undefined
       ? f.defaultValue
       : (f.type === 'number' ? 0 : f.type === 'boolean' ? false : '');
@@ -4402,6 +4486,24 @@ function addDividerToSection(sectionId){
   state.selection = { kind: 'field', id: d.id };
   render();
 }
+// 「+ 改行を追加」(2026-10-18)。このセットのインプット(または改行)を選択中なら、その直後に入れる
+// (区切り線と同じ。「ここまでを1段目にしたい」という操作の流れに合う)。選択が無ければ、最後の
+// インプットの手前(最後のインプットだけが次の段に回る)。インプットが1つしか無ければ末尾。
+// 追加したら、その設定パネルを開く。
+function addBreakToSet(setId){
+  const st = findFrame('set', setId); if(!st) return;
+  const b = { id: uid('f'), kind: 'break', label: '' };
+  let idx = st.fields.length;
+  const sel = state.selection && state.selection.kind === 'field' ? st.fields.findIndex(x => x.id === state.selection.id) : -1;
+  if(sel > -1) idx = sel + 1;
+  else {
+    const inputs = setInputFieldsOf(st);
+    if(inputs.length >= 2) idx = st.fields.indexOf(inputs[inputs.length - 1]);
+  }
+  st.fields.splice(idx, 0, b);
+  state.selection = { kind: 'field', id: b.id };
+  render();
+}
 function addFieldToSet(setId){
   const st = findFrame('set', setId); if(!st) return;
   const f = { id: uid('f'), label: '新しいインプット', type: 'string', kind: 'input' };
@@ -4506,8 +4608,9 @@ function renderPanel(){
   const f = findFrame(kind, id);
   if(!f){ state.selection = null; return ''; }
   const isDivider = kind === 'field' && f.kind === 'divider';
-  const title = isDivider ? '区切り線の設定' : panelTitle(kind);
-  const delLabel = isDivider ? '区切り線' : panelTitle(kind).replace('の設定', '');
+  const isBreak = kind === 'field' && f.kind === 'break';
+  const title = isDivider ? '区切り線の設定' : isBreak ? '改行の設定' : panelTitle(kind);
+  const delLabel = isDivider ? '区切り線' : isBreak ? '改行' : panelTitle(kind).replace('の設定', '');
   return `<div class="panel-pane">
     <div class="panel-head"><strong>${esc(title)}</strong><button class="icon-btn" onclick="closePanel()">×</button></div>
     <div class="panel-body">${renderPanelBody(kind, f)}</div>
@@ -4551,7 +4654,12 @@ function renderPanelBody(kind, f){
     // 「+ インプットを追加」ボタンは2026-09-20に画面本体側
     // (インプットセットのタイトル行、renderSetFrame()参照)へ移したため、
     // ここには置かない。
-    return labelInput + `<p class="muted small">表示画面上でも、各項目をクリックすると編集できます。</p>`;
+    return labelInput
+      + `<label><span>初期の行数（0〜${MAX_INITIAL_SET_ROWS}）</span><input type="number" min="0" max="${MAX_INITIAL_SET_ROWS}" step="1" value="${initialRowsOf(f)}" onchange="setSetInitialRows('${f.id}',this.value)"></label>`
+      + `<p class="muted small">表示画面上でも、各項目をクリックすると編集できます。</p>`;
+  }
+  if(kind === 'field' && f.kind === 'break'){
+    return `<p class="muted small">インプットセットの行の中で、この改行より後ろのインプットを、次の段に並べます（1つの行に、複数の段を作れます）。1段目の見出しは表の先頭に、2段目以降の見出しは各行の入力欄の左に出ます。下の「↑ 上へ」「↓ 下へ」で位置を動かせます。</p>`;
   }
   if(kind === 'field' && f.kind === 'divider'){
     return `<p class="muted small">カテゴリー内で、インプットの並びを横いっぱいの線で区切ります。この線より後ろのインプットは、次の行から並びます。「⠿」をドラッグするか、下の「↑ 上へ」「↓ 下へ」で位置を動かせます。</p>`;
@@ -5002,7 +5110,7 @@ function renderAggregateDataListEditor(f, st){
   html += `<label><span>参照するデータリスト</span><select onchange="setLookupDataList(${jsArg(f.id)},this.value)"><option value="">(選択)</option>${dlOptions}</select></label>`;
   const dl = dataLists.find(d => d.id === f.dataList);
   if(dl){
-    const candidates = [...st.fields, ...globalInputFields()].filter(c => c.id !== f.id);
+    const candidates = [...setInputFieldsOf(st), ...globalInputFields()].filter(c => c.id !== f.id);
     const candidateOptions = fieldId => candidates.map(c => `<option value="${escAttr(c.id)}" ${fieldId === c.id ? 'selected' : ''}>${esc(c.label)}</option>`).join('');
     html += (dl.conditionColumns || []).map(key => {
       const m = (f.match || []).find(mm => mm.key === key) || { key, field: '' };
@@ -5356,7 +5464,7 @@ function allFieldsInTemplate(){
   const out = [];
   for(const s of state.template.sections){
     for(const f of s.fields) if(f.kind !== 'divider') out.push(f); // 区切り線はインプットではない
-    for(const st of s.sets) for(const f of st.fields) out.push(f);
+    for(const st of s.sets) for(const f of setInputFieldsOf(st)) out.push(f); // 改行はインプットではない
   }
   return out;
 }
@@ -5366,7 +5474,7 @@ function templateFieldLabelMap(tpl){
   const map = {};
   (tpl.sections || []).forEach(s => {
     (s.fields || []).forEach(f => { if(f.kind !== 'divider') map[f.id] = f.label; }); // 区切り線は、追加・削除の通知の対象にしない
-    (s.sets || []).forEach(st => (st.fields || []).forEach(f => { map[f.id] = f.label; }));
+    (s.sets || []).forEach(st => (st.fields || []).forEach(f => { if(f.kind !== 'break') map[f.id] = f.label; })); // 改行は、追加・削除の通知の対象にしない
   });
   return map;
 }
