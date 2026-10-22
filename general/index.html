@@ -2370,6 +2370,16 @@ function alignBrowseScroll(){
   if(b && !b.characters.loading && !b.templates.loading && b.characters.files.every(f => f.preview !== undefined)) browseScrollTarget = null;
 }
 function render(opts){
+  // 文字入力欄の確定(change/blur)の最中は、描画を後回しにする(上の「文字入力欄の「確定」で起きる
+  // 再描画は、操作が落ち着くまで遅らせる」参照)。後回しにした分が残っていれば、ここで取り込む
+  // (未保存の変更の判定(skipDirty)も引き継ぐ)。
+  if(textCommitActive){ deferRender(opts); return; }
+  if(pendingRenderOpts){
+    opts = mergeRenderOpts(pendingRenderOpts, opts);
+    pendingRenderOpts = null;
+    clearTimeout(pendingRenderTimer);
+    pendingRenderTimer = null;
+  }
   syncAdVisibility();
   if(state.screen !== 'browse') browseScrollTarget = null;
   const toTop = (lastRenderedScreen !== null && lastRenderedScreen !== state.screen) || !!(opts && opts.scrollTop);
@@ -2817,63 +2827,116 @@ function renderBrowseScreen(){
 // 原因になる。再描画の前後でフォーカス位置・カーソル位置・スクロール
 // 位置を明示的に保存/復元することで、DOMを丸ごと作り直す設計は変えずに
 // この副作用だけを消す。
-// Tabキーで次の入力欄に移ろうとした瞬間も、今の入力欄がDOMごと
-// 作り直されてしまうため、ブラウザ標準の「次へ移動」が迷子になり
-// body、さらには次のTabでページ先頭に飛んでしまう。keydownの時点で
-// Tab/Shift+Tabの方向だけ覚えておき、再描画後は同じ欄ではなく
-// data-field-id順で1つ隣の欄へ明示的にフォーカスを移すことで、
-// 標準のTab移動を代わりに再現する。
 //
-// 「入力→確定→Tab」で稀に次の欄へ移らない不具合(2026-09-20修正):
-// 値を変更した直後にTabを押すと、値の確定(blur→change)は「Tabキーが
-// 次の要素へフォーカスを移す」というブラウザ既定動作の一部として起きる。
-// このchangeイベントからrender()が同期的に呼ばれるが、その瞬間の
-// document.activeElementは(新しい要素へのフォーカス移動が完了する前の、
-// blur処理中の過渡状態のため)入力欄ではなくdocument.bodyになっている
-// ことがある(実機で確認済み)。以前はcaptureActiveFieldFocus()が
-// その場でdocument.activeElementを読んでいたため、この過渡状態に
-// 当たるとpendingTabStepが「今どの欄からの移動か」を特定できないまま
-// 消費されてしまい、Tabが何も起きずに終わっていた。
-// 対策として、keydown時点(まだ元の欄にフォーカスがある、確実なタイミング)
-// で対象の欄そのものも合わせて記録しておき(pendingTabFromEl)、
-// captureActiveFieldFocus()側はTab起因の再描画に限りdocument.activeElement
-// ではなくこちらを起点に「次の欄」を計算する。
-let pendingTabStep = 0;
-let pendingTabFromEl = null;
-document.addEventListener('keydown', function(e){
-  if(e.key === 'Tab'){
-    pendingTabStep = e.shiftKey ? -1 : 1;
-    pendingTabFromEl = document.activeElement;
+// 文字入力欄の「確定」(change/blur)で起きる再描画は、操作が落ち着くまで遅らせる(2026-10-22):
+// 値の確定は、「Tabキーで次の欄へ移る」「別の要素をクリックする」というブラウザの動作の途中
+// (フォーカスが移る瞬間)に起きる。その最中にDOM全体を作り直すと、(1)Tabで移ろうとしていた
+// 次の欄が消えてフォーカスが<body>に落ち、次のTabがページ先頭から始まる、(2)マウスを押した
+// 要素が離すまでの間に別物になり、クリックが届かない(名称を変えた直後に別のインプットを選ぶと、
+// 1回目のクリックが空振りする)、という不具合になっていた。以前は、(1)をkeydownでTabの向きを
+// 覚えて「data-field-idの次の欄」へ代行して直していたが、シートの入力欄にしか効かず(設定パネル
+// の入力欄・ボタン等は対象外)、(2)には効かなかった。今は、確定の途中で呼ばれたrender()は、
+// 状態(state)だけを先に更新した上で、描画を後回しにする(deferRender())。
+// - Tab・Enter等(マウスを押していない): 次のタスクで描画する。その時点でフォーカスは、ブラウザが
+//   決めた次の欄に移り終わっているので、描画の前後で「今フォーカスのある欄」を保存/復元すれば足りる
+// - マウス・タッチを押している間: 離すまで待ち、クリック(selectFrame等のrender())が済んでから描画する。
+//   クリックのrender()が先に走れば、後回しにした描画は、それに合流して消える(状態は更新済みのため
+//   結果は同じ)。離されないまま止まった場合の保険に、最大400msで描画する
+// - プルダウン・チェックボックスの変更は、選んだ瞬間に確定するので、従来どおり直ちに描画する
+let textCommitActive = false;   // 今、文字入力欄の確定イベントを処理している最中か(そのタスクの間だけ真)
+let pointerIsDown = false;
+let pendingRenderOpts = null;
+let pendingRenderTimer = null;
+const POINTER_WAIT_MS = 400;
+const AFTER_POINTER_MS = 50;
+function isTextCommitTarget(el){
+  return !!el && (el.tagName === 'TEXTAREA'
+    || (el.tagName === 'INPUT' && !['checkbox', 'radio', 'button', 'submit', 'file', 'range', 'color'].includes(el.type)));
+}
+// 「確定の最中」の印(textCommitActive)は、フォーカスが外れる時に起きる一連のイベント
+// (change → blur → focusout。onblurの確定処理は、changeの後のblurで走る)の間ずっと保ち、
+// 最後のfocusoutの処理が終わった直後に(windowのバブリング段階で)確実に戻す。
+// タイマー(setTimeout 0)だけで戻すと、直後に起きるクリック(マウスを押してすぐ離した場合、数ms後)の
+// 処理にまで印が残り、そのクリックで呼ばれたrender()まで後回しになって、描画の直後にDOMを
+// 触る処理(editTableField()の、表の編集欄へのfocus()等)が空振りする。changeだけで戻すと、
+// 続くblurの確定処理(表のTSV欄等)の描画が後回しにならず、クリックを失う。
+// タイマーは、フォーカスが外れない確定(Enterキー等。focusoutが来ない)と、
+// stopPropagation()で戻す処理に届かなかった場合の保険(世代が同じ時だけ戻す)。
+let textCommitGen = 0;
+function markTextCommit(e){
+  if(!isTextCommitTarget(e.target)) return;
+  textCommitActive = true;
+  const gen = ++textCommitGen;
+  setTimeout(() => { if(textCommitGen === gen) textCommitActive = false; }, 0);
+}
+function endTextCommit(){ textCommitActive = false; }
+document.addEventListener('change', markTextCommit, true);
+document.addEventListener('blur', markTextCommit, true);
+document.addEventListener('focusout', markTextCommit, true);
+window.addEventListener('focusout', endTextCommit);
+document.addEventListener('pointerdown', () => { pointerIsDown = true; }, true);
+function onPointerReleased(){
+  pointerIsDown = false;
+  if(pendingRenderOpts){
+    clearTimeout(pendingRenderTimer);
+    pendingRenderTimer = setTimeout(flushDeferredRender, AFTER_POINTER_MS);
   }
-}, true);
+}
+document.addEventListener('pointerup', onPointerReleased, true);
+document.addEventListener('pointercancel', onPointerReleased, true);
+window.addEventListener('blur', () => { pointerIsDown = false; });
+function mergeRenderOpts(a, b){
+  if(!a) return b;
+  if(!b) return a;
+  return { skipDirty: !!(a.skipDirty && b.skipDirty), scrollTop: !!(a.scrollTop || b.scrollTop) };
+}
+function deferRender(opts){
+  pendingRenderOpts = mergeRenderOpts(pendingRenderOpts, opts || {});
+  clearTimeout(pendingRenderTimer);
+  pendingRenderTimer = setTimeout(flushDeferredRender, pointerIsDown ? POINTER_WAIT_MS : 0);
+}
+function flushDeferredRender(){
+  pendingRenderTimer = null;
+  if(!pendingRenderOpts) return;
+  render();   // 後回しにした分は、render()の先頭で取り込まれる
+}
+// 再描画の前後で、今フォーカスのある欄を保存し、描画後に同じ欄へフォーカス・カーソルを戻す。
+// シートの入力欄は、data-field-id(インプットセット内なら、さらにdata-set-id・data-row-index)で、
+// 論理的に同じ欄を探す。それ以外(設定パネル・モーダル・ボタン等)は、#app内の入力欄・ボタンの
+// 並びの中での位置で探す(描画の前後で、入力欄・ボタンの数と種類が同じ時だけ。行の追加・削除等で
+// 構造が変わった時は、別の要素にフォーカスしてしまわないよう、何もしない)。
+const FOCUS_CONTROL_SELECTOR = 'input, select, textarea, button';
 function fieldElSelector(el){
   return el.dataset.rowIndex !== undefined
     ? `[data-field-id="${CSS.escape(el.dataset.fieldId)}"][data-set-id="${CSS.escape(el.dataset.setId)}"][data-row-index="${CSS.escape(el.dataset.rowIndex)}"]`
     : `[data-field-id="${CSS.escape(el.dataset.fieldId)}"]`;
 }
 function captureActiveFieldFocus(app){
-  const step = pendingTabStep;
-  const fromEl = pendingTabFromEl;
-  pendingTabStep = 0;
-  pendingTabFromEl = null;
-  const usingTabOrigin = step !== 0 && fromEl && app.contains(fromEl) && fromEl.dataset && fromEl.dataset.fieldId;
-  const el = usingTabOrigin ? fromEl : document.activeElement;
-  if(!el || !app.contains(el) || !el.dataset || !el.dataset.fieldId) return () => {};
-  let targetEl = el;
-  let restoreSelection = true;
-  if(step !== 0){
-    const focusable = Array.from(app.querySelectorAll('[data-field-id]'));
-    const idx = focusable.indexOf(el);
-    const target = idx === -1 ? null : focusable[idx + step];
-    if(!target) return () => {}; // 先頭/末尾を超えたらブラウザの既定動作に任せる
-    targetEl = target;
-    restoreSelection = false;
+  const el = document.activeElement;
+  if(!el || el === document.body || !app.contains(el)) return () => {};
+  let find;
+  if(el.dataset && el.dataset.fieldId){
+    const selector = fieldElSelector(el);
+    find = () => app.querySelector(selector);
+  } else if(el.matches && el.matches(FOCUS_CONTROL_SELECTOR) && !el.disabled){
+    const controls = Array.from(app.querySelectorAll(FOCUS_CONTROL_SELECTOR));
+    const idx = controls.indexOf(el);
+    if(idx === -1) return () => {};
+    const total = controls.length, tag = el.tagName, type = el.type;
+    find = () => {
+      const now = Array.from(app.querySelectorAll(FOCUS_CONTROL_SELECTOR));
+      const cand = now[idx];
+      return (now.length === total && cand && cand.tagName === tag && cand.type === type && !cand.disabled) ? cand : null;
+    };
+  } else {
+    return () => {};
   }
-  const selector = fieldElSelector(targetEl);
-  const selStart = (restoreSelection && typeof el.selectionStart === 'number') ? el.selectionStart : null;
-  const selEnd = (restoreSelection && typeof el.selectionEnd === 'number') ? el.selectionEnd : null;
+  let selStart = null, selEnd = null;
+  try{
+    if(typeof el.selectionStart === 'number'){ selStart = el.selectionStart; selEnd = el.selectionEnd; }
+  }catch(e){ /* type=number等は読めない */ }
   return () => {
-    const next = app.querySelector(selector);
+    const next = find();
     if(!next) return;
     next.focus({ preventScroll: true });
     if(selStart !== null && typeof next.setSelectionRange === 'function'){
