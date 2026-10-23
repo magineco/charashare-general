@@ -2438,6 +2438,11 @@ function render(opts){
   applyTemplateColors(false);
   app.querySelectorAll('textarea').forEach(autoResizeTextarea);
   restoreFocus();
+  if(focusPanelNameOnRender){
+    focusPanelNameOnRender = false;
+    const nameInput = app.querySelector('.panel-pane input[data-panel-name]');
+    if(nameInput){ nameInput.focus({ preventScroll: true }); nameInput.select(); }
+  }
   window.scrollTo(0, toTop ? 0 : scrollY);
 }
 
@@ -2905,6 +2910,15 @@ function flushDeferredRender(){
 // 論理的に同じ欄を探す。それ以外(設定パネル・モーダル・ボタン等)は、#app内の入力欄・ボタンの
 // 並びの中での位置で探す(描画の前後で、入力欄・ボタンの数と種類が同じ時だけ。行の追加・削除等で
 // 構造が変わった時は、別の要素にフォーカスしてしまわないよう、何もしない)。
+// テンプレート編集画面で、枠(インプット・インプットセット・カテゴリー)を選んだ・追加した時は、設定パネルの
+// 名称欄にフォーカスして、全選択する(2026-10-22、利用者の要望。「インプットを選ぶ→名称を打つ→次のインプットを
+// 選ぶ」を、マウスと文字入力だけで続けられるようにする)。選んだ時・追加した時だけ(render()のたびではない。
+// 設定パネルの他の欄を編集中に、名称欄へ戻されないように)。タッチ操作が主の端末(スマホ・タブレット)では、
+// 選ぶたびに画面のキーボードが開いて邪魔になるので、行わない。
+let focusPanelNameOnRender = false;
+function requestPanelNameFocus(){
+  focusPanelNameOnRender = !(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
+}
 const FOCUS_CONTROL_SELECTOR = 'input, select, textarea, button';
 function fieldElSelector(el){
   return el.dataset.rowIndex !== undefined
@@ -4466,6 +4480,7 @@ function selectFrame(ev, kind, id){
   if(state.mode !== 'edit') return;
   state.selection = { kind, id };
   state.colorPanelOpen = false;
+  requestPanelNameFocus();
   render({ skipDirty: true });
 }
 function closePanel(){ state.selection = null; render({ skipDirty: true }); }
@@ -4539,7 +4554,7 @@ function addSection(){
   // 他に設定パネルを開いていなければ、追加した枠の設定パネルをそのまま
   // 開く(名前を付ける等、追加直後にまず行いたい操作に直行できるため)。
   // 何か他の枠を編集中であれば、その邪魔をしないよう選択状態を変えない。
-  if(!state.selection) state.selection = { kind: 'section', id: sec.id };
+  if(!state.selection){ state.selection = { kind: 'section', id: sec.id }; requestPanelNameFocus(); }
   render();
 }
 function addSetDef(sectionId){
@@ -4562,6 +4577,7 @@ function addFieldToSection(sectionId){
   // 常に追加した項目の設定パネルへ切り替える(2026-09-30、addSection()等の
   // 「他を編集中なら邪魔しない」という既存方針とは異なる扱いにしている)。
   state.selection = { kind: 'field', id: f.id };
+  requestPanelNameFocus();
   render();
 }
 // 区切り線を足す(2026-10-17)。このカテゴリーのインプットを選択中なら、その直後に入れる
@@ -4603,6 +4619,7 @@ function addFieldToSet(setId){
   const f = { id: uid('f'), label: '新しいインプット', type: 'string', kind: 'input' };
   st.fields.push(f);
   state.selection = { kind: 'field', id: f.id };
+  requestPanelNameFocus();
   render();
 }
 function removeFrame(kind, id){
@@ -4731,7 +4748,7 @@ function checkboxToggleHtml(checked, changeAttrs, labelHtml){
   return `<label class="checkbox"><span class="checkbox-visual"><input type="checkbox" ${checked ? 'checked' : ''} ${changeAttrs}><span class="checkbox-box"></span></span> ${labelHtml}</label>`;
 }
 function renderPanelBody(kind, f){
-  const labelInput = `<label><span>名称</span><input type="text" value="${escAttr(f.label)}" onchange="applyPatch('${kind}','${f.id}',{label:this.value})"></label>`;
+  const labelInput = `<label><span>名称</span><input type="text" data-panel-name value="${escAttr(f.label)}" onchange="applyPatch('${kind}','${f.id}',{label:this.value})"></label>`;
   if(kind === 'section'){
     // 画像エリアの幅は1〜50(%)。50が上限なのは、それ以上にすると入力欄側の
     // 幅が半分未満に押し込まれてしまうため(50なら画像エリアと入力欄が
