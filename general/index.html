@@ -482,6 +482,47 @@
     pointer-events:none;
   }
 
+  /* ココフォリア連携の設定画面(2026-10-24): 確認画面と同じ見た目のまま、項目をクリックして扱いを決める。
+     編集モードと同じく、入力欄は触れないようにして、クリックを枠で受ける。 */
+  .mode-ccfolia .frame-field input, .mode-ccfolia .frame-field select, .mode-ccfolia .frame-field textarea, .mode-ccfolia .frame-field button{ pointer-events:none; }
+  .mode-ccfolia [data-frame-id]{ cursor:pointer; }
+  .mode-ccfolia [data-frame-id]:hover{ outline:2px dashed var(--accent); outline-offset:2px; }
+  .mode-ccfolia [data-frame-id].is-selected{ outline:2px solid var(--accent); outline-offset:2px; }
+  .ccfolia-badge{
+    display:inline-block; margin-left:8px; padding:0 8px; border:1px solid var(--line); border-radius:999px;
+    font-size:0.75rem; font-weight:600; line-height:1.6; color:var(--muted); background:var(--surface-2);
+    white-space:nowrap; vertical-align:middle;
+  }
+  /* 狭い欄では、タグを名称の下の行に回す(名称が1文字ずつ折り返されないように) */
+  .mode-ccfolia .field-label-left{ flex-wrap:wrap; row-gap:2px; }
+  .mode-ccfolia .ccfolia-badge{ margin-left:0; }
+  .ccfolia-badge.is-set{ color:var(--accent); border-color:var(--accent); }
+  .ccfolia-badge.is-unset{ border-style:dashed; color:var(--text); }
+  .ccfolia-badge.is-skip, .ccfolia-badge.is-unsupported{ opacity:0.7; }
+  /* 警告(1つであるべきものが、0件または2件以上): アプリの警告の色(--danger、参照切れの赤と同じ) */
+  .ccfolia-badge.is-warn{ color:var(--danger); border-color:var(--danger); background:color-mix(in srgb, var(--danger) 14%, var(--surface-2)); }
+  .ccfolia-singles{ display:flex; align-items:center; flex-wrap:wrap; gap:6px; margin:8px 0 2px; }
+  .ccfolia-singles .ccfolia-badge{ margin-left:0; font-size:0.9rem; padding:1px 12px; line-height:1.5; }
+  .ccfolia-banner{ background:var(--surface); border:1px solid var(--accent); border-radius:10px; padding:14px 16px; margin-bottom:14px; }
+  .ccfolia-banner p{ margin:6px 0; }
+  .ccfolia-banner-actions{ display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; }
+  .ccfolia-piece{ background:var(--surface-2); border:1px solid var(--line); border-radius:8px; padding:12px 14px; margin:10px 0 14px; }
+  .ccfolia-piece-name{ font-weight:700; font-size:1.1rem; margin-bottom:8px; }
+  .ccfolia-list{ list-style:none; margin:4px 0 10px; padding:0; }
+  .ccfolia-list li{ padding:2px 0; }
+  .ccfolia-key{ display:inline-block; min-width:6em; color:var(--muted); }
+  .ccfolia-sub{ font-size:0.9rem; margin:10px 0 4px; color:var(--muted); }
+  .ccfolia-pre{ white-space:pre-wrap; font-family:'IBM Plex Mono',monospace; font-size:0.85rem; line-height:1.6; }
+  .ccfolia-field-name{ font-weight:700; margin:0 0 10px; }
+  .ccfolia-bulk{ display:flex; flex-direction:column; gap:8px; margin-top:10px; }
+  .ccfolia-bulk button{ text-align:left; }
+  .mode-ccfolia .section-title .ccfolia-badge{ margin-left:10px; font-size:0.9rem; padding:1px 12px; line-height:1.5; }
+  .mode-ccfolia .section-title .ccfolia-badge + .ccfolia-badge{ margin-left:6px; }
+  /* 「出さない」のタグは、薄くせず（件数が読めるように）、枠の色だけを控えめにする */
+  .mode-ccfolia .section-title .ccfolia-count.is-skip{ opacity:1; color:var(--text); }
+  .ccfolia-copy-msg{ margin:0 0 6px; font-weight:600; }
+  .ccfolia-copy-msg.is-ng{ color:var(--danger); }
+
   /* 編集パネル: メインカラムの位置には影響させず、右側に固定表示する */
   /* 中央カラム(#app、max-width:1100px)のすぐ右にパネルを表示する。
      画面が広い時は「中央カラムの右端+余白」の位置に、画面がそこまで
@@ -1037,6 +1078,8 @@ const state = {
   randomResult: null, // 「🎲ランダム（全て）」の実行後の結果画面(表示する結果の配列。閉じるとnull)
   colorPanelOpen: false, // テンプレート編集画面(確認画面含む)での色調整パネル
   chatPaletteOpen: false, // キャラクター編集/表示画面でのフローティングチャットパレット
+  ccfoliaSetup: false, // テンプレート編集画面の「ココフォリア連携の設定」画面か(state.mode==='view'と組で成立する)
+  ccfoliaExportOpen: false, ccfoliaCopyResult: '', // 「ココフォリアに出力」のダイアログと、コピーの結果('ok'|'ng'|'')
   dirty: false, // 未保存の変更があるか(beforeunloadの警告判定に使う)
   restoring: false, // ページを開いた直後の、ログイン状態の自動復元(無言ログイン)の確認中か
   // Google Drive連携
@@ -2417,23 +2460,29 @@ function render(opts){
   normalizeLegacyAggregateTerms();
   const scrollY = window.scrollY;
   const restoreFocus = captureActiveFieldFocus(app);
-  app.className = state.mode === 'edit' ? 'mode-edit' : 'mode-view';
+  // ココフォリア連携の設定画面は、テンプレート編集画面の確認画面(state.mode==='view')の間だけ成り立つ
+  if(state.ccfoliaSetup && !ccfoliaSetupActive()) state.ccfoliaSetup = false;
+  if(state.ccfoliaExportOpen && !(state.screen === 'characterEditor' || state.screen === 'characterView' || state.screen === 'templateEditor')) state.ccfoliaExportOpen = false;
+  ccfoliaRowMap = null;
+  if(ccfoliaSetupActive()){ ccfoliaRowMap = new Map(); ccfoliaResolve().forEach(r => ccfoliaRowMap.set(r.f.id, r)); }
+  app.className = state.mode === 'edit' ? 'mode-edit' : (ccfoliaSetupActive() ? 'mode-view mode-ccfolia' : 'mode-view');
   // チャットパレットは、テンプレート編集画面では従来通りシート内に
   // インライン表示するが、キャラクター編集/表示画面ではフローティング
   // 表示に統一する(ボタンで開閉、枠外クリックで閉じる)。
   const isCharacterScreen = state.screen === 'characterEditor' || state.screen === 'characterView';
-  const inlineChatPalette = isCharacterScreen ? '' : renderChatPalette();
+  const inlineChatPalette = ccfoliaSetupActive() ? renderCcfoliaPreview() : (isCharacterScreen ? '' : renderChatPalette());
   app.innerHTML =
     renderToolbar() +
     renderLoadErrorBanner() +
     `<div class="layout">` +
-      `<div class="sheet-pane">${renderSheet()}${inlineChatPalette}</div>` +
+      `<div class="sheet-pane">${ccfoliaSetupActive() ? renderCcfoliaBanner() : ''}${renderSheet()}${inlineChatPalette}</div>` +
     `</div>` +
-    (state.screen === 'templateEditor' ? (state.colorPanelOpen ? renderColorPanel() : renderPanel()) : '') +
+    (state.screen === 'templateEditor' ? (ccfoliaSetupActive() ? renderCcfoliaPanel() : (state.colorPanelOpen ? renderColorPanel() : renderPanel())) : '') +
     renderDataListModal() +
     renderRefListModal() +
     renderRandomConfirmModal() +
     renderRandomResultModal() +
+    renderCcfoliaExportModal() +
     (isCharacterScreen ? renderFloatingChatPalette() : '');
   applyTemplateColors(false);
   app.querySelectorAll('textarea').forEach(autoResizeTextarea);
@@ -2999,6 +3048,7 @@ function renderToolbar(){
       <span class="spacer"></span>
       ${statusHtml}
       ${chatBtn}
+      <button onclick="openCcfoliaExport()">ココフォリアに出力</button>
     </header>`;
   }
   const authHtml = state.accessToken
@@ -3022,6 +3072,7 @@ function renderToolbar(){
     </header>
     <div class="toolbar-row">
       ${chatBtn}
+      <button onclick="openCcfoliaExport()">ココフォリアに出力</button>
       ${randomAllButtonHtml()}
       <button onclick="document.getElementById('char-file').click()">キャラクターを読み込み</button>
       <input id="char-file" type="file" accept="application/json" style="display:none" onchange="handleImportCharacterFile(this)">
@@ -3051,9 +3102,10 @@ function renderToolbar(){
   </div>
   <div class="toolbar-row">
     ${randomAllButtonHtml()}
-    <button onclick="toggleDataListModal()">データリストを編集</button>
+    ${ccfoliaSetupActive() ? '' : `<button onclick="toggleDataListModal()">データリストを編集</button>
     <button onclick="toggleRefListModal()">参照を一覧で確認</button>
-    <button class="${state.colorPanelOpen ? 'share-btn' : ''}" onclick="toggleColorPanel()">シートの色を変更</button>
+    <button class="${state.colorPanelOpen ? 'share-btn' : ''}" onclick="toggleColorPanel()">シートの色を変更</button>`}
+    ${ccfoliaToolbarButtonHtml()}
   </div>
   ${renderInlineSharePanel('template')}`;
 }
@@ -3150,6 +3202,12 @@ function renderInlineSharePanel(kind){
 }
 /* ---------- 描画: シート ---------- */
 function frameAttrs(kind, id){
+  // ココフォリア連携の設定画面: カテゴリー直下のインプットだけ、クリックで扱いを決める
+  if(ccfoliaSetupActive()){
+    if(kind === 'field' && ccfoliaIsEligibleId(id)) return `data-frame-id="${id}" onclick="selectCcfoliaField(event,${jsArg(id)})"`;
+    if(kind === 'section') return `data-frame-id="${id}" onclick="selectCcfoliaSection(event,${jsArg(id)})"`;
+    return '';
+  }
   if(state.mode !== 'edit') return '';
   return `data-frame-id="${id}" onclick="selectFrame(event,'${kind}','${id}')"`;
 }
@@ -3181,8 +3239,8 @@ function isSectionCollapsed(sec){
 }
 function renderSectionFrame(sec){
   const selected = state.selection && state.selection.kind === 'section' && state.selection.id === sec.id;
-  const isCollapsed = state.mode === 'view' && sec.collapsible && isSectionCollapsed(sec);
-  const toggleBtn = (state.mode === 'view' && sec.collapsible)
+  const isCollapsed = state.mode === 'view' && !ccfoliaSetupActive() && sec.collapsible && isSectionCollapsed(sec);
+  const toggleBtn = (state.mode === 'view' && sec.collapsible && !ccfoliaSetupActive())
     ? `<button class="collapse-btn" onclick="toggleCollapse('${sec.id}')">${isCollapsed ? '▶' : '▼'}</button>`
     : '';
   const cols = clampSectionColumns(sec.columns);
@@ -3194,7 +3252,7 @@ function renderSectionFrame(sec){
   const addDividerBtn = state.mode === 'edit' ? `<button class="add-frame-btn small" onclick="event.stopPropagation();addDividerToSection(${jsArg(sec.id)})">+ 区切り線を追加</button>` : '';
   const addSetBtn = state.mode === 'edit' ? `<button class="add-frame-btn small" onclick="event.stopPropagation();addSetDef('${sec.id}')">+ インプットセットを追加</button>` : '';
   return `<section class="frame-section ${selected ? 'is-selected' : ''}" ${frameAttrs('section', sec.id)}>
-    <h2 class="section-title">${toggleBtn}${esc(sec.label)}${sec.collapsible ? ' <span class="muted small">(折りたたみ可)</span>' : ''}</h2>
+    <h2 class="section-title">${toggleBtn}${esc(sec.label)}${sec.collapsible ? ' <span class="muted small">(折りたたみ可)</span>' : ''}${ccfoliaSectionBadgeHtml(sec)}</h2>
     <div class="section-body" ${isCollapsed ? 'style="display:none"' : ''}>
       <div class="category-body-row">
         ${imageAreaHtml}
@@ -3390,7 +3448,7 @@ function renderFieldFrame(f, rowScope, containerCols){
     ? ` ondragover="handleFieldDragOver(event,'${f.id}')" ondrop="handleFieldDrop(event,'${f.id}')"`
     : '';
   return `<${tag} class="frame-field ${selected ? 'is-selected' : ''} ${broken ? 'is-broken' : ''}"${forAttr} ${frameAttrs('field', f.id)}${spanStyle}${dragTargetAttrs}>
-    <span class="field-label-row"><span class="field-label-left">${dragHandle}<span class="field-label">${esc(f.label)}</span>${randomBtn}</span>${tsvCopyBtn}</span>
+    <span class="field-label-row"><span class="field-label-left">${dragHandle}<span class="field-label">${esc(f.label)}</span>${randomBtn}${ccfoliaBadgeHtml(f)}</span>${tsvCopyBtn}</span>
     ${renderFieldInput(f, rowScope)}
   </${tag}>`;
 }
@@ -3653,7 +3711,7 @@ function renderSetFrame(set){
   return `<div class="frame-set ${selected ? 'is-selected' : ''}" ${frameAttrs('set', set.id)}>
     <div class="set-header">
       <h3 class="set-title">${esc(set.label)}</h3>
-      <div class="set-header-actions">${addRowBtn}${addFieldBtn}</div>
+      <div class="set-header-actions">${ccfoliaSetupActive() ? '<span class="muted small">ココフォリアには出ません（チャットパレットだけ）</span>' : ''}${addRowBtn}${addFieldBtn}</div>
     </div>
     ${body}
   </div>`;
@@ -4466,6 +4524,595 @@ function setSectionInitialCollapsed(id, closed){
   const sec = findFrame('section', id); if(!sec) return;
   if(closed) sec.initialCollapsed = true; else delete sec.initialCollapsed;
   delete state.collapsed[id];
+  render();
+}
+
+/* ---------- ココフォリア連携(2026-10-24) ----------
+ * キャラクターを、ココフォリアのコマ(クリップボード経由のJSON)として書き出す。
+ * ココフォリアの Clipboard API(https://docs.ccfolia.com/developer-api/clipboard-api.md)の
+ *   { "kind": "character", "data": { name, memo, initiative, status:[{label,value,max}], params:[{label,value}], commands } }
+ * を作って、クリップボードへコピーする(盤面で Ctrl+V)。
+ *
+ * 設計の決まり(利用者の指定):
+ * - テンプレートを作っている間は、ココフォリアを意識しない。設定は項目の定義(fields)には書かず、
+ *   template.ccfolia に、項目IDで対応づけて別に置く。項目の設定パネル・シートの描画・保存済みの
+ *   キャラクターへの変更通知(IDと名称だけを比べる)には、一切影響しない。
+ * - ココフォリアの設定は、シートを作り終えた後の別の画面(確認画面と同じ見た目でクリックして決める)。
+ *   ここでは、シートの項目を直さなくてよいように、ココフォリア側の設定で形の違いを吸収する
+ *   (表示名の付け替え、最大値は別の項目や決まった数でよい、複数の項目をメモにまとめる)。
+ * - 設定が無いテンプレートは、項目の名称・種類から自動で振り分けた「仮の設定」で出力する。
+ *
+ * template.ccfolia = { v:1, fields:{ [項目ID]: { role, label?, maxFieldId?, maxValue? } } }
+ *   role: 'name' | 'initiative' | 'status' | 'param' | 'memo' | 'skip'(出さない)。
+ *   fieldsに無い項目は「未設定」(設定が1つでもある時は、ココフォリアに出さない)。
+ *   対象はカテゴリー直下のインプット・計算式等。インプットセット内の項目は対象外(チャットパレットには出る)。
+ *   チェックボックス・表・画像は出せない。
+ * 値が空(未入力)の名前・パラメータ・メモは「[項目名]」を仮に入れる(数値のステータスは0)。
+ */
+const CCFOLIA_ROLE_LABELS = { name: '名前', initiative: 'イニシアチブ', status: 'ステータス', param: 'パラメータ', memo: 'メモ', skip: '出さない' };
+const CCFOLIA_ROLES_BY_KIND = { text: ['name', 'param', 'memo', 'skip'], number: ['initiative', 'status', 'param', 'skip'] };
+const CCFOLIA_MAX_LABEL_LENGTH = 60;
+const CCFOLIA_NAME_LABELS = ['キャラクター名', 'キャラ名', 'キャラクターの名前', '名前', '氏名', 'pc名', 'name'];
+const CCFOLIA_INITIATIVE_LABELS = ['イニシアチブ', 'イニシアティブ', '行動値', '先攻値', 'initiative'];
+let ccfoliaRowMap = null; // 設定画面の描画中だけ持つ、項目ID→resolveの結果
+
+function ccfoliaSetupActive(){ return !!state.ccfoliaSetup && state.screen === 'templateEditor' && state.mode === 'view'; }
+// 対象の項目: カテゴリー直下のインプット・計算式等(区切り線は除く)。インプットセット内の項目は対象外。
+function ccfoliaTopFields(){
+  const out = [];
+  state.template.sections.forEach(s => (s.fields || []).forEach(f => { if(f.kind !== 'divider') out.push(f); }));
+  return out;
+}
+function ccfoliaIsEligibleId(id){
+  const f = findFrame('field', id);
+  return !!f && f.kind !== 'divider' && f.kind !== 'break' && !isFieldInsideSet(id);
+}
+// 'number' | 'text' | 'unsupported'(チェックボックス・表・画像)
+function ccfoliaValueKind(f){
+  if(f.type === 'boolean' || f.type === 'table' || f.type === 'image') return 'unsupported';
+  return f.type === 'number' ? 'number' : 'text';
+}
+function ccfoliaNumberFields(){ return ccfoliaTopFields().filter(f => ccfoliaValueKind(f) === 'number'); }
+function ccfoliaIsNumberFieldId(id){ return ccfoliaNumberFields().some(f => f.id === id); }
+
+function ccfoliaStored(){
+  const c = state.template.ccfolia;
+  if(!c || typeof c !== 'object' || Array.isArray(c)) return null;
+  if(!c.fields || typeof c.fields !== 'object' || Array.isArray(c.fields)) return null;
+  return c;
+}
+// 保存されている設定のうち、その項目の今の種類で有効なもの(外から読み込んだ値を信用しない)。無効なら null。
+function ccfoliaEntryOf(cfg, f){
+  if(!Object.prototype.hasOwnProperty.call(cfg.fields, f.id)) return null;
+  const e = cfg.fields[f.id];
+  if(!e || typeof e !== 'object') return null;
+  const kind = ccfoliaValueKind(f);
+  if(kind === 'unsupported' || !CCFOLIA_ROLES_BY_KIND[kind].includes(e.role)) return null;
+  const out = { role: e.role, label: typeof e.label === 'string' ? e.label.slice(0, CCFOLIA_MAX_LABEL_LENGTH) : '', maxFieldId: '', maxValue: null };
+  if(e.role === 'status'){
+    if(typeof e.maxFieldId === 'string' && e.maxFieldId !== f.id && ccfoliaIsNumberFieldId(e.maxFieldId)) out.maxFieldId = e.maxFieldId;
+    else if(typeof e.maxValue === 'number' && Number.isFinite(e.maxValue)) out.maxValue = e.maxValue;
+  }
+  return out;
+}
+
+/* --- 自動の仮設定: 名称と種類から、項目の扱いを推測する --- */
+function ccfoliaNorm(s){ return String(s == null ? '' : s).normalize('NFKC').replace(/\s+/g, '').toLowerCase(); }
+function ccfoliaIsMaxLabel(n){ return /最大|上限|max/.test(n); }
+function ccfoliaBaseLabel(n){ return n.replace(/最大値|最大|上限値|上限|max|現在値|現在/g, '').replace(/[()\[\]【】:：]/g, ''); }
+function ccfoliaAutoEntries(){
+  const fields = ccfoliaTopFields().filter(f => ccfoliaValueKind(f) !== 'unsupported');
+  const out = {};
+  const taken = id => Object.prototype.hasOwnProperty.call(out, id);
+  const isText = f => ccfoliaValueKind(f) === 'text';
+  const isNum = f => ccfoliaValueKind(f) === 'number';
+  // 名前
+  const nameF = fields.find(f => isText(f) && f.type !== 'multiline' && CCFOLIA_NAME_LABELS.includes(ccfoliaNorm(f.label)))
+    || fields.find(f => isText(f) && f.type !== 'multiline' && /(キャラ|pc|探索者|冒険者|主人公|人物).*名/.test(ccfoliaNorm(f.label)));
+  if(nameF) out[nameF.id] = { role: 'name' };
+  // イニシアチブ
+  const iniF = fields.find(f => isNum(f) && !taken(f.id) && CCFOLIA_INITIATIVE_LABELS.includes(ccfoliaNorm(f.label)));
+  if(iniF) out[iniF.id] = { role: 'initiative' };
+  // ステータス: 「HP」と「最大HP」のように、名称が対になる2つの数値(最大の方は、ステータスの最大値に使う)
+  const nums = fields.filter(f => isNum(f) && !taken(f.id));
+  nums.forEach(m => {
+    if(taken(m.id)) return;
+    const mn = ccfoliaNorm(m.label);
+    if(!ccfoliaIsMaxLabel(mn)) return;
+    const base = ccfoliaBaseLabel(mn);
+    if(!base) return;
+    const cur = nums.find(c => c !== m && !taken(c.id) && !ccfoliaIsMaxLabel(ccfoliaNorm(c.label)) && ccfoliaBaseLabel(ccfoliaNorm(c.label)) === base);
+    if(!cur) return;
+    const entry = { role: 'status', maxFieldId: m.id };
+    const shortLabel = String(cur.label).replace(/現在値|現在/g, '').trim();
+    if(shortLabel && shortLabel !== cur.label) entry.label = shortLabel;
+    out[cur.id] = entry;
+    out[m.id] = { role: 'skip' };
+  });
+  // 残り: 複数行のテキストはメモ、それ以外はパラメータ
+  fields.forEach(f => {
+    if(taken(f.id)) return;
+    out[f.id] = (isText(f) && f.type === 'multiline') ? { role: 'memo' } : { role: 'param' };
+  });
+  return out;
+}
+
+// 全項目の、今の扱い。state: 'set'(設定済み) | 'auto'(設定が無く、自動の仮設定) | 'unset'(未設定) | 'unsupported'(出せない種類)
+function ccfoliaResolve(){
+  const cfg = ccfoliaStored();
+  const auto = cfg ? null : ccfoliaAutoEntries();
+  return ccfoliaTopFields().map(f => {
+    const kind = ccfoliaValueKind(f);
+    if(kind === 'unsupported') return { f, kind, state: 'unsupported', role: '', label: '', maxFieldId: '', maxValue: null };
+    let e = null, st = 'unset';
+    if(cfg){
+      e = ccfoliaEntryOf(cfg, f);
+      st = e ? 'set' : 'unset';
+    } else if(Object.prototype.hasOwnProperty.call(auto, f.id)){
+      const a = auto[f.id];
+      e = { role: a.role, label: a.label || '', maxFieldId: a.maxFieldId || '', maxValue: null };
+      st = 'auto';
+    }
+    if(!e) return { f, kind, state: 'unset', role: '', label: '', maxFieldId: '', maxValue: null };
+    return { f, kind, state: st, role: e.role, label: e.label, maxFieldId: e.maxFieldId, maxValue: e.maxValue };
+  });
+}
+
+/* --- 書き出し --- */
+function ccfoliaValueText(f){
+  const v = getEffectiveValue(f, null);
+  if(v === DIV_BY_ZERO_ERROR) return 'ゼロで割っています';
+  if(v === undefined || v === null || Array.isArray(v)) return '';
+  return String(v);
+}
+function ccfoliaNumberValue(f){
+  const v = getEffectiveValue(f, null);
+  return v === DIV_BY_ZERO_ERROR ? 0 : toCalcNumber(v);
+}
+// 値が空(未入力)なら「[項目名]」を仮に入れる
+function ccfoliaTextOrPlaceholder(f){
+  const v = ccfoliaValueText(f);
+  return v.trim() === '' ? '[' + f.label + ']' : v;
+}
+function ccfoliaChatOrder(){
+  return ensureChatOrder().filter(id => {
+    const f = findFrame('field', id);
+    return f ? f.chatEnabled : !!findChatFreeText(id);
+  });
+}
+function buildCcfoliaCharacter(){
+  const rows = ccfoliaResolve();
+  const data = {};
+  const nameRow = rows.find(r => r.role === 'name');
+  const tplName = (state.template.meta && state.template.meta.name) || '';
+  data.name = nameRow ? ccfoliaTextOrPlaceholder(nameRow.f) : (tplName ? tplName + 'のキャラクター' : 'キャラクター');
+  const memoParts = [];
+  rows.filter(r => r.role === 'memo').forEach(r => {
+    memoParts.push('■' + (r.label || r.f.label) + '\n' + ccfoliaTextOrPlaceholder(r.f));
+  });
+  data.memo = memoParts.join('\n\n');
+  const iniRow = rows.find(r => r.role === 'initiative');
+  if(iniRow) data.initiative = ccfoliaNumberValue(iniRow.f);
+  data.status = [];
+  rows.filter(r => r.role === 'status').forEach(r => {
+    const label = (r.label || r.f.label).trim();
+    if(!label) return;
+    const value = ccfoliaNumberValue(r.f);
+    let max = value;
+    if(r.maxFieldId){
+      const mf = findFrame('field', r.maxFieldId);
+      if(mf) max = ccfoliaNumberValue(mf);
+    } else if(typeof r.maxValue === 'number'){
+      max = r.maxValue;
+    }
+    data.status.push({ label, value, max });
+  });
+  data.params = [];
+  rows.filter(r => r.role === 'param').forEach(r => {
+    const label = (r.label || r.f.label).trim();
+    if(!label) return;
+    data.params.push({ label, value: ccfoliaTextOrPlaceholder(r.f) });
+  });
+  data.commands = chatOrderLines(ccfoliaChatOrder()).join('\n');
+  return { kind: 'character', data };
+}
+function copyTextToClipboard(text){
+  if(navigator.clipboard && navigator.clipboard.writeText) return navigator.clipboard.writeText(text).then(() => true, () => false);
+  return Promise.resolve(false);
+}
+// 「ココフォリアに出力」: 開くと同時にクリップボードへコピーする(クリックの操作の最中に呼ぶ必要があるので、
+// 描画より先にコピーを始める)。
+function openCcfoliaExport(){
+  const p = copyTextToClipboard(JSON.stringify(buildCcfoliaCharacter()));
+  state.ccfoliaExportOpen = true;
+  state.ccfoliaCopyResult = '';
+  render({ skipDirty: true });
+  p.then(ok => {
+    state.ccfoliaCopyResult = ok ? 'ok' : 'ng';
+    if(state.ccfoliaExportOpen) render({ skipDirty: true });
+  });
+}
+function closeCcfoliaExport(){
+  state.ccfoliaExportOpen = false;
+  render({ skipDirty: true });
+}
+function copyCcfoliaJson(){
+  const ta = document.getElementById('ccfolia-json');
+  if(!ta) return;
+  copyTextToClipboard(ta.value).then(ok => {
+    state.ccfoliaCopyResult = ok ? 'ok' : 'ng';
+    render({ skipDirty: true });
+  });
+}
+function ccfoliaSummaryText(d){
+  const lines = d.commands ? d.commands.split('\n').length : 0;
+  return `コマ「${d.name}」 / ステータス${d.status.length}件 / パラメータ${d.params.length}件 / メモ${d.memo ? 'あり' : 'なし'} / チャットパレット${lines}行`;
+}
+function renderCcfoliaExportModal(){
+  if(!state.ccfoliaExportOpen) return '';
+  const obj = buildCcfoliaCharacter();
+  const json = JSON.stringify(obj);
+  const msg = state.ccfoliaCopyResult === 'ok'
+    ? 'コピーしました。ココフォリアの盤面を開いて、Ctrl+V（Macは⌘+V）で貼り付けてください。'
+    : state.ccfoliaCopyResult === 'ng'
+      ? 'コピーできませんでした。下の「コピー」を押すか、枠内の文字をすべて選んで手動でコピーしてください。'
+      : 'クリップボードにコピーしています…';
+  return `<div class="modal-backdrop" onclick="closeCcfoliaExport()">
+    <div class="modal-box" onclick="event.stopPropagation()">
+      <div class="modal-head"><strong>ココフォリアに出力</strong><button class="icon-btn" onclick="closeCcfoliaExport()">×</button></div>
+      <div class="modal-body">
+        <p class="ccfolia-copy-msg ${state.ccfoliaCopyResult === 'ng' ? 'is-ng' : ''}">${esc(msg)}</p>
+        <p class="muted small">${esc(ccfoliaSummaryText(obj.data))}</p>
+        <div class="chat-palette-block">
+          <textarea id="ccfolia-json" class="chat-palette-textarea" readonly onfocus="this.select()">${esc(json)}</textarea>
+          <button onclick="copyCcfoliaJson()">コピー</button>
+        </div>
+        <p class="muted small">立ち絵・アイコンの画像は、ココフォリア側で設定してください（画像は貼り付けでは渡せません）。インプットセットの内容は、チャットパレットだけに出ます。</p>
+      </div>
+    </div>
+  </div>`;
+}
+
+/* --- 設定画面(テンプレート編集画面の、確認画面と同じ見た目のまま) --- */
+function enterCcfoliaSetup(){
+  state.ccfoliaSetup = true;
+  state.mode = 'view';
+  state.colorPanelOpen = false;
+  // シートの編集で選んでいた項目は、そのまま選んだ状態で引き継ぐ
+  const s = state.selection;
+  if(!(s && ((s.kind === 'field' && ccfoliaIsEligibleId(s.id)) || (s.kind === 'section' && findFrame('section', s.id))))) state.selection = null;
+  render({ skipDirty: true });
+  setTimeout(scrollToSelectedFrame, 60);
+}
+function exitCcfoliaSetup(){
+  state.ccfoliaSetup = false;
+  state.mode = 'edit';
+  state.colorPanelOpen = false;
+  render({ skipDirty: true });
+  setTimeout(scrollToSelectedFrame, 60);
+}
+function openCcfoliaFieldInEditor(id){
+  state.ccfoliaSetup = false;
+  state.mode = 'edit';
+  state.selection = { kind: 'field', id };
+  render({ skipDirty: true });
+  setTimeout(scrollToSelectedFrame, 60);
+}
+function scrollToSelectedFrame(){
+  if(!state.selection) return;
+  const el = document.querySelector('#app [data-frame-id="' + CSS.escape(state.selection.id) + '"]');
+  if(el && el.scrollIntoView) el.scrollIntoView({ block: 'center' });
+}
+function selectCcfoliaField(ev, id){
+  ev.stopPropagation();
+  ev.preventDefault(); // <label>の既定動作(中の入力欄の活性化)を止める
+  if(!ccfoliaSetupActive()) return;
+  state.selection = { kind: 'field', id };
+  render({ skipDirty: true });
+}
+function selectCcfoliaSection(ev, id){
+  ev.stopPropagation();
+  if(!ccfoliaSetupActive()) return;
+  state.selection = { kind: 'section', id };
+  render({ skipDirty: true });
+}
+// カテゴリー内の項目の扱いの件数(出す・出さない・未設定)
+function ccfoliaSectionCounts(sec){
+  const c = { out: 0, skip: 0, unset: 0, total: 0, roles: { name: 0, initiative: 0, status: 0, param: 0, memo: 0 } };
+  (sec.fields || []).forEach(f => {
+    const r = ccfoliaRowMap ? ccfoliaRowMap.get(f.id) : null;
+    if(!r || r.state === 'unsupported') return;
+    c.total++;
+    if(r.state === 'unset') c.unset++;
+    else if(r.role === 'skip') c.skip++;
+    else { c.out++; c.roles[r.role]++; }
+  });
+  return c;
+}
+function ccfoliaSectionBadgeHtml(sec){
+  if(!ccfoliaRowMap) return '';
+  const c = ccfoliaSectionCounts(sec);
+  if(!c.total) return '';
+  // 出す項目は、扱いごと（名前・イニシアチブ・ステータス・パラメータ・メモ）に、件数のあるものだけ別々のタグにする。
+  // 続けて「出さない」「未設定」のタグ（タグの文字は、項目のタグより大きめ）
+  const badge = (cls, text) => `<span class="ccfolia-badge ccfolia-count ${cls}" title="このカテゴリーの項目の、ココフォリアでの扱いの件数">${esc(text)}</span>`;
+  let html = '';
+  ['name', 'initiative', 'status', 'param', 'memo'].forEach(role => {
+    if(c.roles[role]) html += ' ' + badge('is-set', `${CCFOLIA_ROLE_LABELS[role]} (${c.roles[role]})`);
+  });
+  if(c.skip) html += ' ' + badge('is-skip', `出さない (${c.skip})`);
+  if(c.unset) html += ' ' + badge('is-unset', `未設定 (${c.unset})`);
+  return html;
+}
+// カテゴリー内の項目を、まとめて「パラメータ」「出さない」「未設定」にする。名前・イニシアチブ・ステータスに設定済みの項目は変えない
+function setCcfoliaSectionRole(secId, role){
+  const sec = findFrame('section', secId);
+  if(!sec) return;
+  const cfg = ccfoliaEnsureStored();
+  let n = 0;
+  (sec.fields || []).forEach(f => {
+    if(f.kind === 'divider' || ccfoliaValueKind(f) === 'unsupported') return;
+    const cur = ccfoliaEntryOf(cfg, f);
+    if(cur && (cur.role === 'name' || cur.role === 'initiative' || cur.role === 'status')) return;
+    if(role === 'param' || role === 'skip') cfg.fields[f.id] = (role === 'param' && cur && cur.label) ? { role, label: cur.label } : { role };
+    else delete cfg.fields[f.id];
+    n++;
+  });
+  state.statusMsg = `「${sec.label}」の${n}件の項目を、まとめて「${role === 'param' ? 'パラメータ' : role === 'skip' ? '出さない' : '未設定'}」にしました。`;
+  state.statusKind = 'ok';
+  render();
+}
+function ccfoliaBadgeHtml(f){
+  if(!ccfoliaRowMap) return '';
+  const r = ccfoliaRowMap.get(f.id);
+  if(!r) return '';
+  if(r.state === 'unsupported') return `<span class="ccfolia-badge is-unsupported" title="チェックボックス・表・画像は、ココフォリアに出せません">対象外</span>`;
+  if(r.state === 'unset') return `<span class="ccfolia-badge is-unset" title="扱いを決めていません（ココフォリアには出ません）">未設定</span>`;
+  const name = CCFOLIA_ROLE_LABELS[r.role] || r.role;
+  const alias = (r.role === 'status' || r.role === 'param' || r.role === 'memo') && r.label ? `「${r.label}」` : '';
+  const auto = r.state === 'auto' ? '（自動）' : '';
+  return `<span class="ccfolia-badge ${r.role === 'skip' ? 'is-skip' : 'is-set'}">${esc(name + alias + auto)}</span>`;
+}
+function ccfoliaToolbarButtonHtml(){
+  const active = ccfoliaSetupActive();
+  const unset = ccfoliaUnsetCount();
+  const label = active ? 'ココフォリア連携の設定を終える' : 'ココフォリア連携を設定' + (unset ? `（未設定${unset}件）` : '');
+  return `<button class="${active ? 'share-btn' : ''}" onclick="${active ? 'exitCcfoliaSetup()' : 'enterCcfoliaSetup()'}">${esc(label)}</button>`;
+}
+function ccfoliaUnsetCount(){
+  if(!ccfoliaStored()) return 0;
+  return ccfoliaResolve().filter(r => r.state === 'unset').length;
+}
+// ココフォリアには、名前・イニシアチブ・メモが1つずつある。テンプレート全体での件数を、常に出し、1以外は警告の色にする(利用者の指定)。
+// カテゴリーごとの件数ではなく、テンプレート全体の件数(名前が別のカテゴリーにあっても、足りないとは言わないため)。
+function ccfoliaSinglesHtml(){
+  const rows = ccfoliaRowMap ? Array.from(ccfoliaRowMap.values()) : ccfoliaResolve();
+  const hints = {
+    name: ['名前が決まっていません。「（システム名）のキャラクター」という名前で出ます。', '名前に使う項目が複数あります。最初の1つだけが使われます。'],
+    initiative: ['イニシアチブは出ません。', 'イニシアチブに使う項目が複数あります。最初の1つだけが使われます。'],
+    memo: ['メモは出ません。', 'メモに使う項目が複数あります。1つのメモに、見出しをつけてまとめて出ます。'],
+  };
+  const tags = ['name', 'initiative', 'memo'].map(role => {
+    const n = rows.filter(r => r.role === role && (r.state === 'set' || r.state === 'auto')).length;
+    const hint = n === 1 ? 'ココフォリアには、1つずつあります。' : hints[role][n === 0 ? 0 : 1];
+    return `<span class="ccfolia-badge ccfolia-count ${n === 1 ? 'is-set' : 'is-warn'}" title="${escAttr(hint)}">${esc(CCFOLIA_ROLE_LABELS[role])} (${n})</span>`;
+  }).join(' ');
+  return `<div class="ccfolia-singles"><span class="muted small">ココフォリアに1つずつ：</span> ${tags}</div>`;
+}
+function renderCcfoliaBanner(){
+  const cfg = ccfoliaStored();
+  const unset = ccfoliaUnsetCount();
+  const note = !cfg
+    ? 'まだ設定していません。今は、項目の名称・種類から自動で振り分けた「仮の設定」で出力されます（タグに「自動」と出ます）。'
+    : (unset ? `扱いを決めていない項目が${unset}件あります。これらはココフォリアに出ません。` : 'すべての項目の扱いが決まっています。');
+  const autoBtn = cfg
+    ? `<button class="share-btn" ${unset ? '' : 'disabled'} onclick="autoFillCcfolia()">未設定の項目を自動で仮設定</button>`
+    : `<button class="share-btn" onclick="autoFillCcfolia()">この仮の設定を、設定として確定する</button>`;
+  const resetBtn = cfg ? `<button class="danger-btn" onclick="resetCcfolia()">設定をすべて消す</button>` : '';
+  return `<div class="ccfolia-banner">
+    <strong>ココフォリア連携の設定</strong>
+    <p class="muted small">シートの項目をクリックして、ココフォリアでの扱い（名前・イニシアチブ・ステータス・パラメータ・メモ）を決めます。ここでの設定は、シートの項目そのものを変えません。</p>
+    <p class="small">${esc(note)}</p>
+    ${ccfoliaSinglesHtml()}
+    <div class="ccfolia-banner-actions">${autoBtn}${resetBtn}<button onclick="exitCcfoliaSetup()">シートの編集に戻る</button></div>
+  </div>`;
+}
+function renderCcfoliaPreview(){
+  const obj = buildCcfoliaCharacter();
+  const d = obj.data;
+  const statusHtml = d.status.length
+    ? `<ul class="ccfolia-list">${d.status.map(s => `<li><span class="ccfolia-key">${esc(s.label)}</span> ${esc(String(s.value))} / ${esc(String(s.max))}</li>`).join('')}</ul>`
+    : '<p class="muted small">ステータス：なし</p>';
+  const paramsHtml = d.params.length
+    ? `<ul class="ccfolia-list">${d.params.map(p => `<li><span class="ccfolia-key">${esc(p.label)}</span> ${esc(p.value)}</li>`).join('')}</ul>`
+    : '<p class="muted small">パラメータ：なし</p>';
+  const ini = typeof d.initiative === 'number' ? `<p class="small"><span class="ccfolia-key">イニシアチブ</span> ${esc(String(d.initiative))}</p>` : '';
+  const memo = d.memo ? `<h3 class="ccfolia-sub">メモ</h3><div class="ccfolia-pre">${esc(d.memo)}</div>` : '';
+  const cmd = d.commands ? `<h3 class="ccfolia-sub">チャットパレット</h3><div class="ccfolia-pre">${esc(d.commands)}</div>` : '<p class="muted small">チャットパレット：なし（「チャットパレットに出す」を設定した項目が、ここに出ます）</p>';
+  return `<section class="chat-palette ccfolia-preview">
+    <h2>ココフォリアで見える姿</h2>
+    <p class="muted small">上のシートに入っている値で表示しています。値が空の項目は「[項目名]」と出ます。</p>
+    <div class="ccfolia-piece">
+      <div class="ccfolia-piece-name">${esc(d.name)}</div>
+      ${ini}${statusHtml}${paramsHtml}${memo}${cmd}
+    </div>
+    <button class="share-btn" onclick="openCcfoliaExport()">ココフォリアに貼り付けて試す（JSONをコピー）</button>
+  </section>`;
+}
+function renderCcfoliaSectionPanel(sec){
+  const c = ccfoliaSectionCounts(sec);
+  const idArg = jsArg(sec.id);
+  const head = `<div class="panel-head"><strong>カテゴリーをまとめて設定</strong><button class="icon-btn" onclick="closePanel()">×</button></div>`;
+  const toEditor = `<div class="panel-actions"><button onclick="openCcfoliaSectionInEditor(${idArg})">シートの編集で、このカテゴリーを開く</button></div>`;
+  if(!c.total){
+    return `<div class="panel-pane">${head}<div class="panel-body"><p class="ccfolia-field-name">${esc(sec.label)}</p><p class="muted small">このカテゴリーには、ココフォリアに出せる項目がありません。</p></div>${toEditor}</div>`;
+  }
+  return `<div class="panel-pane">${head}<div class="panel-body">
+    <p class="ccfolia-field-name">${esc(sec.label)}</p>
+    <p class="small">項目${c.total}件（出す${c.out}・出さない${c.skip}・未設定${c.unset}）</p>
+    <p class="muted small">このカテゴリーの項目を、まとめて設定します。名前・イニシアチブ・ステータスに設定済みの項目は、変えません。細かい調整は、項目をクリックして行います。</p>
+    <div class="ccfolia-bulk">
+      <button onclick="setCcfoliaSectionRole(${idArg},'param')">すべて「パラメータ」にする</button>
+      <button onclick="setCcfoliaSectionRole(${idArg},'skip')">すべて「出さない」にする</button>
+      <button onclick="setCcfoliaSectionRole(${idArg},'')">すべて「未設定」に戻す</button>
+    </div></div>${toEditor}</div>`;
+}
+function openCcfoliaSectionInEditor(id){
+  state.ccfoliaSetup = false;
+  state.mode = 'edit';
+  state.selection = { kind: 'section', id };
+  render({ skipDirty: true });
+  setTimeout(scrollToSelectedFrame, 60);
+}
+function renderCcfoliaPanel(){
+  const sel = state.selection;
+  if(sel && sel.kind === 'section'){
+    const sec = findFrame('section', sel.id);
+    if(!sec){ state.selection = null; return ''; }
+    return renderCcfoliaSectionPanel(sec);
+  }
+  if(!sel || sel.kind !== 'field') return '';
+  const f = findFrame('field', sel.id);
+  if(!f || !ccfoliaIsEligibleId(sel.id)){ state.selection = null; return ''; }
+  const r = (ccfoliaRowMap && ccfoliaRowMap.get(f.id)) || ccfoliaResolve().find(x => x.f === f);
+  const idArg = jsArg(f.id);
+  const head = `<div class="panel-head"><strong>ココフォリアでの扱い</strong><button class="icon-btn" onclick="closePanel()">×</button></div>`;
+  const nameLine = `<p class="ccfolia-field-name">${esc(f.label)}</p>`;
+  const toEditor = `<div class="panel-actions"><button onclick="openCcfoliaFieldInEditor(${idArg})">シートの編集で、この項目を開く</button></div>`;
+  if(!r || r.state === 'unsupported'){
+    return `<div class="panel-pane">${head}<div class="panel-body">${nameLine}<p class="muted small">チェックボックス・表・画像は、ココフォリアに出せません。（インプットセットの中の項目も、チャットパレットだけに出ます。）</p></div>${toEditor}</div>`;
+  }
+  const allowed = CCFOLIA_ROLES_BY_KIND[r.kind];
+  const roleOptions = [`<option value="" ${r.state === 'unset' ? 'selected' : ''}>（未設定）</option>`]
+    .concat(allowed.map(role => `<option value="${role}" ${r.role === role && r.state !== 'unset' ? 'selected' : ''}>${esc(CCFOLIA_ROLE_LABELS[role])}</option>`)).join('');
+  const help = {
+    name: 'ココフォリアのコマの名前になります。',
+    initiative: 'ココフォリアのイニシアチブになります。',
+    status: 'ココフォリアのステータス（現在値と最大値の欄）になります。',
+    param: 'ココフォリアのパラメータ（ラベルと値の欄）になります。',
+    memo: 'ココフォリアのメモ欄に、「■項目名」の見出しをつけてまとまります。',
+    skip: 'ココフォリアには出しません。',
+  }[r.role] || '扱いを決めていません。ココフォリアには出ません。';
+  let extra = '';
+  if(r.role === 'status' || r.role === 'param' || r.role === 'memo'){
+    extra += `<label><span>ココフォリアでの表示名（空欄なら、設定済みの名称）</span><input type="text" maxlength="${CCFOLIA_MAX_LABEL_LENGTH}" placeholder="${escAttr(f.label)}" value="${escAttr(r.label)}" onchange="setCcfoliaLabel(${idArg},this.value)"></label>`;
+  }
+  if(r.role === 'status'){
+    const mode = r.maxFieldId ? 'field' : (typeof r.maxValue === 'number' ? 'value' : 'none');
+    extra += `<label><span>最大値</span><select onchange="setCcfoliaMaxMode(${idArg},this.value)">
+      <option value="none" ${mode === 'none' ? 'selected' : ''}>なし（現在値と同じにする）</option>
+      <option value="field" ${mode === 'field' ? 'selected' : ''}>別のインプットの値を使う</option>
+      <option value="value" ${mode === 'value' ? 'selected' : ''}>決まった数にする</option></select></label>`;
+    if(mode === 'field'){
+      const opts = ccfoliaNumberFields().filter(x => x.id !== f.id)
+        .map(x => `<option value="${escAttr(x.id)}" ${x.id === r.maxFieldId ? 'selected' : ''}>${esc(x.label)}</option>`).join('');
+      extra += `<label><span>最大値に使うインプット</span><select onchange="setCcfoliaMaxField(${idArg},this.value)">${opts}</select></label>`;
+    } else if(mode === 'value'){
+      extra += `<label><span>最大値</span><input type="number" step="any" value="${escAttr(r.maxValue)}" onchange="setCcfoliaMaxValue(${idArg},this.value)"></label>`;
+    }
+  }
+  const autoNote = r.state === 'auto' ? '<p class="muted small">今は自動の仮設定です。ここで変えると、他の項目の自動の設定も含めて、設定として確定します。</p>' : '';
+  return `<div class="panel-pane">${head}<div class="panel-body">${nameLine}
+    <label><span>この項目の扱い</span><select onchange="setCcfoliaRole(${idArg},this.value)">${roleOptions}</select></label>
+    <p class="muted small">${esc(help)}</p>${extra}${autoNote}</div>${toEditor}</div>`;
+}
+
+/* --- 設定の変更 --- */
+function ccfoliaEnsureStored(){
+  let cfg = ccfoliaStored();
+  if(cfg) return cfg;
+  const auto = ccfoliaAutoEntries();
+  const fields = {};
+  Object.keys(auto).forEach(id => { fields[id] = Object.assign({}, auto[id]); });
+  cfg = { v: 1, fields };
+  state.template.ccfolia = cfg;
+  return cfg;
+}
+function setCcfoliaRole(id, role){
+  const f = findFrame('field', id);
+  if(!f || !ccfoliaIsEligibleId(id)) return;
+  const cfg = ccfoliaEnsureStored();
+  if(!role){ delete cfg.fields[id]; render(); return; }
+  const kind = ccfoliaValueKind(f);
+  if(kind === 'unsupported' || !CCFOLIA_ROLES_BY_KIND[kind].includes(role)) return;
+  // 名前・イニシアチブは1つだけ。前の項目はパラメータに回す
+  if(role === 'name' || role === 'initiative'){
+    Object.keys(cfg.fields).forEach(k => {
+      if(k !== id && cfg.fields[k] && cfg.fields[k].role === role) cfg.fields[k] = { role: 'param' };
+    });
+  }
+  const prev = cfg.fields[id] || {};
+  const e = { role };
+  if(prev.label && (role === 'status' || role === 'param' || role === 'memo')) e.label = prev.label;
+  if(role === 'status' && prev.role === 'status'){
+    if(prev.maxFieldId) e.maxFieldId = prev.maxFieldId;
+    if(typeof prev.maxValue === 'number') e.maxValue = prev.maxValue;
+  }
+  cfg.fields[id] = e;
+  render();
+}
+function setCcfoliaLabel(id, v){
+  const cfg = ccfoliaEnsureStored();
+  const e = Object.prototype.hasOwnProperty.call(cfg.fields, id) ? cfg.fields[id] : null;
+  if(!e) return;
+  const t = String(v).trim().slice(0, CCFOLIA_MAX_LABEL_LENGTH);
+  if(t) e.label = t; else delete e.label;
+  render();
+}
+function setCcfoliaMaxMode(id, mode){
+  const f = findFrame('field', id);
+  const cfg = ccfoliaEnsureStored();
+  const e = Object.prototype.hasOwnProperty.call(cfg.fields, id) ? cfg.fields[id] : null;
+  if(!f || !e || e.role !== 'status') return;
+  delete e.maxFieldId; delete e.maxValue;
+  if(mode === 'field'){
+    const first = ccfoliaNumberFields().find(x => x.id !== id);
+    if(first) e.maxFieldId = first.id;
+  } else if(mode === 'value'){
+    e.maxValue = ccfoliaNumberValue(f) || 10;
+  }
+  render();
+}
+function setCcfoliaMaxField(id, fieldId){
+  const cfg = ccfoliaEnsureStored();
+  const e = Object.prototype.hasOwnProperty.call(cfg.fields, id) ? cfg.fields[id] : null;
+  if(!e || e.role !== 'status' || fieldId === id || !ccfoliaIsNumberFieldId(fieldId)) return;
+  e.maxFieldId = fieldId; delete e.maxValue;
+  render();
+}
+function setCcfoliaMaxValue(id, v){
+  const cfg = ccfoliaEnsureStored();
+  const e = Object.prototype.hasOwnProperty.call(cfg.fields, id) ? cfg.fields[id] : null;
+  const n = Number(v);
+  if(!e || e.role !== 'status' || v === '' || !Number.isFinite(n)) return;
+  e.maxValue = n; delete e.maxFieldId;
+  render();
+}
+// 未設定の項目だけを、自動の仮設定で埋める(設定済みの項目は変えない)。設定がまだ無い時は、自動の仮設定を、そのまま設定として確定する。
+function autoFillCcfolia(){
+  const hadCfg = !!ccfoliaStored();
+  const cfg = ccfoliaEnsureStored();
+  let n = 0;
+  if(!hadCfg){
+    n = Object.keys(cfg.fields).length;
+  } else {
+    const auto = ccfoliaAutoEntries();
+    const hasRole = role => Object.keys(cfg.fields).some(k => cfg.fields[k] && cfg.fields[k].role === role);
+    ccfoliaTopFields().forEach(f => {
+      if(!Object.prototype.hasOwnProperty.call(auto, f.id) || ccfoliaEntryOf(cfg, f)) return;
+      const a = auto[f.id];
+      if((a.role === 'name' || a.role === 'initiative') && hasRole(a.role)) return;
+      cfg.fields[f.id] = Object.assign({}, a);
+      n++;
+    });
+  }
+  state.statusMsg = n ? `${n}件の項目を、自動で仮設定しました。` : '自動で設定できる項目はありませんでした。';
+  state.statusKind = n ? 'ok' : '';
+  render();
+}
+function resetCcfolia(){
+  if(!confirm('ココフォリア連携の設定をすべて消します。シートの項目は変わりません。よろしいですか？')) return;
+  delete state.template.ccfolia;
   render();
 }
 
