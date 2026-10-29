@@ -419,6 +419,16 @@
   }
   .frame-divider.drop-before::before{ top:-5px; }
   .frame-divider.drop-after::after{ bottom:-5px; }
+  /* 表形式(カテゴリー直下の並べ替え、2026-10-27): 動かしている表形式は薄く、挿入先は上端・下端に横線(区切り線と同じ) */
+  .frame-set{ position:relative; }
+  .frame-set.is-dragging{ opacity:0.4; }
+  .frame-set.drop-before::before, .frame-set.drop-after::after{
+    content:''; position:absolute; left:0; right:0; height:3px; border-radius:2px;
+    background:var(--accent); pointer-events:none; z-index:5;
+  }
+  .frame-set.drop-before::before{ top:-5px; }
+  .frame-set.drop-after::after{ bottom:-5px; }
+  .set-title .field-drag-handle{ margin-right:4px; vertical-align:middle; }
   /* インプットセットの行: 上端・下端(各セルの内側)に線。セルは行の高さに伸ばしてあるため、一直線になる */
   /* 改行のある行は、上端は1段目のセルと操作列、下端は最後の段(.is-last-line)と操作列(全段にまたがる)に付ける */
   .set-row.drop-before > :not(.set-subline){ box-shadow:inset 0 3px 0 var(--accent); }
@@ -1079,7 +1089,7 @@ const state = {
   colorPanelOpen: false, // テンプレート編集画面(確認画面含む)での色調整パネル
   chatPaletteOpen: false, // キャラクター編集/表示画面でのフローティングチャットパレット
   ccfoliaSetup: false, // テンプレート編集画面の「ココフォリア連携の設定」画面か(state.mode==='view'と組で成立する)
-  ccfoliaExportOpen: false, ccfoliaCopyResult: '', // 「ココフォリアに出力」のダイアログと、コピーの結果('ok'|'ng'|'')
+  ccfoliaExportOpen: false, ccfoliaExport: null, ccfoliaCopyResult: '', // 「ココフォリアに出力」のダイアログと、コピーの結果('ok'|'ng'|'')
   dirty: false, // 未保存の変更があるか(beforeunloadの警告判定に使う)
   restoring: false, // ページを開いた直後の、ログイン状態の自動復元(無言ログイン)の確認中か
   // Google Drive連携
@@ -1895,6 +1905,7 @@ function assertSafeTemplateIds(tpl){
     checkId(sec.id);
     if(sec.imageArea) checkId(sec.imageArea.id); // 2026-10-12: 検査から漏れていた
     (sec.fields || []).forEach(f => checkId(f.id));
+    if(Array.isArray(sec.order)) sec.order.forEach(id => checkId(id));
     (sec.sets || []).forEach(st => {
       checkId(st.id);
       (st.fields || []).forEach(f => checkId(f.id));
@@ -1973,7 +1984,7 @@ function setLinesOf(st){
   return lines;
 }
 function fieldMatchesTypeFilter(f, typeFilter){
-  if(f.kind === 'divider' || f.kind === 'break') return false; // 区切り線・改行はインプットではない(参照の候補に出さない)
+  if(f.kind === 'divider' || f.kind === 'break') return false; // 区切り線・改行は項目ではない(参照の候補に出さない)
   if(!typeFilter) return true;
   return Array.isArray(typeFilter) ? typeFilter.includes(f.type) : f.type === typeFilter;
 }
@@ -2463,8 +2474,8 @@ function render(opts){
   // ココフォリア連携の設定画面は、テンプレート編集画面の確認画面(state.mode==='view')の間だけ成り立つ
   if(state.ccfoliaSetup && !ccfoliaSetupActive()) state.ccfoliaSetup = false;
   if(state.ccfoliaExportOpen && !(state.screen === 'characterEditor' || state.screen === 'characterView' || state.screen === 'templateEditor')) state.ccfoliaExportOpen = false;
-  ccfoliaRowMap = null;
-  if(ccfoliaSetupActive()){ ccfoliaRowMap = new Map(); ccfoliaResolve().forEach(r => ccfoliaRowMap.set(r.f.id, r)); }
+  ccfoliaRenderRows = null; ccfoliaRowMap = null;
+  if(ccfoliaSetupActive()) ccfoliaRowMap = new Map(ccfoliaRows().map(r => [r.f.id, r]));
   app.className = state.mode === 'edit' ? 'mode-edit' : (ccfoliaSetupActive() ? 'mode-view mode-ccfolia' : 'mode-view');
   // チャットパレットは、テンプレート編集画面では従来通りシート内に
   // インライン表示するが、キャラクター編集/表示画面ではフローティング
@@ -2484,6 +2495,7 @@ function render(opts){
     renderRandomResultModal() +
     renderCcfoliaExportModal() +
     (isCharacterScreen ? renderFloatingChatPalette() : '');
+  ccfoliaRenderRows = undefined; ccfoliaRowMap = null;
   applyTemplateColors(false);
   app.querySelectorAll('textarea').forEach(autoResizeTextarea);
   restoreFocus();
@@ -3204,7 +3216,7 @@ function renderInlineSharePanel(kind){
 function frameAttrs(kind, id){
   // ココフォリア連携の設定画面: カテゴリー直下のインプットだけ、クリックで扱いを決める
   if(ccfoliaSetupActive()){
-    if(kind === 'field' && ccfoliaIsEligibleId(id)) return `data-frame-id="${id}" onclick="selectCcfoliaField(event,${jsArg(id)})"`;
+    if(kind === 'field' && ccfoliaRowMap && ccfoliaRowMap.has(id)) return `data-frame-id="${id}" onclick="selectCcfoliaField(event,${jsArg(id)})"`;
     if(kind === 'section') return `data-frame-id="${id}" onclick="selectCcfoliaSection(event,${jsArg(id)})"`;
     return '';
   }
@@ -3244,21 +3256,34 @@ function renderSectionFrame(sec){
     ? `<button class="collapse-btn" onclick="toggleCollapse('${sec.id}')">${isCollapsed ? '▶' : '▼'}</button>`
     : '';
   const cols = clampSectionColumns(sec.columns);
-  const fields = (sec.fields || []).map(f => renderFieldFrame(f, null, cols)).join('');
   const imageAreaHtml = renderCategoryImageArea(sec);
-  const sets = sec.sets.map(renderSetFrame).join('');
-  const addFieldBtn = state.mode === 'edit' ? `<button class="add-frame-btn small" onclick="event.stopPropagation();addFieldToSection('${sec.id}')">+ インプットを追加</button>` : '';
+  // 項目と表形式を、並び順(sectionItemsInOrder)どおりに出す。連続する項目は1つのグリッド(.group-grid)にまとめ、
+  // 表形式が間に入ったら、グリッドを分ける。先頭の行は、画像エリア+最初の項目の並び(先頭が表形式なら、項目は無し)。
+  // 並び順が無い従来のテンプレートは、項目→表形式の順で、これまでと同じ見た目になる。
+  const blocks = [];
+  sectionItemsInOrder(sec).forEach(it => {
+    const last = blocks[blocks.length - 1];
+    if(it.kind === 'set') blocks.push({ set: it.obj });
+    else if(last && last.fields) last.fields.push(it.obj);
+    else blocks.push({ fields: [it.obj] });
+  });
+  const fieldsHtml = list => list.map(f => renderFieldFrame(f, null, cols)).join('');
+  const firstFields = blocks.length && blocks[0].fields ? fieldsHtml(blocks[0].fields) : '';
+  const restHtml = (firstFields ? blocks.slice(1) : blocks)
+    .map(b => b.set ? renderSetFrame(b.set) : `<div class="group-grid" style="--cols:${cols}">${fieldsHtml(b.fields)}</div>`)
+    .join('');
+  const addFieldBtn = state.mode === 'edit' ? `<button class="add-frame-btn small" onclick="event.stopPropagation();addFieldToSection('${sec.id}')">+ 項目を追加</button>` : '';
   const addImageAreaBtn = (state.mode === 'edit' && !sec.imageArea) ? `<button class="add-frame-btn small" onclick="event.stopPropagation();addCategoryImageArea('${sec.id}')">+ 画像エリアを追加</button>` : '';
   const addDividerBtn = state.mode === 'edit' ? `<button class="add-frame-btn small" onclick="event.stopPropagation();addDividerToSection(${jsArg(sec.id)})">+ 区切り線を追加</button>` : '';
-  const addSetBtn = state.mode === 'edit' ? `<button class="add-frame-btn small" onclick="event.stopPropagation();addSetDef('${sec.id}')">+ インプットセットを追加</button>` : '';
+  const addSetBtn = state.mode === 'edit' ? `<button class="add-frame-btn small" onclick="event.stopPropagation();addSetDef('${sec.id}')">+ 表形式を追加</button>` : '';
   return `<section class="frame-section ${selected ? 'is-selected' : ''}" ${frameAttrs('section', sec.id)}>
     <h2 class="section-title">${toggleBtn}${esc(sec.label)}${sec.collapsible ? ' <span class="muted small">(折りたたみ可)</span>' : ''}${ccfoliaSectionBadgeHtml(sec)}</h2>
     <div class="section-body" ${isCollapsed ? 'style="display:none"' : ''}>
       <div class="category-body-row">
         ${imageAreaHtml}
-        <div class="group-grid" style="--cols:${cols}">${fields}</div>
+        <div class="group-grid" style="--cols:${cols}">${firstFields}</div>
       </div>
-      ${sets}${addFieldBtn}${addDividerBtn}${addSetBtn}${addImageAreaBtn}
+      ${restHtml}${addFieldBtn}${addSetBtn}${addDividerBtn}${addImageAreaBtn}
     </div>
   </section>`;
 }
@@ -3677,7 +3702,7 @@ function renderSetFrame(set){
     // frameAttrs()によりインプットセットの枠全体がクリックで設定パネルを
     // 開くため、このボタン自体のクリックが誤ってパネルを開かないよう
     // stopPropagation()する(他の「+ ○○を追加」系ボタンと同じ作法)。
-    addFieldBtn = `<button class="add-frame-btn small" onclick="event.stopPropagation();addFieldToSet('${set.id}')">+ セットにインプットを追加</button>`
+    addFieldBtn = `<button class="add-frame-btn small" onclick="event.stopPropagation();addFieldToSet('${set.id}')">+ 表形式に項目を追加</button>`
       + `<button class="add-frame-btn small" onclick="event.stopPropagation();addBreakToSet('${set.id}')">+ 改行を追加</button>`;
   } else {
     // 行ごとに見出し(品名・重量…)を繰り返さず、1番上に1回だけ出す。
@@ -3708,9 +3733,16 @@ function renderSetFrame(set){
     body = `<div class="set-table-wrap"><div class="set-table" style="grid-template-columns:${colTemplate}">${header}${rowsHtml}</div></div>`;
     if(!state.readOnly) addRowBtn = `<button class="add-row-btn" onclick="addSetRow('${set.id}')">+ 行を追加</button>`;
   }
-  return `<div class="frame-set ${selected ? 'is-selected' : ''}" ${frameAttrs('set', set.id)}>
+  // 編集中は、項目と同じように、⠿のドラッグで並べ替えられる(項目・区切り線・表形式を、まとめて並べ替える)
+  const dragHandle = state.mode === 'edit'
+    ? `<span class="chat-drag-handle field-drag-handle" draggable="true" title="ドラッグで並べ替え" onclick="event.preventDefault();event.stopPropagation();" ondragstart="handleSetDragStart(event,${jsArg(set.id)})" ondragend="handleFieldDragEnd(event)">⠿</span>`
+    : '';
+  const dragTargetAttrs = state.mode === 'edit'
+    ? ` ondragover="handleSetDragOver(event,${jsArg(set.id)})" ondrop="handleSetDrop(event,${jsArg(set.id)})"`
+    : '';
+  return `<div class="frame-set ${selected ? 'is-selected' : ''}" ${frameAttrs('set', set.id)}${dragTargetAttrs}>
     <div class="set-header">
-      <h3 class="set-title">${esc(set.label)}</h3>
+      <h3 class="set-title">${dragHandle}${esc(set.label)}</h3>
       <div class="set-header-actions">${ccfoliaSetupActive() ? '<span class="muted small">ココフォリアには出ません（チャットパレットだけ）</span>' : ''}${addRowBtn}${addFieldBtn}</div>
     </div>
     ${body}
@@ -3811,6 +3843,14 @@ function ensureChatOrder(){
     if(f.chatEnabled && !order.includes(f.id)) order.push(f.id);
   });
   return order;
+}
+// チャットパレットに実際に出す行のID(chatEnabledが外れた項目・存在しないIDは除く。自由入力行はfindChatFreeTextで拾う)。
+// 存在しない・chatEnabledが外れたIDは描画時に無視するだけにする(壊れたら気付けるようにする、の他の仕組みと同じ事後対応の考え方)。
+function activeChatOrder(){
+  return ensureChatOrder().filter(id => {
+    const f = findFrame('field', id);
+    return f ? f.chatEnabled : !!findChatFreeText(id);
+  });
 }
 // インプットに紐付かない自由入力行(空白行・区切り・ダイス例・固定文言等)。
 // state.template.chatFreeTexts([{id,text}])に実体を持ち、chatOrderには
@@ -4063,12 +4103,8 @@ function replaceChatTemplateText(){
 function renderChatPalette(){
   // 存在しない・chatEnabledが外れたIDは描画時に無視するだけにする
   // (壊れたら気付けるようにする、の他の仕組みと同じ事後対応の考え方)。
-  // 自由入力行(findFrame('field',...)には無い)はfindChatFreeTextで拾う。
-  const order = ensureChatOrder().filter(id => {
-    const f = findFrame('field', id);
-    if(f) return f.chatEnabled;
-    return !!findChatFreeText(id);
-  });
+  // 自由入力行(findFrame('field',...)には無い)はfindChatFreeTextで拾う(activeChatOrder())。
+  const order = activeChatOrder();
   if(state.mode === 'edit'){
     // 編集モードは、カテゴリー・インプットセットをまたいだ並べ替えの
     // ためだけに項目ごとの↑↓ボタンを添える(テキスト自体は入力モードで
@@ -4139,11 +4175,7 @@ function renderChatPaletteTextareaBlock(order){
 // (.modal-backdrop)で閉じる、既存モーダルと同じパターンを流用する。
 function renderFloatingChatPalette(){
   if(!state.chatPaletteOpen) return '';
-  const order = ensureChatOrder().filter(id => {
-    const f = findFrame('field', id);
-    if(f) return f.chatEnabled;
-    return !!findChatFreeText(id);
-  });
+  const order = activeChatOrder();
   const body = order.length
     ? renderChatPaletteTextareaBlock(order)
     : `<p class="muted">チャットパレットに出す項目がありません。</p>`;
@@ -4306,7 +4338,7 @@ function randomAllButtonHtml(){
   if(!hasRandomListFields()) return '';
   let attrs;
   if(state.screen === 'templateEditor' && state.mode === 'edit') attrs = ' disabled title="確認画面に切り替えると押せます"';
-  else attrs = ' title="「リストからランダム」のインプットを、まとめてランダムに入力する" onclick="openRandomConfirm()"';
+  else attrs = ' title="「リストからランダム」の項目を、まとめてランダムに入力する" onclick="openRandomConfirm()"';
   return `<button type="button" class="random-btn random-all-btn"${attrs}>🎲ランダム（全て）</button>`;
 }
 function openRandomConfirm(){
@@ -4555,6 +4587,12 @@ const CCFOLIA_MAX_LABEL_LENGTH = 60;
 const CCFOLIA_NAME_LABELS = ['キャラクター名', 'キャラ名', 'キャラクターの名前', '名前', '氏名', 'pc名', 'name'];
 const CCFOLIA_INITIATIVE_LABELS = ['イニシアチブ', 'イニシアティブ', '行動値', '先攻値', 'initiative'];
 let ccfoliaRowMap = null; // 設定画面の描画中だけ持つ、項目ID→resolveの結果
+let ccfoliaRenderRows; // render()の間だけ持つ、resolveの結果の使い回し(undefined=描画の外。毎回求める / null=描画中で、まだ求めていない)
+// 項目の扱いの一覧。描画の間は、最初の1回だけ求めて使い回す(1回の描画で、ツールバー・バナー・プレビュー・札が、それぞれ求めていた)
+function ccfoliaRows(){
+  if(ccfoliaRenderRows === undefined) return ccfoliaResolve();
+  return ccfoliaRenderRows || (ccfoliaRenderRows = ccfoliaResolve());
+}
 
 function ccfoliaSetupActive(){ return !!state.ccfoliaSetup && state.screen === 'templateEditor' && state.mode === 'view'; }
 // 対象の項目: カテゴリー直下のインプット・計算式等(区切り線は除く)。インプットセット内の項目は対象外。
@@ -4563,9 +4601,10 @@ function ccfoliaTopFields(){
   state.template.sections.forEach(s => (s.fields || []).forEach(f => { if(f.kind !== 'divider') out.push(f); }));
   return out;
 }
-function ccfoliaIsEligibleId(id){
+// 対象の項目(カテゴリー直下の項目)ならその項目、そうでなければnull
+function ccfoliaEligibleField(id){
   const f = findFrame('field', id);
-  return !!f && f.kind !== 'divider' && f.kind !== 'break' && !isFieldInsideSet(id);
+  return (f && f.kind !== 'divider' && f.kind !== 'break' && !isFieldInsideSet(id)) ? f : null;
 }
 // 'number' | 'text' | 'unsupported'(チェックボックス・表・画像)
 function ccfoliaValueKind(f){
@@ -4674,14 +4713,8 @@ function ccfoliaTextOrPlaceholder(f){
   const v = ccfoliaValueText(f);
   return v.trim() === '' ? '[' + f.label + ']' : v;
 }
-function ccfoliaChatOrder(){
-  return ensureChatOrder().filter(id => {
-    const f = findFrame('field', id);
-    return f ? f.chatEnabled : !!findChatFreeText(id);
-  });
-}
 function buildCcfoliaCharacter(){
-  const rows = ccfoliaResolve();
+  const rows = ccfoliaRows();
   const data = {};
   const nameRow = rows.find(r => r.role === 'name');
   const tplName = (state.template.meta && state.template.meta.name) || '';
@@ -4713,7 +4746,7 @@ function buildCcfoliaCharacter(){
     if(!label) return;
     data.params.push({ label, value: ccfoliaTextOrPlaceholder(r.f) });
   });
-  data.commands = chatOrderLines(ccfoliaChatOrder()).join('\n');
+  data.commands = chatOrderLines(activeChatOrder()).join('\n');
   return { kind: 'character', data };
 }
 function copyTextToClipboard(text){
@@ -4723,7 +4756,10 @@ function copyTextToClipboard(text){
 // 「ココフォリアに出力」: 開くと同時にクリップボードへコピーする(クリックの操作の最中に呼ぶ必要があるので、
 // 描画より先にコピーを始める)。
 function openCcfoliaExport(){
-  const p = copyTextToClipboard(JSON.stringify(buildCcfoliaCharacter()));
+  const obj = buildCcfoliaCharacter();
+  const json = JSON.stringify(obj);
+  const p = copyTextToClipboard(json);
+  state.ccfoliaExport = { data: obj.data, json };
   state.ccfoliaExportOpen = true;
   state.ccfoliaCopyResult = '';
   render({ skipDirty: true });
@@ -4734,6 +4770,7 @@ function openCcfoliaExport(){
 }
 function closeCcfoliaExport(){
   state.ccfoliaExportOpen = false;
+  state.ccfoliaExport = null;
   render({ skipDirty: true });
 }
 function copyCcfoliaJson(){
@@ -4749,9 +4786,8 @@ function ccfoliaSummaryText(d){
   return `コマ「${d.name}」 / ステータス${d.status.length}件 / パラメータ${d.params.length}件 / メモ${d.memo ? 'あり' : 'なし'} / チャットパレット${lines}行`;
 }
 function renderCcfoliaExportModal(){
-  if(!state.ccfoliaExportOpen) return '';
-  const obj = buildCcfoliaCharacter();
-  const json = JSON.stringify(obj);
+  const ex = state.ccfoliaExport;
+  if(!state.ccfoliaExportOpen || !ex) return '';
   const msg = state.ccfoliaCopyResult === 'ok'
     ? 'コピーしました。ココフォリアの盤面を開いて、Ctrl+V（Macは⌘+V）で貼り付けてください。'
     : state.ccfoliaCopyResult === 'ng'
@@ -4762,12 +4798,12 @@ function renderCcfoliaExportModal(){
       <div class="modal-head"><strong>ココフォリアに出力</strong><button class="icon-btn" onclick="closeCcfoliaExport()">×</button></div>
       <div class="modal-body">
         <p class="ccfolia-copy-msg ${state.ccfoliaCopyResult === 'ng' ? 'is-ng' : ''}">${esc(msg)}</p>
-        <p class="muted small">${esc(ccfoliaSummaryText(obj.data))}</p>
+        <p class="muted small">${esc(ccfoliaSummaryText(ex.data))}</p>
         <div class="chat-palette-block">
-          <textarea id="ccfolia-json" class="chat-palette-textarea" readonly onfocus="this.select()">${esc(json)}</textarea>
+          <textarea id="ccfolia-json" class="chat-palette-textarea" readonly onfocus="this.select()">${esc(ex.json)}</textarea>
           <button onclick="copyCcfoliaJson()">コピー</button>
         </div>
-        <p class="muted small">立ち絵・アイコンの画像は、ココフォリア側で設定してください（画像は貼り付けでは渡せません）。インプットセットの内容は、チャットパレットだけに出ます。</p>
+        <p class="muted small">立ち絵・アイコンの画像は、ココフォリア側で設定してください（画像は貼り付けでは渡せません）。表形式の内容は、チャットパレットだけに出ます。</p>
       </div>
     </div>
   </div>`;
@@ -4780,21 +4816,16 @@ function enterCcfoliaSetup(){
   state.colorPanelOpen = false;
   // シートの編集で選んでいた項目は、そのまま選んだ状態で引き継ぐ
   const s = state.selection;
-  if(!(s && ((s.kind === 'field' && ccfoliaIsEligibleId(s.id)) || (s.kind === 'section' && findFrame('section', s.id))))) state.selection = null;
+  if(!(s && ((s.kind === 'field' && ccfoliaEligibleField(s.id)) || (s.kind === 'section' && findFrame('section', s.id))))) state.selection = null;
   render({ skipDirty: true });
   setTimeout(scrollToSelectedFrame, 60);
 }
-function exitCcfoliaSetup(){
+// 設定画面を終えて、シートの編集に戻る。selectionを渡すと、その項目・カテゴリーを選んだ状態で開く(渡さなければ、今の選択のまま)
+function exitCcfoliaSetup(selection){
   state.ccfoliaSetup = false;
   state.mode = 'edit';
   state.colorPanelOpen = false;
-  render({ skipDirty: true });
-  setTimeout(scrollToSelectedFrame, 60);
-}
-function openCcfoliaFieldInEditor(id){
-  state.ccfoliaSetup = false;
-  state.mode = 'edit';
-  state.selection = { kind: 'field', id };
+  if(selection && selection.kind && selection.id) state.selection = { kind: selection.kind, id: selection.id };
   render({ skipDirty: true });
   setTimeout(scrollToSelectedFrame, 60);
 }
@@ -4881,12 +4912,12 @@ function ccfoliaToolbarButtonHtml(){
 }
 function ccfoliaUnsetCount(){
   if(!ccfoliaStored()) return 0;
-  return ccfoliaResolve().filter(r => r.state === 'unset').length;
+  return ccfoliaRows().filter(r => r.state === 'unset').length;
 }
 // ココフォリアには、名前・イニシアチブ・メモが1つずつある。テンプレート全体での件数を、常に出し、1以外は警告の色にする(利用者の指定)。
 // カテゴリーごとの件数ではなく、テンプレート全体の件数(名前が別のカテゴリーにあっても、足りないとは言わないため)。
 function ccfoliaSinglesHtml(){
-  const rows = ccfoliaRowMap ? Array.from(ccfoliaRowMap.values()) : ccfoliaResolve();
+  const rows = ccfoliaRows();
   const hints = {
     name: ['名前が決まっていません。「（システム名）のキャラクター」という名前で出ます。', '名前に使う項目が複数あります。最初の1つだけが使われます。'],
     initiative: ['イニシアチブは出ません。', 'イニシアチブに使う項目が複数あります。最初の1つだけが使われます。'],
@@ -4943,7 +4974,7 @@ function renderCcfoliaSectionPanel(sec){
   const c = ccfoliaSectionCounts(sec);
   const idArg = jsArg(sec.id);
   const head = `<div class="panel-head"><strong>カテゴリーをまとめて設定</strong><button class="icon-btn" onclick="closePanel()">×</button></div>`;
-  const toEditor = `<div class="panel-actions"><button onclick="openCcfoliaSectionInEditor(${idArg})">シートの編集で、このカテゴリーを開く</button></div>`;
+  const toEditor = `<div class="panel-actions"><button onclick="exitCcfoliaSetup({kind:'section',id:${idArg}})">シートの編集で、このカテゴリーを開く</button></div>`;
   if(!c.total){
     return `<div class="panel-pane">${head}<div class="panel-body"><p class="ccfolia-field-name">${esc(sec.label)}</p><p class="muted small">このカテゴリーには、ココフォリアに出せる項目がありません。</p></div>${toEditor}</div>`;
   }
@@ -4957,13 +4988,6 @@ function renderCcfoliaSectionPanel(sec){
       <button onclick="setCcfoliaSectionRole(${idArg},'')">すべて「未設定」に戻す</button>
     </div></div>${toEditor}</div>`;
 }
-function openCcfoliaSectionInEditor(id){
-  state.ccfoliaSetup = false;
-  state.mode = 'edit';
-  state.selection = { kind: 'section', id };
-  render({ skipDirty: true });
-  setTimeout(scrollToSelectedFrame, 60);
-}
 function renderCcfoliaPanel(){
   const sel = state.selection;
   if(sel && sel.kind === 'section'){
@@ -4972,15 +4996,15 @@ function renderCcfoliaPanel(){
     return renderCcfoliaSectionPanel(sec);
   }
   if(!sel || sel.kind !== 'field') return '';
-  const f = findFrame('field', sel.id);
-  if(!f || !ccfoliaIsEligibleId(sel.id)){ state.selection = null; return ''; }
-  const r = (ccfoliaRowMap && ccfoliaRowMap.get(f.id)) || ccfoliaResolve().find(x => x.f === f);
+  const f = ccfoliaEligibleField(sel.id);
+  if(!f){ state.selection = null; return ''; }
+  const r = ccfoliaRowMap.get(f.id);
   const idArg = jsArg(f.id);
   const head = `<div class="panel-head"><strong>ココフォリアでの扱い</strong><button class="icon-btn" onclick="closePanel()">×</button></div>`;
   const nameLine = `<p class="ccfolia-field-name">${esc(f.label)}</p>`;
-  const toEditor = `<div class="panel-actions"><button onclick="openCcfoliaFieldInEditor(${idArg})">シートの編集で、この項目を開く</button></div>`;
+  const toEditor = `<div class="panel-actions"><button onclick="exitCcfoliaSetup({kind:'field',id:${idArg}})">シートの編集で、この項目を開く</button></div>`;
   if(!r || r.state === 'unsupported'){
-    return `<div class="panel-pane">${head}<div class="panel-body">${nameLine}<p class="muted small">チェックボックス・表・画像は、ココフォリアに出せません。（インプットセットの中の項目も、チャットパレットだけに出ます。）</p></div>${toEditor}</div>`;
+    return `<div class="panel-pane">${head}<div class="panel-body">${nameLine}<p class="muted small">チェックボックス・表・画像は、ココフォリアに出せません。（表形式の中の項目も、チャットパレットだけに出ます。）</p></div>${toEditor}</div>`;
   }
   const allowed = CCFOLIA_ROLES_BY_KIND[r.kind];
   const roleOptions = [`<option value="" ${r.state === 'unset' ? 'selected' : ''}>（未設定）</option>`]
@@ -5001,12 +5025,12 @@ function renderCcfoliaPanel(){
     const mode = r.maxFieldId ? 'field' : (typeof r.maxValue === 'number' ? 'value' : 'none');
     extra += `<label><span>最大値</span><select onchange="setCcfoliaMaxMode(${idArg},this.value)">
       <option value="none" ${mode === 'none' ? 'selected' : ''}>なし（現在値と同じにする）</option>
-      <option value="field" ${mode === 'field' ? 'selected' : ''}>別のインプットの値を使う</option>
+      <option value="field" ${mode === 'field' ? 'selected' : ''}>別の項目の値を使う</option>
       <option value="value" ${mode === 'value' ? 'selected' : ''}>決まった数にする</option></select></label>`;
     if(mode === 'field'){
       const opts = ccfoliaNumberFields().filter(x => x.id !== f.id)
         .map(x => `<option value="${escAttr(x.id)}" ${x.id === r.maxFieldId ? 'selected' : ''}>${esc(x.label)}</option>`).join('');
-      extra += `<label><span>最大値に使うインプット</span><select onchange="setCcfoliaMaxField(${idArg},this.value)">${opts}</select></label>`;
+      extra += `<label><span>最大値に使う項目</span><select onchange="setCcfoliaMaxField(${idArg},this.value)">${opts}</select></label>`;
     } else if(mode === 'value'){
       extra += `<label><span>最大値</span><input type="number" step="any" value="${escAttr(r.maxValue)}" onchange="setCcfoliaMaxValue(${idArg},this.value)"></label>`;
     }
@@ -5028,9 +5052,14 @@ function ccfoliaEnsureStored(){
   state.template.ccfolia = cfg;
   return cfg;
 }
+// 設定を確定して(まだ無ければ、自動の仮設定を設定にして)、その項目の設定を返す。無ければnull
+function ccfoliaEnsureEntry(id){
+  const cfg = ccfoliaEnsureStored();
+  return Object.prototype.hasOwnProperty.call(cfg.fields, id) ? cfg.fields[id] : null;
+}
 function setCcfoliaRole(id, role){
-  const f = findFrame('field', id);
-  if(!f || !ccfoliaIsEligibleId(id)) return;
+  const f = ccfoliaEligibleField(id);
+  if(!f) return;
   const cfg = ccfoliaEnsureStored();
   if(!role){ delete cfg.fields[id]; render(); return; }
   const kind = ccfoliaValueKind(f);
@@ -5052,8 +5081,7 @@ function setCcfoliaRole(id, role){
   render();
 }
 function setCcfoliaLabel(id, v){
-  const cfg = ccfoliaEnsureStored();
-  const e = Object.prototype.hasOwnProperty.call(cfg.fields, id) ? cfg.fields[id] : null;
+  const e = ccfoliaEnsureEntry(id);
   if(!e) return;
   const t = String(v).trim().slice(0, CCFOLIA_MAX_LABEL_LENGTH);
   if(t) e.label = t; else delete e.label;
@@ -5061,8 +5089,7 @@ function setCcfoliaLabel(id, v){
 }
 function setCcfoliaMaxMode(id, mode){
   const f = findFrame('field', id);
-  const cfg = ccfoliaEnsureStored();
-  const e = Object.prototype.hasOwnProperty.call(cfg.fields, id) ? cfg.fields[id] : null;
+  const e = ccfoliaEnsureEntry(id);
   if(!f || !e || e.role !== 'status') return;
   delete e.maxFieldId; delete e.maxValue;
   if(mode === 'field'){
@@ -5074,15 +5101,13 @@ function setCcfoliaMaxMode(id, mode){
   render();
 }
 function setCcfoliaMaxField(id, fieldId){
-  const cfg = ccfoliaEnsureStored();
-  const e = Object.prototype.hasOwnProperty.call(cfg.fields, id) ? cfg.fields[id] : null;
+  const e = ccfoliaEnsureEntry(id);
   if(!e || e.role !== 'status' || fieldId === id || !ccfoliaIsNumberFieldId(fieldId)) return;
   e.maxFieldId = fieldId; delete e.maxValue;
   render();
 }
 function setCcfoliaMaxValue(id, v){
-  const cfg = ccfoliaEnsureStored();
-  const e = Object.prototype.hasOwnProperty.call(cfg.fields, id) ? cfg.fields[id] : null;
+  const e = ccfoliaEnsureEntry(id);
   const n = Number(v);
   if(!e || e.role !== 'status' || v === '' || !Number.isFinite(n)) return;
   e.maxValue = n; delete e.maxFieldId;
@@ -5194,6 +5219,67 @@ function renderColorPanel(){
   </div>`;
 }
 
+/* ---------- カテゴリー直下の並び: 項目と表形式を、まとめて並べ替える(2026-10-27、利用者の依頼) ----------
+ * それまで、カテゴリーの中は「項目(区切り線を含む)がすべて上、表形式がすべて下」と決まっていて、表形式の下に
+ * 項目を置けなかった。項目・区切り線・表形式のIDを、画面に出す順に並べた sec.order を足して、まとめて
+ * 並べ替えられるようにした。
+ * - sec.order が無い(従来のテンプレート)・載っていないものは、従来どおり「項目、そのあとに表形式」
+ * - 並べ替えたら sec.order を保存し、sec.fields・sec.sets の中の並びも、同じ順に揃える
+ *   (partyview・ココフォリア連携・各種の一覧など、この2つの配列を読む他の処理が、同じ順で読めるように)
+ * - 内部のデータの形(fields・sets)は変えていない。sec.order は、あっても無くてもよい
+ */
+// カテゴリー直下の項目・表形式を、画面に出す順に並べたもの([{kind:'field'|'set', obj}])
+function sectionItemsInOrder(sec){
+  const byId = new Map();
+  (sec.fields || []).forEach(f => byId.set(f.id, { kind: 'field', obj: f }));
+  (sec.sets || []).forEach(st => byId.set(st.id, { kind: 'set', obj: st }));
+  const out = [];
+  const used = new Set();
+  (Array.isArray(sec.order) ? sec.order : []).forEach(id => {
+    const it = byId.get(id);
+    if(it && !used.has(id)){ out.push(it); used.add(id); }
+  });
+  // 並びに載っていないもの(従来のテンプレート・並び順を持たない後からの追加)は、従来どおり、項目、そのあとに表形式
+  (sec.fields || []).forEach(f => { if(!used.has(f.id)) out.push(byId.get(f.id)); });
+  (sec.sets || []).forEach(st => { if(!used.has(st.id)) out.push(byId.get(st.id)); });
+  return out;
+}
+function sectionOrderIds(sec){ return sectionItemsInOrder(sec).map(it => it.obj.id); }
+// 並びを保存し、fields・sets(配列そのものは入れ替えず、中身だけ)の並びも、同じ順に揃える
+function setSectionOrder(sec, ids){
+  sec.order = ids.slice();
+  const pos = new Map(ids.map((id, i) => [id, i]));
+  const cmp = (a, b) => pos.get(a.id) - pos.get(b.id);
+  if(sec.fields) sec.fields.sort(cmp);
+  if(sec.sets) sec.sets.sort(cmp);
+}
+// カテゴリー直下の項目(kind:'field')・表形式(kind:'set')が属するカテゴリー。表形式の中の項目・無いidはnull
+function topItemSection(kind, id){
+  for(const s of state.template.sections){
+    if(kind === 'field' && (s.fields || []).some(f => f.id === id)) return s;
+    if(kind === 'set' && (s.sets || []).some(st => st.id === id)) return s;
+  }
+  return null;
+}
+// fromIdを、toIdの前(pos==='before')/後(pos==='after')に置いた後のIDの並び。元と同じ並びになる(動かない)ならnull
+function reorderedTopIds(sec, fromId, toId, pos){
+  const ids = sectionOrderIds(sec);
+  const from = ids.indexOf(fromId), to = ids.indexOf(toId);
+  if(from < 0 || to < 0 || from === to) return null;
+  const ins = dndInsertIndex(from, to, pos);
+  if(ins === from) return null;
+  const next = ids.slice();
+  next.splice(from, 1);
+  next.splice(ins, 0, fromId);
+  return next;
+}
+// 追加した項目・表形式のidを、並び(sec.order)があれば、その最後(afterIdがあれば、その直後)に入れる
+function addToSectionOrder(sec, id, afterId){
+  if(!Array.isArray(sec.order)) return; // 並びを持たないカテゴリーは、従来どおり(項目は項目の最後、表形式は表形式の最後)
+  const k = afterId ? sec.order.indexOf(afterId) : -1;
+  if(k > -1) sec.order.splice(k + 1, 0, id); else sec.order.push(id);
+}
+
 /* ---------- 構造編集: 追加・削除・並べ替え ---------- */
 function addSection(){
   const sec = { id: uid('sec'), label: '新しいカテゴリー', collapsible: false, columns: 2, fields: [], sets: [] };
@@ -5211,14 +5297,17 @@ function addSetDef(sectionId){
   // 初期状態が0個だと毎回「+ セットにインプットを追加」を押す一手間が
   // 必ず発生していたため)、追加した時点で最初から1つインプットが
   // 入っている状態にする(2026-09-25)。
-  s.sets.push({ id: uid('set'), label: '新しいインプットセット', fields: [{ id: uid('f'), label: '新しいインプット', type: 'string', kind: 'input' }] });
+  const st = { id: uid('set'), label: '新しい表形式', fields: [{ id: uid('f'), label: '新しい項目', type: 'string', kind: 'input' }] };
+  s.sets.push(st);
+  addToSectionOrder(s, st.id);
   render();
 }
 function addFieldToSection(sectionId){
   const s = findFrame('section', sectionId); if(!s) return;
   if(!s.fields) s.fields = [];
-  const f = { id: uid('f'), label: '新しいインプット', type: 'string', kind: 'input', span: 1 };
+  const f = { id: uid('f'), label: '新しい項目', type: 'string', kind: 'input', span: 1 };
   s.fields.push(f);
+  addToSectionOrder(s, f.id);
   // 「+ インプットを追加」は、追加という操作そのものが「次にこれを
   // 設定したい」という明確な意図の表明なので、他の枠を編集中でも
   // 常に追加した項目の設定パネルへ切り替える(2026-09-30、addSection()等の
@@ -5235,11 +5324,13 @@ function addDividerToSection(sectionId){
   if(!s.fields) s.fields = [];
   const d = { id: uid('f'), kind: 'divider', label: '' };
   let idx = s.fields.length;
+  let afterId = null;
   if(state.selection && state.selection.kind === 'field'){
     const i = s.fields.findIndex(x => x.id === state.selection.id);
-    if(i > -1) idx = i + 1;
+    if(i > -1){ idx = i + 1; afterId = s.fields[i].id; }
   }
   s.fields.splice(idx, 0, d);
+  addToSectionOrder(s, d.id, afterId);
   state.selection = { kind: 'field', id: d.id };
   render();
 }
@@ -5263,7 +5354,7 @@ function addBreakToSet(setId){
 }
 function addFieldToSet(setId){
   const st = findFrame('set', setId); if(!st) return;
-  const f = { id: uid('f'), label: '新しいインプット', type: 'string', kind: 'input' };
+  const f = { id: uid('f'), label: '新しい項目', type: 'string', kind: 'input' };
   st.fields.push(f);
   state.selection = { kind: 'field', id: f.id };
   requestPanelNameFocus();
@@ -5272,11 +5363,26 @@ function addFieldToSet(setId){
 function removeFrame(kind, id){
   const c = findContainer(kind, id);
   if(!c || c.idx < 0) return;
+  const sec = (kind === 'set' || (kind === 'field' && !isFieldInsideSet(id))) ? topItemSection(kind, id) : null;
   c.arr.splice(c.idx, 1);
+  if(sec && Array.isArray(sec.order)) sec.order = sec.order.filter(x => x !== id);
   if(state.selection && state.selection.id === id) state.selection = null;
   render();
 }
 function moveFrame(kind, id, dir){
+  // カテゴリー直下の項目・表形式は、項目と表形式をまとめた並びの中で1つ動かす(表形式の下にも項目を置ける)
+  if(kind === 'set' || (kind === 'field' && !isFieldInsideSet(id))){
+    const sec = topItemSection(kind, id);
+    if(sec){
+      const ids = sectionOrderIds(sec);
+      const i = ids.indexOf(id), j = i + dir;
+      if(i < 0 || j < 0 || j >= ids.length) return;
+      [ids[i], ids[j]] = [ids[j], ids[i]];
+      setSectionOrder(sec, ids);
+      render();
+      return;
+    }
+  }
   const c = findContainer(kind, id);
   if(!c || c.idx < 0) return;
   const j = c.idx + dir;
@@ -5291,8 +5397,20 @@ function moveFrame(kind, id, dir){
 // または同じインプットセット)」かどうかを確認し、異なる入れ物をまたぐ
 // 移動は行わない(↑↓ボタンの移動範囲と揃える)。
 let dragFieldId = null;
+let dragSetId = null; // カテゴリー直下の表形式をドラッグしている間のid(項目をドラッグしている間は、dragFieldId)
+function handleSetDragStart(ev, id){
+  dragSetId = id;
+  dragFieldId = null;
+  ev.dataTransfer.effectAllowed = 'move';
+  ev.dataTransfer.setData('text/plain', id);
+  const st = findFrame('set', id);
+  dndSetGhost(ev, st ? st.label : id);
+  const el = ev.target.closest && ev.target.closest('.frame-set');
+  if(el) el.classList.add('is-dragging');
+}
 function handleFieldDragStart(ev, id){
   dragFieldId = id;
+  dragSetId = null;
   ev.dataTransfer.effectAllowed = 'move';
   ev.dataTransfer.setData('text/plain', id);
   // 掴んでいるインプットの見た目(2026-10-16): ポインタには名称のカード、元の位置は薄く。
@@ -5301,39 +5419,45 @@ function handleFieldDragStart(ev, id){
   const el = ev.target.closest && ev.target.closest('.frame-field, .frame-divider');
   if(el) el.classList.add('is-dragging');
 }
-function handleFieldDragOver(ev, targetId){
-  if(!dragFieldId) return;
-  const from = findContainer('field', dragFieldId);
-  const to = findContainer('field', targetId);
-  // 別の入れ物(カテゴリー・インプットセット)をまたぐ移動はできない(線も出さない)。
-  if(!from || !to || from.arr !== to.arr) return;
+// ドロップ先(項目・区切り線・表形式)への挿入の計画。ドラッグしているもの(項目か表形式)と、ドロップ先が、同じカテゴリー直下の
+// 時だけ並べ替えられる(別のカテゴリー・表形式の中はできない。↑↓ボタンの移動範囲と揃える)。
+// 戻り値: { sec, el, pos, next }。nextは、並べ替え後のIDの並び(元の位置のままならnull)。置けない所はnull
+function topDropPlan(ev, targetKind, targetId){
+  const src = dragSetId ? { kind: 'set', id: dragSetId } : (dragFieldId ? { kind: 'field', id: dragFieldId } : null);
+  if(!src || (src.kind === targetKind && src.id === targetId)) return null;
+  const sec = topItemSection(src.kind, src.id);
+  if(!sec || sec !== topItemSection(targetKind, targetId)) return null;
+  const el = ev.currentTarget;
+  // 項目は左右にも並ぶため、対象の左半分なら手前(左端)、右半分なら後ろ(右端)に線を出す。
+  // 区切り線・表形式は横いっぱいの行なので、上半分なら手前、下半分なら後ろ(縦方向)で判定する
+  const axis = (targetKind === 'field' && !el.classList.contains('frame-divider')) ? 'x' : 'y';
+  const pos = dndPos(ev, el.getBoundingClientRect(), axis);
+  return { sec, el, pos, next: reorderedTopIds(sec, src.id, targetId, pos) };
+}
+function topDragOver(ev, targetKind, targetId){
+  const plan = topDropPlan(ev, targetKind, targetId);
+  if(!plan) return; // 置けない所は、受け付けない(線も出さない)
   ev.preventDefault();
   ev.dataTransfer.dropEffect = 'move';
-  // インプットは左右にも並ぶため、対象の左半分なら手前(左端)、右半分なら後ろ(右端)に線を出す。
-  const el = ev.currentTarget;
-  // 区切り線は横いっぱいの行なので、上半分なら手前、下半分なら後ろ(縦方向)で判定する
-  const pos = dndPos(ev, el.getBoundingClientRect(), el.classList.contains('frame-divider') ? 'y' : 'x');
-  dndMark(dndInsertIndex(from.idx, to.idx, pos) === from.idx ? null : el, pos);
+  dndMark(plan.next ? plan.el : null, plan.pos);
 }
-function handleFieldDrop(ev, targetId){
+function topDrop(ev, targetKind, targetId){
   ev.preventDefault();
-  const draggedId = dragFieldId;
+  const plan = topDropPlan(ev, targetKind, targetId);
   dragFieldId = null;
-  const el = ev.currentTarget;
+  dragSetId = null;
   dndClear();
-  if(!draggedId || draggedId === targetId) return;
-  const from = findContainer('field', draggedId);
-  const to = findContainer('field', targetId);
-  if(!from || !to || from.arr !== to.arr) return;
-  const ins = dndInsertIndex(from.idx, to.idx, dndPos(ev, el.getBoundingClientRect(), el.classList.contains('frame-divider') ? 'y' : 'x'));
-  if(ins === from.idx) return;
-  const arr = from.arr;
-  const [item] = arr.splice(from.idx, 1);
-  arr.splice(ins, 0, item);
+  if(!plan || !plan.next) return;
+  setSectionOrder(plan.sec, plan.next);
   render();
 }
+function handleFieldDragOver(ev, targetId){ topDragOver(ev, 'field', targetId); }
+function handleFieldDrop(ev, targetId){ topDrop(ev, 'field', targetId); }
+function handleSetDragOver(ev, targetId){ topDragOver(ev, 'set', targetId); }
+function handleSetDrop(ev, targetId){ topDrop(ev, 'set', targetId); }
 function handleFieldDragEnd(){
   dragFieldId = null;
+  dragSetId = null;
   dndClear();
 }
 function applyPatch(kind, id, patch){
@@ -5344,7 +5468,7 @@ function applyPatch(kind, id, patch){
 
 /* ---------- 設定パネル ---------- */
 function panelTitle(kind){
-  return { section: 'カテゴリーの設定', set: 'インプットセットの設定', field: 'インプットの設定' }[kind] || '設定';
+  return { section: 'カテゴリーの設定', set: '表形式の設定', field: '項目の設定' }[kind] || '設定';
 }
 function fieldTypeLabel(t){
   return { numberInput: '数値の入力', stringInput: '文字の入力', calc: '計算', boolean: 'チェックボックス', list: 'リストから選ぶ', randomList: 'リストからランダム', table: '表(TSV)', image: '画像' }[t] || t;
@@ -5420,10 +5544,10 @@ function renderPanelBody(kind, f){
       + `<p class="muted small">表示画面上でも、各項目をクリックすると編集できます。</p>`;
   }
   if(kind === 'field' && f.kind === 'break'){
-    return `<p class="muted small">インプットセットの行の中で、この改行より後ろのインプットを、次の段に並べます（1つの行に、複数の段を作れます）。1段目の見出しは表の先頭に、2段目以降の見出しは各行の入力欄の左に出ます。下の「↑ 上へ」「↓ 下へ」で位置を動かせます。</p>`;
+    return `<p class="muted small">表形式の行の中で、この改行より後ろの項目を、次の段に並べます（1つの行に、複数の段を作れます）。1段目の見出しは表の先頭に、2段目以降の見出しは各行の入力欄の左に出ます。下の「↑ 上へ」「↓ 下へ」で位置を動かせます。</p>`;
   }
   if(kind === 'field' && f.kind === 'divider'){
-    return `<p class="muted small">カテゴリー内で、インプットの並びを横いっぱいの線で区切ります。この線より後ろのインプットは、次の行から並びます。「⠿」をドラッグするか、下の「↑ 上へ」「↓ 下へ」で位置を動かせます。</p>`;
+    return `<p class="muted small">カテゴリー内で、項目の並びを横いっぱいの線で区切ります。この線より後ろの項目は、次の行から並びます。「⠿」をドラッグするか、下の「↑ 上へ」「↓ 下へ」で位置を動かせます。</p>`;
   }
   if(kind === 'field'){
     // カテゴリー直下のインプットは、横幅をカテゴリーの列数を単位とした
@@ -5437,7 +5561,7 @@ function renderPanelBody(kind, f){
     // renderSetFrame()がstate.character.sets[]のテーブル描画時に、
     // 各項目のwidthをそのままgrid-template-columnsのfr値として使う。
     const spanInput = isFieldInsideSet(f.id)
-      ? `<label><span>横幅(セット内での相対的な太さ)</span><input type="number" min="1" value="${f.width || 1}" onchange="applyPatch('field','${f.id}',{width:Math.max(1,parseInt(this.value)||1)})"></label>`
+      ? `<label><span>横幅(表形式内での相対的な太さ)</span><input type="number" min="1" value="${f.width || 1}" onchange="applyPatch('field','${f.id}',{width:Math.max(1,parseInt(this.value)||1)})"></label>`
       : `<label><span>横幅</span><input type="number" min="1" value="${f.span || 1}" onchange="applyPatch('field','${f.id}',{span:Math.max(1,parseInt(this.value)||1)})"></label>`;
     // チャットパレット出力は、値を文中にそのまま埋め込む用途に馴染まない
     // 表・画像型を除いて、インプットセットの中の項目も含め全ての型で
@@ -5513,7 +5637,7 @@ function renderFieldTypeEditor(f){
   } else if(f.type === 'number'){
     // 計算(2026-10-18): 計算式・データリストから参照・集計。入力値は「数値の入力」。
     const kindOptions = [['formula', '計算式'], ['lookup', 'データリストから参照']];
-    if(!isFieldInsideSet(f.id)) kindOptions.push(['aggregateSum', '集計(インプットセットの合計)']);
+    if(!isFieldInsideSet(f.id)) kindOptions.push(['aggregateSum', '集計(表形式の合計)']);
     html += `<label><span>計算方法</span><select onchange="changeNumberKind('${f.id}',this.value)">${
       kindOptions.map(([v, l]) => `<option value="${v}" ${f.refType === v ? 'selected' : ''}>${l}</option>`).join('')
     }</select></label>`;
@@ -5746,7 +5870,7 @@ function renderLookupEditor(f){
     const candidates = referenceableFieldsFor(f.id).filter(c => c.id !== f.id);
     html += (dl.conditionColumns || []).map(key => {
       const m = (f.match || []).find(mm => mm.key === key) || { key, field: '' };
-      return `<label><span>表示条件「${esc(key)}」に対応するインプット</span>
+      return `<label><span>表示条件「${esc(key)}」に対応する項目</span>
         <select onchange="setLookupMatch(${jsArg(f.id)},${jsArg(key)},this.value)">
           <option value="">(選択)</option>
           ${candidates.map(c => `<option value="${c.id}" ${m.field === c.id ? 'selected' : ''}>${esc(c.label)}</option>`).join('')}
@@ -5778,7 +5902,7 @@ function renderListFilterEditor(f){
     const candidates = referenceableFieldsFor(f.id).filter(c => c.id !== f.id);
     html += (dl.conditionColumns || []).map(key => {
       const m = (f.match || []).find(mm => mm.key === key) || { key, field: '' };
-      return `<label><span>表示条件「${esc(key)}」に対応するインプット</span><select onchange="setListFilterMatch(${jsArg(f.id)},${jsArg(key)},this.value)"><option value="">(選択)</option>${candidates.map(c => `<option value="${c.id}" ${m.field === c.id ? 'selected' : ''}>${esc(c.label)}</option>`).join('')}</select></label>`;
+      return `<label><span>表示条件「${esc(key)}」に対応する項目</span><select onchange="setListFilterMatch(${jsArg(f.id)},${jsArg(key)},this.value)"><option value="">(選択)</option>${candidates.map(c => `<option value="${c.id}" ${m.field === c.id ? 'selected' : ''}>${esc(c.label)}</option>`).join('')}</select></label>`;
     }).join('');
     const allCols = [...(dl.conditionColumns || []), ...(dl.contentColumns || [])];
     html += `<label><span>選択肢として表示する列</span><select onchange="applyPatch('field','${f.id}',{optionLabel:this.value})"><option value="">(選択)</option>${allCols.map(c => `<option value="${escAttr(c)}" ${f.optionLabel === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select></label>`;
@@ -5827,7 +5951,7 @@ function renderAggregateEditor(f){
   const sets = [];
   for(const s of state.template.sections) for(const st of s.sets) sets.push(st);
   const setOptions = sets.map(st => `<option value="${st.id}" ${f.set === st.id ? 'selected' : ''}>${esc(st.label)}</option>`).join('');
-  let html = `<label><span>対象のインプットセット</span><select onchange="setAggregateSet('${f.id}',this.value)"><option value="">(選択)</option>${setOptions}</select></label>`;
+  let html = `<label><span>対象の表形式</span><select onchange="setAggregateSet('${f.id}',this.value)"><option value="">(選択)</option>${setOptions}</select></label>`;
   const st = sets.find(s => s.id === f.set);
   if(st){
     // 集計する値の出どころは2択(各行の計算式/データリストの列)のため、既定を各行の
@@ -5867,7 +5991,7 @@ function setAggregateSet(id, setId){
 function renderAggregateDataListEditor(f, st){
   const dataLists = state.template.dataLists || [];
   const dlOptions = dataLists.map(d => `<option value="${escAttr(d.id)}" ${f.dataList === d.id ? 'selected' : ''}>${esc(d.label)}</option>`).join('');
-  let html = `<p class="muted small">このセットの各行の名称等を、データリストの表示条件列と照合し、見つかった行の「集計する列」の値を全行分合計します。見つからない行・名称が空の行は0として扱います。</p>`;
+  let html = `<p class="muted small">この表形式の各行の名称等を、データリストの表示条件列と照合し、見つかった行の「集計する列」の値を全行分合計します。見つからない行・名称が空の行は0として扱います。</p>`;
   html += `<label><span>参照するデータリスト</span><select onchange="setLookupDataList(${jsArg(f.id)},this.value)"><option value="">(選択)</option>${dlOptions}</select></label>`;
   const dl = dataLists.find(d => d.id === f.dataList);
   if(dl){
@@ -5875,7 +5999,7 @@ function renderAggregateDataListEditor(f, st){
     const candidateOptions = fieldId => candidates.map(c => `<option value="${escAttr(c.id)}" ${fieldId === c.id ? 'selected' : ''}>${esc(c.label)}</option>`).join('');
     html += (dl.conditionColumns || []).map(key => {
       const m = (f.match || []).find(mm => mm.key === key) || { key, field: '' };
-      return `<label><span>表示条件「${esc(key)}」に対応するインプット</span><select onchange="setLookupMatch(${jsArg(f.id)},${jsArg(key)},this.value)"><option value="">(選択)</option>${candidateOptions(m.field)}</select></label>`;
+      return `<label><span>表示条件「${esc(key)}」に対応する項目</span><select onchange="setLookupMatch(${jsArg(f.id)},${jsArg(key)},this.value)"><option value="">(選択)</option>${candidateOptions(m.field)}</select></label>`;
     }).join('');
     const valOptions = (dl.contentColumns || []).map(v => `<option value="${escAttr(v)}" ${f.output === v ? 'selected' : ''}>${esc(v)}</option>`).join('');
     html += `<label><span>集計する列</span><select onchange="applyPatch('field',${jsArg(f.id)},{output:this.value})"><option value="">(選択)</option>${valOptions}</select></label>`;
@@ -5883,7 +6007,7 @@ function renderAggregateDataListEditor(f, st){
     // 入った行だけ合計する、という使い方のため。チェックボックスは、計算でtrue=1/false=0になる)。
     const countOptions = st.fields.filter(c => (c.type === 'number' || c.type === 'boolean') && c.id !== f.id)
       .map(c => `<option value="${escAttr(c.id)}" ${f.countField === c.id ? 'selected' : ''}>${esc(c.label)}</option>`).join('');
-    html += `<label><span>個数・使用のインプット(任意。各行の値に掛けてから合計します。チェックボックスなら、チェックが入った行だけ合計します)</span><select onchange="applyPatch('field',${jsArg(f.id)},{countField:this.value})"><option value="">(なし)</option>${countOptions}</select></label>`;
+    html += `<label><span>個数・使用の項目(任意。各行の値に掛けてから合計します。チェックボックスなら、チェックが入った行だけ合計します)</span><select onchange="applyPatch('field',${jsArg(f.id)},{countField:this.value})"><option value="">(なし)</option>${countOptions}</select></label>`;
   }
   return html;
 }
@@ -5935,7 +6059,7 @@ function renderRefListModal(){
   const rows = collectReferenceRows();
   const body = rows.length
     ? `<table class="dl-tsv-table"><tbody>
-        <tr><th>インプット</th><th>場所</th><th>種別</th><th>参照先</th><th>状態</th></tr>
+        <tr><th>項目</th><th>場所</th><th>種別</th><th>参照先</th><th>状態</th></tr>
         ${rows.map(r => `<tr>
           <td>${esc(r.label)}</td>
           <td>${esc(r.location)}</td>
@@ -5944,7 +6068,7 @@ function renderRefListModal(){
           <td class="${r.errors.length ? 'ref-list-error' : ''}">${r.errors.length ? esc(r.errors.join(' / ')) : 'OK'}</td>
         </tr>`).join('')}
       </tbody></table>`
-    : '<p class="muted">他の枠を参照しているインプットがありません</p>';
+    : '<p class="muted">他の枠を参照している項目がありません</p>';
   return `<div class="modal-backdrop" onclick="toggleRefListModal()">
     <div class="modal-box" onclick="event.stopPropagation()">
       <div class="modal-head"><strong>参照の一覧</strong><button class="icon-btn" onclick="toggleRefListModal()">×</button></div>
@@ -6224,8 +6348,8 @@ function renderDataListEditorBlock(dl){
 function allFieldsInTemplate(){
   const out = [];
   for(const s of state.template.sections){
-    for(const f of s.fields) if(f.kind !== 'divider') out.push(f); // 区切り線はインプットではない
-    for(const st of s.sets) for(const f of setInputFieldsOf(st)) out.push(f); // 改行はインプットではない
+    for(const f of s.fields) if(f.kind !== 'divider') out.push(f); // 区切り線は項目ではない
+    for(const st of s.sets) for(const f of setInputFieldsOf(st)) out.push(f); // 改行は項目ではない
   }
   return out;
 }
@@ -6272,11 +6396,11 @@ function findColumnReferences(dlId, columnName){
   const refs = [];
   fieldsReferencingDataList(dlId).forEach(f => {
     const label = f.label || f.id;
-    if((f.match || []).some(m => m.key === columnName)) refs.push(`インプット「${label}」の絞り込み条件`);
-    if(f.refType === 'lookup' && f.output === columnName) refs.push(`インプット「${label}」の出力する列`);
-    if(f.refType === 'listFilter' && f.optionLabel === columnName) refs.push(`インプット「${label}」の表示に使う列`);
-    if(f.refType === 'listFilter' && f.optionValue === columnName) refs.push(`インプット「${label}」の値として使う列`);
-    if(f.refType === 'listFilter' && f.randomWeight === columnName) refs.push(`インプット「${label}」の出現確率に使う列`);
+    if((f.match || []).some(m => m.key === columnName)) refs.push(`項目「${label}」の絞り込み条件`);
+    if(f.refType === 'lookup' && f.output === columnName) refs.push(`項目「${label}」の出力する列`);
+    if(f.refType === 'listFilter' && f.optionLabel === columnName) refs.push(`項目「${label}」の表示に使う列`);
+    if(f.refType === 'listFilter' && f.optionValue === columnName) refs.push(`項目「${label}」の値として使う列`);
+    if(f.refType === 'listFilter' && f.randomWeight === columnName) refs.push(`項目「${label}」の出現確率に使う列`);
   });
   return refs;
 }
@@ -6284,8 +6408,8 @@ function removeDataList(dlId){
   const dl = findDataList(dlId); if(!dl) return;
   const refCount = fieldsReferencingDataList(dlId).length;
   if(refCount > 0){
-    const names = fieldsReferencingDataList(dlId).map(f => `・インプット「${f.label || f.id}」`).join('\n');
-    alert(`このデータリストは以下のインプットから参照されているため削除できません。\n\n${names}\n\n先にこれらのインプットでデータリストの参照を外してから、あらためて削除してください。`);
+    const names = fieldsReferencingDataList(dlId).map(f => `・項目「${f.label || f.id}」`).join('\n');
+    alert(`このデータリストは以下の項目から参照されているため削除できません。\n\n${names}\n\n先にこれらの項目でデータリストの参照を外してから、あらためて削除してください。`);
     return;
   }
   if(!confirmDelete('このデータリストを削除しますか？')) return;
