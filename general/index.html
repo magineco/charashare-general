@@ -155,6 +155,20 @@
     content:''; position:absolute; left:7px; top:3px; width:6px; height:11px;
     border:solid var(--surface); border-width:0 2px 2px 0; transform:rotate(45deg);
   }
+  /* ラジオボタン(2026-10-29)。チェックボックスと同じ作りで、<input>は透明にしてその場に重ね、見た目は隣の<span>に描く */
+  label.radio{ display:inline-flex; align-items:center; gap:6px; cursor:pointer; }
+  .radio-visual{ position:relative; display:inline-flex; width:20px; height:20px; flex:0 0 auto; }
+  .radio-visual input[type="radio"]{ position:absolute; inset:0; width:100%; height:100%; margin:0; opacity:0; cursor:pointer; }
+  .radio-dot{
+    display:block; width:100%; height:100%; box-sizing:border-box; position:relative; border-radius:50%;
+    background:var(--surface-2); border:1px solid var(--line); pointer-events:none;
+  }
+  .radio-visual input[type="radio"]:checked + .radio-dot{ border-color:var(--accent); }
+  .radio-visual input[type="radio"]:checked + .radio-dot::after{
+    content:''; position:absolute; inset:3px; border-radius:50%; background:var(--accent);
+  }
+  .radio-visual input[type="radio"]:focus-visible + .radio-dot{ outline:2px solid var(--accent); outline-offset:2px; }
+  .radio-group{ display:flex; flex-wrap:wrap; gap:6px 20px; margin-bottom:10px; }
   /* 真偽値インプットは、他の入力欄(幅いっぱいの箱)と見た目を揃えるため、
      入力欄と同じ枠線・背景・角丸を持つ<div>(.checkbox-frame)でチェック
      ボックス(複数個の場合あり、checkboxCount参照)を包む。以前は<label>で
@@ -296,16 +310,20 @@
      セットを参照したまま)は、赤で目立たせる。 */
   .frame-field.is-broken .field-label{ color:var(--danger); }
   .field-value.ref-value.is-broken-value{ border-color:var(--danger); border-style:solid; color:var(--danger); }
-  .set-schema-field.is-broken{ border-color:var(--danger); color:var(--danger); }
   .frame-set{ background:var(--surface); border-radius:8px; padding:10px; }
   .set-header{ display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; margin-bottom:8px; }
   .set-header .set-title{ margin-bottom:0; }
   .set-header-actions{ display:flex; flex-wrap:wrap; gap:8px; }
-  .set-schema-row{ display:flex; flex-wrap:wrap; gap:8px; }
-  .set-schema-field{
-    background:var(--surface-2); border:1px dashed var(--line); border-radius:5px;
-    padding:4px 8px; cursor:pointer;
-  }
+  /* 編集中の表形式の項目(2026-10-29): 角丸の小さなボックスをやめ、ふつうの項目(.frame-field)と同じ「見出し+入力欄」で出す。
+     入力欄は、初期値の行で組み立てた本物の部品(触れない)。横幅の比(width)は、flex-growの比に使う */
+  .set-schema-row{ display:flex; flex-wrap:wrap; gap:10px; align-items:flex-end; }
+  .set-schema-field{ flex:1 1 0; min-width:110px; cursor:pointer; }
+  .set-schema-input{ min-width:0; }
+  /* 行の数を固定した表形式の、編集中の表(2026-10-30): 見出し・セルはクリックで項目の選択、左端の列は各行の見出しの入力欄 */
+  .set-row .set-row-label-edit{ padding-right:10px; }
+  .set-row-label-edit input{ width:9em; }
+  .set-schema-breaks{ display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; }
+  .set-schema-breaks .set-schema-break{ flex:0 0 auto; }
   /* インプットセットの「改行」(2026-10-18)。編集中は、インプットの並びの中に、1行いっぱいの
      チップとして出す(ここから後ろのインプットは、次の段に並ぶ。区切り線のように、選んで
      「↑ 上へ」「↓ 下へ」で位置を動かせる)。 */
@@ -354,6 +372,8 @@
      違う見出しがあっても、下線が一直線になる。見出しは左右に5pxの余白(margin)を
      取り、下線が隣の列とつながらないようにしている。 */
   .set-row .set-cell, .set-row .set-row-actions{ padding:9px 5px; align-self:stretch; }
+  /* 行数を固定した表形式の、行の見出し(左端の列)。列の見出しと同じ控えめな色 */
+  .set-row .set-row-label{ padding:9px 10px 9px 5px; align-self:stretch; display:flex; align-items:center; color:var(--muted); white-space:nowrap; }
   /* 改行のあるインプットセットの、2段目以降(2026-10-18)。表のグリッドの、1段目の列の幅いっぱいに
      またがる1つの箱(renderSetRow()が、行・列を指定して置く)。中に、その段のインプットだけの
      グリッドを持ち、各インプットの左に見出し(名称)を出す(「メモ[入力欄] 備考[入力欄]」の形。
@@ -367,7 +387,7 @@
   .set-subcell > :not(.set-cell-label){ flex:1 1 0; min-width:0; }
   /* セルを行の高さに伸ばしても(帯・挿入先の線を一直線にするため)、中身は従来どおり縦中央に置く */
   .set-row .set-cell{ display:flex; flex-direction:column; justify-content:center; }
-  .set-row.is-alt .set-cell, .set-row.is-alt .set-row-actions, .set-row.is-alt .set-subline{
+  .set-row.is-alt .set-cell, .set-row.is-alt .set-row-actions, .set-row.is-alt .set-row-label, .set-row.is-alt .set-subline{
     background:color-mix(in srgb, var(--surface), var(--text) 6%);
   }
   .set-table-header .set-cell-label{
@@ -557,6 +577,8 @@
      上の行で下余白3pxが付いてしまい、文字との上下中央がずれて(約1.3px上に寄って)
      見えていた(2026-10-16)。トグルでは余白を打ち消す。 */
   .panel-body label.checkbox > .checkbox-visual{ margin-bottom:0; }
+  .panel-body label.radio{ margin-bottom:0; }
+  .panel-body label.radio > .radio-visual{ margin-bottom:0; }
   .panel-actions{ display:flex; gap:6px; flex-wrap:wrap; border-top:1px solid var(--line); padding-top:8px; margin-top:8px; }
   /* 上下の並べ替え(↑↓)は左、削除は右端に置く(キャラシェアシリーズ共通の
      並べ替えUIのルール、2026-10-16。ルートのCLAUDE.md参照)。 */
@@ -2466,6 +2488,7 @@ function render(opts){
   // 同じカテゴリーIDの開閉の状態が残っていた。同じテンプレートを編集している間は変わらない。
   if(collapsedFor !== state.template){ state.collapsed = {}; collapsedFor = state.template; }
   ensureInitialSetRows();
+  normalizeFixedSetRows();
   materializeDefaultValues();
   normalizeListFilterValues();
   normalizeLegacyAggregateTerms();
@@ -3681,21 +3704,137 @@ function renderReadOnlyFieldValue(f, rowScope){
   }
   return `<div class="field-value ref-value">${esc(String(val ?? ''))}</div>`;
 }
+/* ---------- 表形式: 行数の固定と、行の見出し(2026-10-29、利用者の依頼) ----------
+ * 表形式(旧インプットセット)に、設定パネルのラジオボタン「行の追加が可能」(既定)/「行の数を固定」の2択(fixedRows)を足した。
+ * 「行の数を固定」を選ぶと、行数は設定の「行数」
+ * (initialRows。固定の間は1以上)のまま変わらず、利用者は行の追加・削除・並べ替えができない。
+ * 固定した表形式は、各行に見出し(rowLabels。1行目から順)をつけられる。見出しは、表の左端の列に出る
+ * (1つも入力が無ければ、列を作らない)。固定しない表形式は、これまでどおり。
+ * - 行数を後から変えても、キャラクターの行は、描画のたびに合わせる(足りなければ初期値の行を足す。
+ *   多い時は、中身の無い余分な行だけを後ろから取り除く。入力のある行は、消さずに残す)
+ * - 固定をやめても、rowLabelsは残す(固定に戻した時に、見出しが残っている)
+ */
+function fixedRowCountOf(st){ return Math.max(1, initialRowsOf(st)); }
+function rowLabelOf(st, idx){
+  const v = Array.isArray(st.rowLabels) ? st.rowLabels[idx] : '';
+  return (st.fixedRows && idx < fixedRowCountOf(st) && typeof v === 'string') ? v.slice(0, 60) : '';
+}
+function hasRowLabels(st){
+  if(!st.fixedRows) return false;
+  for(let i = 0; i < fixedRowCountOf(st); i++) if(rowLabelOf(st, i).trim() !== '') return true;
+  return false;
+}
+// 表の左右にある列(左: 並べ替え等の操作列、または固定した表の行の見出し / 右: 削除の列)。見出し・各行・列の定義で、そろえて使う
+function setTableCols(st){
+  if(st.fixedRows) return { fixed: true, left: hasRowLabels(st) || state.mode === 'edit', right: false };
+  return { fixed: false, left: !state.readOnly, right: !state.readOnly };
+}
+// 行が、初期値のまま(中身が無い)か
+function isBlankSetRow(st, row){
+  if(!row) return true;
+  return setInputFieldsOf(st).every(f => {
+    const v = row[f.id];
+    const d = f.defaultValue !== undefined ? f.defaultValue : (f.type === 'number' ? 0 : f.type === 'boolean' ? false : '');
+    return v === undefined || v === null || v === '' || v === d || (Array.isArray(v) && v.every(x => !x));
+  });
+}
+// 固定した表形式の行数を、設定に合わせる(render()のたびに呼ぶ)
+function normalizeFixedSetRows(){
+  for(const s of state.template.sections){
+    for(const st of s.sets){
+      if(!st.fixedRows) continue;
+      const n = fixedRowCountOf(st);
+      let rows = state.character.sets[st.id];
+      if(!Array.isArray(rows)) rows = state.character.sets[st.id] = [];
+      while(rows.length < n) rows.push(buildDefaultSetRow(st));
+      while(rows.length > n && isBlankSetRow(st, rows[rows.length - 1])) rows.pop();
+    }
+  }
+}
+function setSetFixedRows(setId, on){
+  const st = findFrame('set', setId); if(!st) return;
+  if(on){
+    st.fixedRows = true;
+    if(initialRowsOf(st) < 1) st.initialRows = 1;
+    setSetInitialRows(setId, initialRowsOf(st)); // テンプレート編集画面の確認用キャラクターの行数も合わせて、描画する
+    return;
+  }
+  delete st.fixedRows;
+  render();
+}
+function setSetRowLabel(setId, idx, v){
+  const st = findFrame('set', setId); if(!st) return;
+  if(!Array.isArray(st.rowLabels)) st.rowLabels = [];
+  while(st.rowLabels.length < idx) st.rowLabels.push('');
+  st.rowLabels[idx] = String(v).trim().slice(0, 60);
+  render();
+}
+// 編集中の表形式の項目(2026-10-29): 角丸の小さなボックスではなく、ふつうの項目と同じ「見出し+入力欄」の見た目で出す。
+// 入力欄は、初期値の行で組み立てた本物と同じ部品(renderFieldInput)で、触れない(inert)。横幅の比(width)は、flexの比に使う
+function renderSetSchemaField(set, f){
+  const selected = state.selection && state.selection.kind === 'field' && state.selection.id === f.id;
+  const w = Math.max(1, parseInt(f.width) || 1);
+  const input = renderFieldInput(f, { setId: set.id, rowIndex: 0, row: buildDefaultSetRow(set) })
+    .replace(/<(input|select|textarea)\b/g, '<$1 tabindex="-1"');
+  return `<div class="frame-field set-schema-field ${selected ? 'is-selected' : ''} ${isFieldReferenceBroken(f) ? 'is-broken' : ''}" data-frame-id="${f.id}" onclick="selectFrame(event,'field','${f.id}')" style="flex-grow:${w}">
+    <span class="field-label-row"><span class="field-label-left"><span class="field-label">${esc(f.label)}</span></span></span>
+    <div class="set-schema-input" inert>${input}</div>
+  </div>`;
+}
+// 入力欄・選択欄・ボタンを触れなくする(枠のクリックは、項目の選択になる)。<div inert>の中の部品は、Tabでも止まらない
+function inertInputsHtml(html){
+  return `<div inert>${html.replace(/<(input|select|textarea|button)\b/g, '<$1 tabindex="-1"')}</div>`;
+}
+// 行の数を固定した表形式の、編集中の表(2026-10-30): 項目を並べたカードではなく、実際の行数で、利用者が使う表の形で出す。
+// 見出し行の項目名・各セルは、クリックでその項目の設定パネルが開く(入力欄は触れない)。左端の列は、各行の見出しの入力欄で、
+// ここに書き込む(空欄の行は、見出しなし)。改行(段を分ける印)は表の中に出ないので、下に並べて、選べるようにする
+function renderSetFixedEditTable(set){
+  const rows = (state.character.sets[set.id] || []).slice(0, fixedRowCountOf(set));
+  const firstLine = setLinesOf(set)[0] || [];
+  const tc = setTableCols(set);
+  const spacerCell = '<span class="set-cell-label set-cell-label-spacer"></span>';
+  const headerCells = (tc.left ? spacerCell : '') + firstLine.map(f => {
+    const picked = state.selection && state.selection.kind === 'field' && state.selection.id === f.id;
+    return `<span class="set-cell-label${isFieldReferenceBroken(f) ? ' is-broken' : ''}${picked ? ' is-selected' : ''}" data-frame-id="${f.id}" onclick="selectFrame(event,'field','${f.id}')">${esc(f.label)}</span>`;
+  }).join('');
+  const colTemplate = (tc.left ? 'auto ' : '') + firstLine.map(setColTrack).join(' ');
+  const rowsHtml = rows.map((row, idx) => renderSetRow(set, row, idx, rows.length)).join('');
+  return `<div class="set-table-wrap"><div class="set-table" style="grid-template-columns:${colTemplate}"><div class="set-table-header">${headerCells}</div>${rowsHtml}</div></div>${setBreakChipsHtml(set)}`;
+}
+// 改行は、位置が分かるように「直前の項目の名前」を添えて並べる
+function setBreakChipsHtml(set){
+  const chips = [];
+  let prev = null;
+  for(const f of set.fields){
+    if(f.kind !== 'break'){ prev = f; continue; }
+    const picked = state.selection && state.selection.kind === 'field' && state.selection.id === f.id;
+    chips.push(`<span class="set-schema-break${picked ? ' is-selected' : ''}" data-frame-id="${f.id}" onclick="selectFrame(event,'field','${f.id}')">↵ ${prev ? '「' + esc(prev.label) + '」の後で改行' : '先頭の改行'}</span>`);
+  }
+  return chips.length ? `<div class="set-schema-breaks">${chips.join('')}</div>` : '';
+}
+
 function renderSetFrame(set){
   const selected = state.selection && state.selection.kind === 'set' && state.selection.id === set.id;
   let body;
   let addRowBtn = '';
   let addFieldBtn = '';
-  if(state.mode === 'edit'){
+  if(state.mode === 'edit' && set.fixedRows){
+    // 行の数を固定した表形式は、編集中も、実際の行数の表で出す(各行の見出しを、表の左端に書き込む)
+    body = renderSetFixedEditTable(set);
+    addFieldBtn = `<button class="add-frame-btn small" onclick="event.stopPropagation();addFieldToSet('${set.id}')">+ 表形式に項目を追加</button>`
+      + `<button class="add-frame-btn small" onclick="event.stopPropagation();addBreakToSet('${set.id}')">+ 改行を追加</button>`;
+  } else if(state.mode === 'edit'){
     // 設定パネルで編集中のインプットには、他の枠(カテゴリー・インプット・
     // インプットセット)と同じ選択中の枠(.is-selected)を付ける(2026-10-16。
     // セット内のインプットだけ、このチップに.is-selectedを付けておらず、
     // 編集中でも枠が出なかった)。枠の見た目は.mode-edit [data-frame-id]
     // .is-selectedが、他の枠と共通で担う。
     body = `<div class="set-schema-row">${set.fields.map(f => {
-      const fieldSelected = state.selection && state.selection.kind === 'field' && state.selection.id === f.id;
-      if(f.kind === 'break') return `<span class="set-schema-break ${fieldSelected ? 'is-selected' : ''}" data-frame-id="${f.id}" onclick="selectFrame(event,'field','${f.id}')">↵ 改行</span>`;
-      return `<span class="set-schema-field ${fieldSelected ? 'is-selected' : ''} ${isFieldReferenceBroken(f) ? 'is-broken' : ''}" data-frame-id="${f.id}" onclick="selectFrame(event,'field','${f.id}')">${esc(f.label)}</span>`;
+      if(f.kind === 'break'){
+        const breakSelected = state.selection && state.selection.kind === 'field' && state.selection.id === f.id;
+        return `<span class="set-schema-break ${breakSelected ? 'is-selected' : ''}" data-frame-id="${f.id}" onclick="selectFrame(event,'field','${f.id}')">↵ 改行</span>`;
+      }
+      return renderSetSchemaField(set, f);
     }).join('')}</div>`;
     // 以前は設定パネル(右カラム)にあった「+ インプットを追加」を、
     // 2026-09-20にインプットセットのタイトル行(画面本体側)へ移した。
@@ -3720,18 +3859,19 @@ function renderSetFrame(set){
     const spacerCell = '<span class="set-cell-label set-cell-label-spacer"></span>';
     // 改行で複数の段に分けたセットでは、表の先頭の見出しと列は1段目のインプットだけ(2段目以降は各行の中に見出しを出す。renderSetRow())
     const firstLine = setLinesOf(set)[0] || [];
-    const headerCells = (state.readOnly ? '' : spacerCell) + firstLine.map(f =>
+    const tc = setTableCols(set);
+    const headerCells = (tc.left ? spacerCell : '') + firstLine.map(f =>
       `<span class="set-cell-label${isFieldReferenceBroken(f) ? ' is-broken' : ''}">${esc(f.label)}</span>`
-    ).join('') + (state.readOnly ? '' : spacerCell);
+    ).join('') + (tc.right ? spacerCell : '');
     const header = rows.length ? `<div class="set-table-header">${headerCells}</div>` : '';
     const rowsHtml = rows.map((row, idx) => renderSetRow(set, row, idx, rows.length)).join('');
     // 各項目のwidth(既定1)をfr値として使い、列ごとの相対的な太さを
     // 反映したgrid-template-columnsを都度組み立てる(2026-09-25)。
     // 最低幅(90px)は今まで通り確保しつつ、width比率に応じて余った
     // スペースを配分する。両端のautoは操作列(左が⠿↑↓、右が−)。
-    const colTemplate = (state.readOnly ? '' : 'auto ') + firstLine.map(setColTrack).join(' ') + (state.readOnly ? '' : ' auto');
+    const colTemplate = (tc.left ? 'auto ' : '') + firstLine.map(setColTrack).join(' ') + (tc.right ? ' auto' : '');
     body = `<div class="set-table-wrap"><div class="set-table" style="grid-template-columns:${colTemplate}">${header}${rowsHtml}</div></div>`;
-    if(!state.readOnly) addRowBtn = `<button class="add-row-btn" onclick="addSetRow('${set.id}')">+ 行を追加</button>`;
+    if(!state.readOnly && !set.fixedRows) addRowBtn = `<button class="add-row-btn" onclick="addSetRow('${set.id}')">+ 行を追加</button>`;
   }
   // 編集中は、項目と同じように、⠿のドラッグで並べ替えられる(項目・区切り線・表形式を、まとめて並べ替える)
   const dragHandle = state.mode === 'edit'
@@ -3762,7 +3902,13 @@ function renderSetRow(set, row, idx, rowCount){
   // 基準で行われ、通常のクリック等と違って親へのバブリングに頼れない
   // ことがある)と判明したため、行を構成する実体のある箱(各セル・
   // 操作列)それぞれに個別にondragover/ondropを持たせている。
-  const dropAttrs = ` ondragover="handleSetRowDragOver(event,'${set.id}',${idx})" ondrop="handleSetRowDrop(event,'${set.id}',${idx})"`;
+  // テンプレート編集中(行の数を固定した表形式だけが、表の形で出る。renderSetFixedEditTable())は、並べ替えが無いのでドロップ先は持たず、
+  // セルは触れなくして、クリックで項目の選択にする
+  const editing = state.mode === 'edit';
+  const dropAttrs = editing ? '' : ` ondragover="handleSetRowDragOver(event,'${set.id}',${idx})" ondrop="handleSetRowDrop(event,'${set.id}',${idx})"`;
+  const pickAttrs = f => editing ? ` data-frame-id="${f.id}" onclick="selectFrame(event,'field','${f.id}')"` : '';
+  const pickClass = f => (editing && state.selection && state.selection.kind === 'field' && state.selection.id === f.id) ? ' is-selected' : '';
+  const inertIf = html => editing ? inertInputsHtml(html) : html;
   const lines = setLinesOf(set);
   const firstLine = lines[0] || [];
   // 改行のあるセット(2段以上)は、この行を、表のグリッドの中で段の数だけ縦にまたがらせる(2026-10-18)。
@@ -3771,7 +3917,8 @@ function renderSetRow(set, row, idx, rowCount){
   // 改行が無いセットは、従来どおり(位置の指定なし)。
   const multi = lines.length > 1;
   const gridRow = 2 + idx * lines.length;
-  const colOffset = state.readOnly ? 0 : 1;
+  const tc = setTableCols(set);
+  const colOffset = tc.left ? 1 : 0;
   const cells = firstLine.map((f, k) => {
     const rowScope = { setId: set.id, rowIndex: idx, row };
     // 「リストからランダム」は、入力欄の右に🎲ボタンを置く(見出しは表の先頭に1回だけなので、
@@ -3780,14 +3927,14 @@ function renderSetRow(set, row, idx, rowCount){
     const input = renderFieldInput(f, rowScope);
     const place = multi ? ` style="grid-column:${k + colOffset + 1};grid-row:${gridRow}"` : '';
     const lastLine = lines.length === 1 ? ' is-last-line' : '';
-    return `<div class="set-cell${lastLine}"${place}${dropAttrs}>${randomBtn ? `<div class="field-with-random">${input}${randomBtn}</div>` : input}</div>`;
+    return `<div class="set-cell${lastLine}${pickClass(f)}"${place}${pickAttrs(f)}${dropAttrs}>${inertIf(randomBtn ? `<div class="field-with-random">${input}${randomBtn}</div>` : input)}</div>`;
   }).join('');
   const sublines = lines.slice(1).map((line, j) => {
     const rowScope = { setId: set.id, rowIndex: idx, row };
     const subcells = line.map(f => {
       const randomBtn = randomButtonHtml(f, rowScope);
       const input = renderFieldInput(f, rowScope);
-      return `<div class="set-subcell"><span class="set-cell-label${isFieldReferenceBroken(f) ? ' is-broken' : ''}">${esc(f.label)}</span>${randomBtn ? `<div class="field-with-random">${input}${randomBtn}</div>` : input}</div>`;
+      return `<div class="set-subcell${pickClass(f)}"${pickAttrs(f)}><span class="set-cell-label${isFieldReferenceBroken(f) ? ' is-broken' : ''}">${esc(f.label)}</span>${inertIf(randomBtn ? `<div class="field-with-random">${input}${randomBtn}</div>` : input)}</div>`;
     }).join('');
     const lastLine = j === lines.length - 2 ? ' is-last-line' : '';
     return `<div class="set-subline${lastLine}" style="grid-column:${colOffset + 1} / ${colOffset + firstLine.length + 1};grid-row:${gridRow + j + 1}"${dropAttrs}><div class="set-subline-grid" style="grid-template-columns:${line.map(setColTrack).join(' ')}">${subcells}</div></div>`;
@@ -3804,12 +3951,17 @@ function renderSetRow(set, row, idx, rowCount){
   // 掴む場所はハンドル(⠿)のみに絞り、↑↓−ボタンの誤操作誘発や
   // テキスト選択との競合を避ける。ドロップ判定は両方の操作列にも持たせる。
   const dragHandle = `<span class="chat-drag-handle" draggable="true" title="ドラッグで並べ替え" ondragstart="handleSetRowDragStart(event,'${set.id}',${idx})" ondragend="handleSetRowDragEnd(event)">⠿</span>`;
-  const leftActions = state.readOnly ? '' : `<div class="set-row-actions set-row-actions-left"${actionsPlace(1)}${dropAttrs}>
+  // 行数を固定した表は、行の追加・削除・並べ替えができない(操作列は作らない)。見出しがあれば、左端にその行の見出しを出す
+  // 編集中は、左端が見出しの入力欄(ここに書き込む。クリックしても項目・表形式の選択にはしない)
+  const labelCell = editing
+    ? `<div class="set-row-label set-row-label-edit"${actionsPlace(1)}><input type="text" maxlength="60" placeholder="見出し" title="${idx + 1}行目の見出し" value="${escAttr(rowLabelOf(set, idx))}" onclick="event.stopPropagation()" onchange="setSetRowLabel(${jsArg(set.id)},${idx},this.value)"></div>`
+    : `<div class="set-row-label"${actionsPlace(1)}>${esc(rowLabelOf(set, idx))}</div>`;
+  const leftActions = tc.fixed ? (tc.left ? labelCell : '') : state.readOnly ? '' : `<div class="set-row-actions set-row-actions-left"${actionsPlace(1)}${dropAttrs}>
       ${dragHandle}
       <button class="row-move-btn" ${upDisabled} onclick="moveSetRow('${set.id}',${idx},-1)">↑</button>
       <button class="row-move-btn" ${downDisabled} onclick="moveSetRow('${set.id}',${idx},1)">↓</button>
     </div>`;
-  const rightActions = state.readOnly ? '' : `<div class="set-row-actions set-row-actions-right"${actionsPlace(firstLine.length + 2)}${dropAttrs}>
+  const rightActions = (tc.fixed || state.readOnly) ? '' : `<div class="set-row-actions set-row-actions-right"${actionsPlace(firstLine.length + 2)}${dropAttrs}>
       <button class="remove-row-btn" onclick="removeSetRow('${set.id}',${idx})">−</button>
     </div>`;
   return `<div class="set-row${idx % 2 === 1 ? ' is-alt' : ''}">${leftActions}${cells}${sublines}${rightActions}</div>`;
@@ -4445,7 +4597,7 @@ function setFieldValueByScope(fieldId, scopeKey, value){
 function setSetInitialRows(setId, raw){
   const st = findFrame('set', setId); if(!st) return;
   const n = parseInt(raw);
-  if(Number.isFinite(n)) st.initialRows = Math.max(0, Math.min(MAX_INITIAL_SET_ROWS, n));
+  if(Number.isFinite(n)) st.initialRows = Math.max(st.fixedRows ? 1 : 0, Math.min(MAX_INITIAL_SET_ROWS, n));
   else delete st.initialRows;
   if(state.screen === 'templateEditor' && state.character && state.character.sets){
     const want = initialRowsOf(st);
@@ -4467,14 +4619,14 @@ function buildDefaultSetRow(st){
 }
 function addSetRow(setId){
   const st = findFrame('set', setId);
-  if(!st) return;
+  if(!st || st.fixedRows) return;
   if(!state.character.sets[setId]) state.character.sets[setId] = [];
   state.character.sets[setId].push(buildDefaultSetRow(st));
   render();
 }
 function moveSetRow(setId, idx, dir){
   const rows = state.character.sets[setId];
-  if(!rows) return;
+  if(!rows || (findFrame('set', setId) || {}).fixedRows) return;
   const j = idx + dir;
   if(j < 0 || j >= rows.length) return;
   const [item] = rows.splice(idx, 1);
@@ -4534,6 +4686,7 @@ function handleSetRowDragEnd(){
   dndClear();
 }
 function removeSetRow(setId, idx){
+  if((findFrame('set', setId) || {}).fixedRows) return;
   if(!confirmDelete('この行を削除しますか？入力した内容は元に戻せません。')) return;
   if(state.character.sets[setId]) state.character.sets[setId].splice(idx, 1);
   render();
@@ -5518,6 +5671,11 @@ function renderPanel(){
 function checkboxToggleHtml(checked, changeAttrs, labelHtml){
   return `<label class="checkbox"><span class="checkbox-visual"><input type="checkbox" ${checked ? 'checked' : ''} ${changeAttrs}><span class="checkbox-box"></span></span> ${labelHtml}</label>`;
 }
+// ラジオボタン(2026-10-29。表形式の「行の追加が可能/行の数を固定」が最初の使用箇所)。作りはチェックボックスと同じで、
+// <input>は透明にしてその場に重ね、見た目は隣接する<span class="radio-dot">に描く
+function radioToggleHtml(name, checked, changeAttrs, labelHtml){
+  return `<label class="radio"><span class="radio-visual"><input type="radio" name="${escAttr(name)}" ${checked ? 'checked' : ''} ${changeAttrs}><span class="radio-dot"></span></span> ${labelHtml}</label>`;
+}
 function renderPanelBody(kind, f){
   const labelInput = `<label><span>名称</span><input type="text" data-panel-name value="${escAttr(f.label)}" onchange="applyPatch('${kind}','${f.id}',{label:this.value})"></label>`;
   if(kind === 'section'){
@@ -5539,9 +5697,23 @@ function renderPanelBody(kind, f){
     // 「+ インプットを追加」ボタンは2026-09-20に画面本体側
     // (インプットセットのタイトル行、renderSetFrame()参照)へ移したため、
     // ここには置かない。
-    return labelInput
+    // 行の扱い: 「行の追加が可能」(既定)/「行の数を固定」。選んだ方の設定だけを下に出す
+    const rowsModeName = 'set-rows-mode-' + f.id;
+    const rowsMode = '<div class="radio-group">'
+      + radioToggleHtml(rowsModeName, !f.fixedRows, `onchange="setSetFixedRows(${jsArg(f.id)},false)"`, '行の追加が可能')
+      + radioToggleHtml(rowsModeName, !!f.fixedRows, `onchange="setSetFixedRows(${jsArg(f.id)},true)"`, '行の数を固定')
+      + '</div>';
+    if(f.fixedRows){
+      // 行の数を固定した表形式: 行数だけをここで決める。各行の見出し(空欄の行は、見出しなし。1つも無ければ、見出しの列を作らない)は、
+      // 中央の表の左端の入力欄に書き込む(renderSetFixedEditTable())
+      const n = fixedRowCountOf(f);
+      return labelInput + rowsMode
+        + `<label><span>行数（1〜${MAX_INITIAL_SET_ROWS}）</span><input type="number" min="1" max="${MAX_INITIAL_SET_ROWS}" step="1" value="${n}" onchange="setSetInitialRows('${f.id}',this.value)"></label>`
+        + `<p class="muted small">行数は変わらず、利用者は行を追加・削除・並べ替えできません。各行の見出しは、中央の表の左端の入力欄に書き込みます（空欄の行は見出しなし）。</p>`;
+    }
+    return labelInput + rowsMode
       + `<label><span>初期の行数（0〜${MAX_INITIAL_SET_ROWS}）</span><input type="number" min="0" max="${MAX_INITIAL_SET_ROWS}" step="1" value="${initialRowsOf(f)}" onchange="setSetInitialRows('${f.id}',this.value)"></label>`
-      + `<p class="muted small">表示画面上でも、各項目をクリックすると編集できます。</p>`;
+      + `<p class="muted small">利用者が、行を追加・削除・並べ替えできます。表示画面上でも、各項目をクリックすると編集できます。</p>`;
   }
   if(kind === 'field' && f.kind === 'break'){
     return `<p class="muted small">表形式の行の中で、この改行より後ろの項目を、次の段に並べます（1つの行に、複数の段を作れます）。1段目の見出しは表の先頭に、2段目以降の見出しは各行の入力欄の左に出ます。下の「↑ 上へ」「↓ 下へ」で位置を動かせます。</p>`;
