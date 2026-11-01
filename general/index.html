@@ -324,6 +324,15 @@
   .set-row-label-edit input{ width:9em; }
   .set-schema-breaks{ display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; }
   .set-schema-breaks .set-schema-break{ flex:0 0 auto; }
+  /* 選んだ列・マウスを指した列の枠(2026-10-31): 見出しと各セルがそれぞれ枠(outline)を持つと、縦に並ぶセルの枠が重なり、
+     行の縞の背景にも隠れて、形が歪んだ。そこで、列の見出しから最後の行まで通る1つの枠(.set-col-frame)を、表の中に
+     絶対配置で置く(syncSetColumnFrames())。実線=選択中、破線=マウスを指している列。この枠を使う表(.set-table-framed)の
+     見出し・セルは、自分の枠を出さない。 */
+  .set-table-framed{ position:relative; }
+  .mode-edit .set-table-framed .set-table-header .set-cell-label[data-frame-id],
+  .mode-edit .set-table-framed .set-row .set-cell[data-frame-id]{ outline:none; }
+  .set-col-frame{ position:absolute; box-sizing:border-box; border:2px solid var(--accent); border-radius:6px; pointer-events:none; z-index:2; }
+  .set-col-frame.is-hover{ border-style:dashed; }
   /* インプットセットの「改行」(2026-10-18)。編集中は、インプットの並びの中に、1行いっぱいの
      チップとして出す(ここから後ろのインプットは、次の段に並ぶ。区切り線のように、選んで
      「↑ 上へ」「↓ 下へ」で位置を動かせる)。 */
@@ -2521,6 +2530,7 @@ function render(opts){
   ccfoliaRenderRows = undefined; ccfoliaRowMap = null;
   applyTemplateColors(false);
   app.querySelectorAll('textarea').forEach(autoResizeTextarea);
+  syncSetColumnFrames();
   restoreFocus();
   if(focusPanelNameOnRender){
     focusPanelNameOnRender = false;
@@ -3799,8 +3809,52 @@ function renderSetFixedEditTable(set){
   }).join('');
   const colTemplate = (tc.left ? 'auto ' : '') + firstLine.map(setColTrack).join(' ');
   const rowsHtml = rows.map((row, idx) => renderSetRow(set, row, idx, rows.length)).join('');
-  return `<div class="set-table-wrap"><div class="set-table" style="grid-template-columns:${colTemplate}"><div class="set-table-header">${headerCells}</div>${rowsHtml}</div></div>${setBreakChipsHtml(set)}`;
+  // 改行のある表は、2段目以降が各行の間に入って列が途切れるので、列を囲む1つの枠は使わない(見出し・セルがそれぞれ枠を持つ)
+  const framed = setLinesOf(set).length === 1;
+  return `<div class="set-table-wrap"><div class="set-table${framed ? ' set-table-framed' : ''}" style="grid-template-columns:${colTemplate}"><div class="set-table-header">${headerCells}</div>${rowsHtml}</div></div>${setBreakChipsHtml(set)}`;
 }
+// 選んだ列(実線)・マウスを指した列(破線)を、見出しから最後の行まで通る1つの枠で囲む(2026-10-31。CSSの.set-col-frameの説明参照)。
+// 枠は、表(.set-table-framed、position:relative)の中の絶対配置の箱で、表の横スクロールに付いて動く。大きさは、その列の見出しと
+// 各セルの位置を測って決める(列の幅・行の高さは、画面の幅・文字の折り返しで変わる)ので、描画のたび(render())・画面の幅が変わった時・
+// 文字の読み込みが終わった時に、置き直す。
+let setColHoverId = null;
+function placeSetColumnFrame(fieldId, cls){
+  document.querySelectorAll('.set-table-framed').forEach(table => {
+    let l = Infinity, t = Infinity, r = -Infinity, b = -Infinity;
+    table.querySelectorAll('.set-table-header .set-cell-label[data-frame-id], .set-row .set-cell[data-frame-id]').forEach(el => {
+      if(el.dataset.frameId !== fieldId) return;
+      const rc = el.getBoundingClientRect();
+      l = Math.min(l, rc.left); t = Math.min(t, rc.top); r = Math.max(r, rc.right); b = Math.max(b, rc.bottom);
+    });
+    if(l === Infinity) return;
+    const tr = table.getBoundingClientRect();
+    const frame = document.createElement('div');
+    frame.className = 'set-col-frame ' + cls;
+    frame.style.cssText = `left:${l - tr.left}px;top:${t - tr.top}px;width:${r - l}px;height:${b - t}px`;
+    table.appendChild(frame);
+  });
+}
+function syncSetColumnFrames(){
+  document.querySelectorAll('.set-col-frame').forEach(el => el.remove());
+  if(state.mode !== 'edit') return;
+  const sel = state.selection && state.selection.kind === 'field' ? state.selection.id : null;
+  if(sel) placeSetColumnFrame(sel, 'is-selected');
+  if(setColHoverId && setColHoverId !== sel) placeSetColumnFrame(setColHoverId, 'is-hover');
+}
+document.addEventListener('mouseover', ev => {
+  const el = ev.target && ev.target.closest ? ev.target.closest('.set-table-framed .set-table-header .set-cell-label[data-frame-id], .set-table-framed .set-row .set-cell[data-frame-id]') : null;
+  const id = el ? el.dataset.frameId : null;
+  if(id === setColHoverId) return;
+  setColHoverId = id;
+  syncSetColumnFrames();
+});
+let setColFrameResizePending = false;
+window.addEventListener('resize', () => {
+  if(setColFrameResizePending) return;
+  setColFrameResizePending = true;
+  requestAnimationFrame(() => { setColFrameResizePending = false; syncSetColumnFrames(); });
+});
+if(document.fonts && document.fonts.ready) document.fonts.ready.then(() => syncSetColumnFrames());
 // 改行は、位置が分かるように「直前の項目の名前」を添えて並べる
 function setBreakChipsHtml(set){
   const chips = [];
@@ -5513,6 +5567,33 @@ function addFieldToSet(setId){
   requestPanelNameFocus();
   render();
 }
+// 項目の複製(2026-11-01、利用者の依頼)。選んでいる項目と同じ設定の項目を、すぐ後ろに作り、その設定パネルを開く(名称にフォーカス)。
+// カテゴリー直下の項目も、表形式の中の項目も、同じ入れ物の元の項目の直後に入る。区切り線・改行は対象外(項目ではないので、設定パネルにボタンを出さない)。
+// - 名称は「…のコピー」にする(同じ名称が並ぶと、参照の選択欄などで見分けがつかないため)。
+// - 設定は丸ごと写す(データの種類・初期値・選択肢・計算式の項・データリストの参照・横幅・チャットパレットの設定等)。
+//   計算式・参照の「参照先」は元のまま(コピーも、元と同じ項目を参照する)。ほかの項目がコピーを参照するようにはならない。
+// - チャットパレットに出す項目なら、コピーも出し、並び(chatOrder)の元の項目の直後に入れる。
+// - ココフォリア連携の設定(template.ccfolia)は写さない(「名前」「イニシアチブ」は1つだけなので、コピーは未設定にして、別の画面で決める)。
+function duplicateField(id){
+  const f = findFrame('field', id);
+  const c = findContainer('field', id);
+  if(!f || !c || c.idx < 0 || f.kind === 'divider' || f.kind === 'break') return;
+  const copy = JSON.parse(JSON.stringify(f));
+  copy.id = uid('f');
+  copy.label = (f.label || '新しい項目') + 'のコピー';
+  // ensureChatOrder()は、並びに無いchatEnabledの項目を末尾に足すので、コピーを入れる前に呼ぶ
+  const chatOrder = copy.chatEnabled ? ensureChatOrder() : null;
+  c.arr.splice(c.idx + 1, 0, copy);
+  const sec = isFieldInsideSet(id) ? null : topItemSection('field', id);
+  if(sec) addToSectionOrder(sec, copy.id, id);
+  if(chatOrder){
+    const k = chatOrder.indexOf(id);
+    if(k > -1) chatOrder.splice(k + 1, 0, copy.id); else chatOrder.push(copy.id);
+  }
+  state.selection = { kind: 'field', id: copy.id };
+  requestPanelNameFocus();
+  render();
+}
 function removeFrame(kind, id){
   const c = findContainer(kind, id);
   if(!c || c.idx < 0) return;
@@ -5652,6 +5733,7 @@ function renderPanel(){
     <div class="panel-actions">
       <button onclick="moveFrame('${kind}','${id}',-1)">↑ 上へ</button>
       <button onclick="moveFrame('${kind}','${id}',1)">↓ 下へ</button>
+      ${kind === 'field' && !isDivider && !isBreak ? `<button onclick="duplicateField(${jsArg(id)})">複製</button>` : ''}
       <button class="danger-btn" onclick="removeFrame('${kind}','${id}')">この${esc(delLabel)}を削除</button>
     </div>
   </div>`;
