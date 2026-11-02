@@ -1263,6 +1263,8 @@ function logout(){
   // 応答を待たずfire-and-forgetにして、ログアウトの画面遷移速度を保つ。
   fetch(OAUTH_REVOKE_URL, { method: 'POST', credentials: 'include' }).catch(() => {});
   state.accessToken = null;
+  // 「戻る」で、ログアウト前の編集画面の内容が現れないよう、控えを捨てる(navRestore参照)
+  navDocs.clear();
   // ログアウト後もそのままの画面に留まると、ログイン前提の編集画面や
   // 一覧画面が中途半端に(ログインボタンだけ出た状態で)表示され続けて
   // しまうため、統合トップ画面へ戻す(2026-09-22の画面統合により、
@@ -2466,6 +2468,108 @@ function syncUrlWithScreen(moved){
   urlEntryScreen = null;
   try{ history.replaceState(history.state, '', location.pathname); }catch(_e){ /* 失敗しても画面の動作には影響しない */ }
 }
+/* ---------- ブラウザの「戻る」「進む」ボタンへの対応(2026-11-02) ----------
+ * このアプリは1枚のページ(SPA)で、画面(state.screen)の切り替えはURLを変えずに行うため、
+ * 何もしないと「戻る」で、キャラシェアを開く前のページまで一気に戻ってしまう。
+ * 画面が切り替わるたびに履歴を1つ積み(pushState)、「戻る」「進む」(popstate)では、
+ * その履歴が指す画面へ復元する。
+ * - top(トップ)・browse(Driveの一覧)はデータを持たない画面なので、いつでも復元できる。
+ *   browseは、ログインしていれば一覧を取り直す(ログインしていなければtopにする。戻るボタンで
+ *   Googleのログインを始めてしまわないため)。
+ * - 編集画面(templateEditor/characterEditor/characterView)は、離れた時点の内容
+ *   (テンプレート・キャラクター・Driveとの紐づき・モード等への参照)をメモリに控えておき(navDocs)、
+ *   戻った時にそのまま復元する。控えは描画のたびに更新する。内容は参照で持つだけなので、
+ *   別の内容を開いても、控えの側は変わらない。保存していない編集内容も控えに残るが、
+ *   一覧から別の内容を開く(=進む側の履歴が捨てられる)と、控えは使われなくなる
+ *   (従来の「一覧から別の内容を開くと、編集中の内容は失われる」と同じ)。
+ * - ページを再読み込みすると、メモリの控えは無くなる。再読み込み前に積まれた編集画面の履歴は
+ *   (NAV_LIFEが違うので)復元できず、topを表示する。top・browseの履歴はそのまま使える。
+ * - 履歴のURLは、?tpl=・?char=を外したもの(syncUrlWithScreen参照)。入口の履歴だけは、
+ *   元のURLのまま残る(戻った時に、アドレスバーと画面が一致する)。
+ * 履歴を積むかどうかは「今の画面」と「現在の履歴が表す画面(navEntryScreen)」の比較だけで決める。
+ * popstateからの復元はnavEntryScreenを先に合わせるので、描画が後回しにされても履歴は増えない。 */
+const NAV_LIFE = randomHex(6);
+let navReady = false;
+let navCounter = 0;
+let navSeq = 0;
+let navEntryScreen = null;
+const navDocs = new Map();   // 履歴の番号 -> 編集画面の内容(navDocs.get(seq))
+const navScroll = new Map(); // 履歴の番号 -> 離れた時のスクロール位置
+function isEditorScreen(screen){
+  return screen === 'templateEditor' || screen === 'characterEditor' || screen === 'characterView';
+}
+function navStateFor(seq, screen){
+  return { chsg: 1, life: NAV_LIFE, seq, screen };
+}
+function captureNavDoc(){
+  return {
+    template: state.template, character: state.character,
+    templateFileId: state.templateFileId, templateFileMine: state.templateFileMine,
+    templateShared: state.templateShared, templateShareUrl: state.templateShareUrl, templateShareToken: state.templateShareToken,
+    characterFileId: state.characterFileId, characterShared: state.characterShared, characterShareToken: state.characterShareToken,
+    readOnly: state.readOnly, mode: state.mode, selection: state.selection, collapsed: state.collapsed, dirty: state.dirty,
+  };
+}
+function applyNavDoc(d){
+  state.template = d.template; state.character = d.character;
+  state.templateFileId = d.templateFileId; state.templateFileMine = d.templateFileMine;
+  state.templateShared = d.templateShared; state.templateShareUrl = d.templateShareUrl; state.templateShareToken = d.templateShareToken;
+  state.characterFileId = d.characterFileId; state.characterShared = d.characterShared; state.characterShareToken = d.characterShareToken;
+  state.readOnly = d.readOnly; state.mode = d.mode; state.selection = d.selection; state.dirty = d.dirty;
+  // 折りたたみの状態は、別のテンプレートを開いた時にrender()が初期表示へ戻す。控えたものをそのまま使う
+  state.collapsed = d.collapsed; collapsedFor = d.template;
+  state.dataListTsvEditing = {};
+}
+// render()の最初に呼ぶ。画面が切り替わっていたら、履歴を1つ積む(最初の描画では、今の履歴に印を付けるだけ)
+function navTrackScreen(){
+  if(!navReady){
+    navReady = true;
+    navEntryScreen = state.screen;
+    try{ history.replaceState(navStateFor(navSeq, state.screen), '', location.href); }catch(_e){ /* 失敗しても動作には影響しない */ }
+    return;
+  }
+  if(state.screen === navEntryScreen) return;
+  navScroll.set(navSeq, window.scrollY);
+  navSeq = ++navCounter;
+  navEntryScreen = state.screen;
+  try{ history.pushState(navStateFor(navSeq, state.screen), '', location.pathname); }catch(_e){ /* 失敗しても動作には影響しない */ }
+}
+// 描画のたびに、編集画面の内容を控える(離れる時の最新の内容を残すため)
+function navSaveDoc(){
+  if(!navReady || !isEditorScreen(state.screen)) return;
+  navDocs.set(navSeq, captureNavDoc());
+  // 控えが増え続けないよう、古いものから捨てる(進む側の履歴が捨てられた分もここで消える)
+  if(navDocs.size > 40) navDocs.delete(navDocs.keys().next().value);
+}
+function navRestore(st){
+  const sameLife = st.life === NAV_LIFE;
+  const doc = (sameLife && isEditorScreen(st.screen)) ? navDocs.get(st.seq) : null;
+  let target = st.screen;
+  if(isEditorScreen(target) && !doc) target = 'top';
+  else if(target === 'browse' && !state.accessToken) target = 'top';
+  navScroll.set(navSeq, window.scrollY);
+  const seq = sameLife ? st.seq : ++navCounter;
+  // 復元できなかった履歴・再読み込み前の履歴は、今の状態に合わせて付け直す
+  if(!sameLife || target !== st.screen){
+    try{ history.replaceState(navStateFor(seq, target), '', location.href); }catch(_e){ /* 失敗しても動作には影響しない */ }
+  }
+  navSeq = seq;
+  navEntryScreen = target;
+  if(doc) applyNavDoc(doc);
+  if(target === 'browse'){
+    openDriveBrowser();
+  } else {
+    state.screen = target;
+    render({ skipDirty: true });
+  }
+  const y = navScroll.get(seq);
+  if(y && target !== 'browse') window.scrollTo(0, y);
+}
+window.addEventListener('popstate', (e) => {
+  const st = e.state;
+  if(!navReady || !st || st.chsg !== 1) return;
+  navRestore(st);
+});
 // 一覧画面を開いた直後に合わせるスクロール先('templates'=下段のテンプレート一覧)。
 // 利用者がスクロール等の操作を始めたら、その操作を優先して合わせるのをやめる。
 let browseScrollTarget = null;
@@ -2493,6 +2597,7 @@ function render(opts){
     pendingRenderTimer = null;
   }
   syncAdVisibility();
+  navTrackScreen();
   if(state.screen !== 'browse') browseScrollTarget = null;
   const toTop = (lastRenderedScreen !== null && lastRenderedScreen !== state.screen) || !!(opts && opts.scrollTop);
   lastRenderedScreen = state.screen;
@@ -2565,6 +2670,7 @@ function render(opts){
     if(nameInput){ nameInput.focus({ preventScroll: true }); nameInput.select(); }
   }
   window.scrollTo(0, toTop ? 0 : scrollY);
+  navSaveDoc();
 }
 
 // 新規テンプレート作成時の初期状態。空のテンプレートではなく、実際に
