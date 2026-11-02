@@ -1620,46 +1620,83 @@ async function fetchCharacterListPreview(fileId){
   }
 }
 // 画像は「テンプレート順で最初に見つかった画像エリアの値」、テキストは
-// 「実際のシート上の表示順(カテゴリー→そのカテゴリー直下のインプット→
-// そのカテゴリーのインプットセット、の順。renderSectionFrame()が
-// フィールドをグリッド表示した後にインプットセットを並べているのと
-// 同じ順序)で、値が入っているインプットを先頭から3つ」。見出し名は
-// 使わず値だけを並べる(区別が目的で、項目名までは要らないという想定)。
-// テーブル型は値が配列で単純な文字列にならないため対象から除く。
-// 真偽値(チェックボックス)型も対象から除く(2026-09-20): 単一チェック
-// ボックスは値が常にtrue/falseのどちらかで「未入力」を表現できず、一度
-// 触っただけで文字列"false"がそのまま並んでしまう。複数並べたチェック
-// ボックス(checkboxCount>1)はさらに値が配列(例:[true,false,true])
-// のため、String()で"true,false,true"のような無意味な文字列になって
-// しまう。どちらも「キャラクターを見分けるための値」として意味を
-// 持たないため、最初から候補にしない。
+// 「実際のシートに表示される順で、先頭の項目から2つ」(2026-11-02、利用者の指定。
+// それまでは「値が入っている項目を、先頭から3つ」だった)。
+// - 並びは画面と同じ(sectionItemsInOrder: カテゴリー→その中の項目・表形式を並び順どおり。
+//   表形式は先頭の行の項目を、列の順に)。以前は「項目がすべて先、表形式があと」と
+//   決め打ちしていて、表形式を項目の間に置いたシートで順番がずれていた。
+// - 飛ばすのは、区切り線・改行と、1つの文字列にならない型(複数行・表・画像)だけ。
+//   空欄・チェックボックス・計算式(計算式・lookup・集計)・データリストから選ぶ項目は
+//   飛ばさず、項目として数える。空欄は''にして、表示側が「(未入力)」と出す。
+// - 計算式・lookup・集計は値を保存せず毎回計算する項目なので、このキャラクターの
+//   テンプレート(templateSnapshot)とデータで計算エンジンを動かして値を出す。
+//   エンジンは一覧の画面中のstateを読むため、計算の間だけstate.template/characterを
+//   差し替えて、必ず戻す(同期処理なので、他の描画と交ざらない)。
+//   参照切れ・循環参照・ゼロ除算は、シートでは警告表示なので、一覧では空欄として扱う。
+// - チェックボックスは☑/☐(複数並べた枠は「チェックの数/全体の数」)、リストはシートの
+//   選択肢に出る表示文字(保存する値と表示が別の列のときは表示のほう)。
+// 見出し名は使わず値だけを並べる(区別が目的で、項目名までは要らないという想定)。
+const CHARACTER_PREVIEW_ITEMS = 2;
+function characterPreviewValueText(f, rowScope){
+  if(f.kind === 'ref' && f.refType !== 'listFilter' && getFieldReferenceErrors(f).length) return '';
+  const raw = getEffectiveValue(f, rowScope);
+  if(raw === DIV_BY_ZERO_ERROR) return '';
+  if(f.type === 'boolean'){
+    const n = checkboxCountOf(f);
+    return n > 1 ? `${raw}/${n}` : (raw ? '☑' : '☐');
+  }
+  if(raw === undefined || raw === null || raw === '' || typeof raw === 'object') return '';
+  if(f.type === 'list'){
+    const opt = listOptionsOf(f, rowScope).find(o => String(o.value) === String(raw));
+    if(opt && opt.label !== undefined && opt.label !== null && opt.label !== '') return String(opt.label);
+  }
+  return String(raw);
+}
 function buildCharacterPreview(characterObj){
-  const sections = (characterObj.templateSnapshot && characterObj.templateSnapshot.sections) || [];
+  const template = characterObj.templateSnapshot;
+  const sections = (template && Array.isArray(template.sections)) ? template.sections : [];
   const values = characterObj.values || {};
   const sets = characterObj.sets || {};
   let image = '';
-  const texts = [];
-  const considerField = (f, v) => {
-    if(f.kind !== 'input' || f.type === 'table' || f.type === 'boolean') return;
-    if(v === undefined || v === null || v === '') return;
-    texts.push(String(v));
-  };
   for(const sec of sections){
-    if(image && texts.length >= 3) break;
-    if(!image && sec.imageArea && values[sec.imageArea.id]) image = values[sec.imageArea.id];
-    for(const f of (sec.fields || [])){
-      if(texts.length >= 3) break;
-      considerField(f, values[f.id]);
-    }
-    for(const st of (sec.sets || [])){
-      if(texts.length >= 3) break;
-      const firstRow = (sets[st.id] || [])[0];
-      if(!firstRow) continue;
-      for(const f of setInputFieldsOf(st)){
-        if(texts.length >= 3) break;
-        considerField(f, firstRow[f.id]);
+    if(sec.imageArea && values[sec.imageArea.id]){ image = values[sec.imageArea.id]; break; }
+  }
+  const texts = [];
+  if(!sections.length) return { image, texts };
+  const savedTemplate = state.template;
+  const savedCharacter = state.character;
+  state.template = template;
+  state.character = { ...characterObj, values, sets };
+  // 項目として数えたらtrue(先頭の指定の数に届いたら、呼び出し側が打ち切る)
+  const consider = (f, rowScope) => {
+    if(f.kind === 'divider' || f.kind === 'break') return false;
+    if(f.type === 'multiline' || f.type === 'table' || f.type === 'image') return false;
+    let text = '';
+    try{ text = characterPreviewValueText(f, rowScope); }catch(e){ console.error(e); }
+    texts.push(text);
+    return texts.length >= CHARACTER_PREVIEW_ITEMS;
+  };
+  try{
+    outer:
+    for(const sec of sections){
+      for(const it of sectionItemsInOrder(sec)){
+        if(it.kind === 'set'){
+          const firstRow = (sets[it.obj.id] || [])[0];
+          if(!firstRow) continue;
+          const rowScope = { setId: it.obj.id, rowIndex: 0, row: firstRow };
+          for(const f of (it.obj.fields || [])){
+            if(consider(f, rowScope)) break outer;
+          }
+        }else if(consider(it.obj, null)){
+          break outer;
+        }
       }
     }
+  }catch(e){
+    console.error(e);
+  }finally{
+    state.template = savedTemplate;
+    state.character = savedCharacter;
   }
   return { image, texts };
 }
@@ -2880,14 +2917,16 @@ function renderCharacterListThumb(f){
 }
 // 2026-09-20: 「名前」欄はDriveファイルの`name`(常に固定文字列「キャラクター」
 // で、システム名列と重複して冗長)を表示するのをやめ、このプレビュー
-// (先頭3つの入力値)だけを表示するようにした。そのため、読み込み中(まだ
+// (シートの先頭から2つの項目の値)だけを表示するようにした。そのため、読み込み中(まだ
 // f.previewが届いていない)・入力値が1つも無い、のどちらの場合も欄が
 // 完全に空白の行にならないよう、それぞれ専用の文言を出す。
+// 空欄の項目は''で届く(buildCharacterPreview)ので、「(未入力)」と出して位置を保つ
+// (全部が空欄なら、従来どおり「(内容未入力)」の1つだけ)。
 function renderCharacterListPreviewText(f){
   if(f.preview === undefined) return `<div class="char-list-preview">読み込み中…</div>`;
   const texts = f.preview && f.preview.texts;
-  if(!texts || !texts.length) return `<div class="char-list-preview">(内容未入力)</div>`;
-  return `<div class="char-list-preview">${texts.map(t => `<span class="char-list-preview-item">${esc(t)}</span>`).join('、')}</div>`;
+  if(!texts || !texts.some(t => t !== '')) return `<div class="char-list-preview">(内容未入力)</div>`;
+  return `<div class="char-list-preview">${texts.map(t => t === '' ? '(未入力)' : `<span class="char-list-preview-item">${esc(t)}</span>`).join('、')}</div>`;
 }
 // キャラクター一覧の並び替え・システム絞り込み。どちらも一覧画面だけの
 // UI状態(driveBrowser.sortBy/filterSystem)を書き換えて再描画するだけで、
