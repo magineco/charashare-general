@@ -1901,6 +1901,14 @@ const escAttr = esc;
 // 抜け出せてしまう。2026-10-12、画像エリアのidで実際に確認）。idの形式検査
 // （assertSafeTemplateIds）と二重の防御にしている。
 function jsArg(v){ return esc(JSON.stringify(String(v))); }
+// テンプレート由来の数値(幅・横幅・初期値・計算式の値等)を、value="…"やstyle="…"に埋め込む前に、
+// 有限な数に直す(2026-11-02。画像エリアの幅に'や"を入れたテンプレートで、閲覧者のブラウザでコードが
+// 実行できることを確認したため)。数として読めない値は fallback にする。数値型の文字列だけが残るので、
+// 属性を抜け出せない。
+function numAttr(v, fallback){
+  const n = Number(v);
+  return Number.isFinite(n) ? n : fallback;
+}
 // 外部から読み込んだキャラクター・テンプレートの「画像の値」は、<img src>に
 // そのまま使うと、外部のURLを指定されて表示しただけで通信が飛ぶ（閲覧者の
 // IPの漏れ・追跡）。アプリ自身が作る形式（ファイルを読み込んだDataURL）だけを
@@ -1932,14 +1940,33 @@ function assertSafeTemplateIds(tpl){
     if(id === undefined || id === null) return;
     if(!SAFE_ID_PATTERN.test(String(id))) throw new Error('テンプレートの内部データに不正な形式が含まれているため読み込めません。');
   };
+  // 数値の設定(幅・横幅・列数・行数・数値の初期値・計算式の値)は、数、または数字だけの文字列に限る
+  // (2026-11-02。画像エリアの幅が検査の対象外で、'や"を含む値からコードを実行できた)。空欄は許す。
+  // 描画側でも数に直しているので(numAttr)、ここは二重の防御
+  const checkNum = (v) => {
+    if(v === undefined || v === null || v === '') return;
+    if(typeof v === 'number' && Number.isFinite(v)) return;
+    if(typeof v === 'string' && /^-?\d+(\.\d+)?$/.test(v)) return;
+    throw new Error('テンプレートの内部データに不正な形式が含まれているため読み込めません。');
+  };
+  const checkFieldNums = (f) => {
+    checkNum(f.span); checkNum(f.width); checkNum(f.minRows); checkNum(f.checkboxCount);
+    if(f.type === 'number' && f.kind === 'input') checkNum(f.defaultValue);
+    if(Array.isArray(f.terms)) f.terms.forEach(t => { if(t && typeof t === 'object') checkNum(t.value); });
+  };
   (tpl.sections || []).forEach(sec => {
     checkId(sec.id);
-    if(sec.imageArea) checkId(sec.imageArea.id); // 2026-10-12: 検査から漏れていた
-    (sec.fields || []).forEach(f => checkId(f.id));
+    if(sec.imageArea){
+      checkId(sec.imageArea.id); // 2026-10-12: 検査から漏れていた
+      checkNum(sec.imageArea.width);
+    }
+    checkNum(sec.columns);
+    (sec.fields || []).forEach(f => { checkId(f.id); checkFieldNums(f); });
     if(Array.isArray(sec.order)) sec.order.forEach(id => checkId(id));
     (sec.sets || []).forEach(st => {
       checkId(st.id);
-      (st.fields || []).forEach(f => checkId(f.id));
+      checkNum(st.initialRows);
+      (st.fields || []).forEach(f => { checkId(f.id); checkFieldNums(f); });
     });
   });
   (tpl.dataLists || []).forEach(dl => checkId(dl.id));
@@ -3342,7 +3369,8 @@ function toggleCategoryImageFit(id){
 function renderCategoryImageArea(sec){
   if(!sec.imageArea) return '';
   const id = sec.imageArea.id;
-  const width = sec.imageArea.width || 20;
+  // 幅は設定パネルで1〜50に収めているが、外から読み込んだテンプレートの値は信用しない(数値に直して範囲に収める)
+  const width = Math.min(50, Math.max(1, numAttr(sec.imageArea.width, 20) || 20));
   const areaStyle = ` style="flex-basis:${width}%"`;
   const val = safeImageSrc(state.character.values[id]);
   // フィフス版のportrait-frameと同じ「枠はoverflow:hidden固定、imgは
@@ -3781,10 +3809,10 @@ function setSetRowLabel(setId, idx, v){
 }
 // 編集中の表形式の項目(2026-10-29): 角丸の小さなボックスではなく、ふつうの項目と同じ「見出し+入力欄」の見た目で出す。
 // 入力欄は、初期値の行で組み立てた本物と同じ部品(renderFieldInput)で、触れない(inert)。横幅の比(width)は、flexの比に使う
-function renderSetSchemaField(set, f){
+function renderSetSchemaField(set, f, defaultRow){
   const selected = state.selection && state.selection.kind === 'field' && state.selection.id === f.id;
   const w = Math.max(1, parseInt(f.width) || 1);
-  const input = renderFieldInput(f, { setId: set.id, rowIndex: 0, row: buildDefaultSetRow(set) })
+  const input = renderFieldInput(f, { setId: set.id, rowIndex: 0, row: defaultRow || buildDefaultSetRow(set) })
     .replace(/<(input|select|textarea)\b/g, '<$1 tabindex="-1"');
   return `<div class="frame-field set-schema-field ${selected ? 'is-selected' : ''} ${isFieldReferenceBroken(f) ? 'is-broken' : ''}" data-frame-id="${f.id}" onclick="selectFrame(event,'field','${f.id}')" style="flex-grow:${w}">
     <span class="field-label-row"><span class="field-label-left"><span class="field-label">${esc(f.label)}</span></span></span>
@@ -3883,12 +3911,13 @@ function renderSetFrame(set){
     // セット内のインプットだけ、このチップに.is-selectedを付けておらず、
     // 編集中でも枠が出なかった)。枠の見た目は.mode-edit [data-frame-id]
     // .is-selectedが、他の枠と共通で担う。
+    const defaultRow = buildDefaultSetRow(set); // 項目ごとに作り直さず、1回で済ませる
     body = `<div class="set-schema-row">${set.fields.map(f => {
       if(f.kind === 'break'){
         const breakSelected = state.selection && state.selection.kind === 'field' && state.selection.id === f.id;
         return `<span class="set-schema-break ${breakSelected ? 'is-selected' : ''}" data-frame-id="${f.id}" onclick="selectFrame(event,'field','${f.id}')">↵ 改行</span>`;
       }
-      return renderSetSchemaField(set, f);
+      return renderSetSchemaField(set, f, defaultRow);
     }).join('')}</div>`;
     // 以前は設定パネル(右カラム)にあった「+ インプットを追加」を、
     // 2026-09-20にインプットセットのタイトル行(画面本体側)へ移した。
@@ -5765,7 +5794,7 @@ function renderPanelBody(kind, f){
     // 幅が半分未満に押し込まれてしまうため(50なら画像エリアと入力欄が
     // ちょうど五分五分になる)。
     const imageAreaWidthInput = f.imageArea
-      ? `<label><span>画像エリアの幅(1〜50、カテゴリー幅に対する割合)</span><input type="number" min="1" max="50" value="${f.imageArea.width || 20}" onchange="updateImageAreaWidth('${f.id}',this.value)"></label>`
+      ? `<label><span>画像エリアの幅(1〜50、カテゴリー幅に対する割合)</span><input type="number" min="1" max="50" value="${numAttr(f.imageArea.width, 20) || 20}" onchange="updateImageAreaWidth('${f.id}',this.value)"></label>`
       : '';
     return labelInput
       + `<label><span>一行に並べる列数</span><input type="number" min="1" max="${MAX_SECTION_COLUMNS}" value="${clampSectionColumns(f.columns)}" onchange="applyPatch('section','${f.id}',{columns:clampSectionColumns(this.value, 1)})"></label>`
@@ -5815,8 +5844,8 @@ function renderPanelBody(kind, f){
     // renderSetFrame()がstate.character.sets[]のテーブル描画時に、
     // 各項目のwidthをそのままgrid-template-columnsのfr値として使う。
     const spanInput = isFieldInsideSet(f.id)
-      ? `<label><span>横幅(表形式内での相対的な太さ)</span><input type="number" min="1" value="${f.width || 1}" onchange="applyPatch('field','${f.id}',{width:Math.max(1,parseInt(this.value)||1)})"></label>`
-      : `<label><span>横幅</span><input type="number" min="1" value="${f.span || 1}" onchange="applyPatch('field','${f.id}',{span:Math.max(1,parseInt(this.value)||1)})"></label>`;
+      ? `<label><span>横幅(表形式内での相対的な太さ)</span><input type="number" min="1" value="${numAttr(f.width, 1) || 1}" onchange="applyPatch('field','${f.id}',{width:Math.max(1,parseInt(this.value)||1)})"></label>`
+      : `<label><span>横幅</span><input type="number" min="1" value="${numAttr(f.span, 1) || 1}" onchange="applyPatch('field','${f.id}',{span:Math.max(1,parseInt(this.value)||1)})"></label>`;
     // チャットパレット出力は、値を文中にそのまま埋め込む用途に馴染まない
     // 表・画像型を除いて、インプットセットの中の項目も含め全ての型で
     // 設定できる(セット内は行ごとに繰り返し出力される。後述の
@@ -5887,7 +5916,7 @@ function renderFieldTypeEditor(f){
   let html = `<label><span>データの種類</span><select onchange="changeFieldType('${f.id}',this.value)">${typeOptions}</select></label>`;
   if(f.type === 'number' && f.kind === 'input'){
     // 数値の入力。初期値は入力値(kind:'input')の時のみ意味を持つ。
-    html += `<label><span>初期値</span><input type="number" step="any" value="${f.defaultValue ?? 0}" onchange="applyPatch('field','${f.id}',{defaultValue:Number(this.value)||0})"></label>`;
+    html += `<label><span>初期値</span><input type="number" step="any" value="${numAttr(f.defaultValue, 0)}" onchange="applyPatch('field','${f.id}',{defaultValue:Number(this.value)||0})"></label>`;
   } else if(f.type === 'number'){
     // 計算(2026-10-18): 計算式・データリストから参照・集計。入力値は「数値の入力」。
     const kindOptions = [['formula', '計算式'], ['lookup', 'データリストから参照']];
@@ -6066,7 +6095,7 @@ function renderFormulaTermRows(f, candidates){
     const isLiteral = Object.prototype.hasOwnProperty.call(t, 'value');
     const modeToggle = checkboxToggleHtml(isLiteral, `onchange="setFormulaTermMode('${f.id}',${i},this.checked?'value':'field')"`, '値を直接入力');
     const valueControl = isLiteral
-      ? `<input type="number" step="any" value="${t.value ?? 0}" onchange="updateFormulaTerm('${f.id}',${i},'value',Number(this.value)||0)">`
+      ? `<input type="number" step="any" value="${numAttr(t.value, 0)}" onchange="updateFormulaTerm('${f.id}',${i},'value',Number(this.value)||0)">`
       : `<select onchange="updateFormulaTerm('${f.id}',${i},'field',this.value)">
           <option value="">(選択)</option>
           ${candidates.map(c => `<option value="${c.id}" ${t.field === c.id ? 'selected' : ''}>${esc(c.label)}</option>`).join('')}
