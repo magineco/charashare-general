@@ -5055,6 +5055,14 @@ function ccfoliaTextOrPlaceholder(f){
   const v = ccfoliaValueText(f);
   return v.trim() === '' ? '[' + f.label + ']' : v;
 }
+// コマの「参照URL」(externalUrl)に入れる、キャラクターの公開URL(2026-11-02)。キャラクターをURLで共有している
+// (共有リンクを作成済みで、解除していない)時だけ。共有ビューで開いた時は、開いているそのURL。
+// テンプレート編集画面の試し出力(サンプルの値)には、入れない。
+function ccfoliaReferenceUrl(){
+  if(state.screen !== 'characterEditor' && state.screen !== 'characterView') return '';
+  if(!state.characterShared || !state.characterShareToken) return '';
+  return characterShareUrlFor(state.characterShareToken);
+}
 function buildCcfoliaCharacter(){
   const rows = ccfoliaRows();
   const data = {};
@@ -5068,6 +5076,8 @@ function buildCcfoliaCharacter(){
   data.memo = memoParts.join('\n\n');
   const iniRow = rows.find(r => r.role === 'initiative');
   if(iniRow) data.initiative = ccfoliaNumberValue(iniRow.f);
+  const refUrl = ccfoliaReferenceUrl();
+  if(refUrl) data.externalUrl = refUrl;
   data.status = [];
   rows.filter(r => r.role === 'status').forEach(r => {
     const label = (r.label || r.f.label).trim();
@@ -5125,7 +5135,7 @@ function copyCcfoliaJson(){
 }
 function ccfoliaSummaryText(d){
   const lines = d.commands ? d.commands.split('\n').length : 0;
-  return `コマ「${d.name}」 / ステータス${d.status.length}件 / パラメータ${d.params.length}件 / メモ${d.memo ? 'あり' : 'なし'} / チャットパレット${lines}行`;
+  return `コマ「${d.name}」 / ステータス${d.status.length}件 / パラメータ${d.params.length}件 / メモ${d.memo ? 'あり' : 'なし'} / 参照URL${d.externalUrl ? 'あり' : 'なし'} / チャットパレット${lines}行`;
 }
 function renderCcfoliaExportModal(){
   const ex = state.ccfoliaExport;
@@ -5146,6 +5156,9 @@ function renderCcfoliaExportModal(){
           <button onclick="copyCcfoliaJson()">コピー</button>
         </div>
         <p class="muted small">立ち絵・アイコンの画像は、ココフォリア側で設定してください（画像は貼り付けでは渡せません）。表形式の内容は、チャットパレットだけに出ます。</p>
+        ${ex.data.externalUrl
+          ? '<p class="muted small">コマの「参照URL」に、このキャラクターの共有URLが入ります。</p>'
+          : (state.screen === 'characterEditor' ? '<p class="muted small">キャラクターを共有（「共有リンクを作成」）していると、コマの「参照URL」に、その共有URLが入ります。</p>' : '')}
       </div>
     </div>
   </div>`;
@@ -6976,6 +6989,9 @@ async function bootstrap(){
       state.templateShareToken = '';
       state.templateFileMine = false;
       state.character = characterObj;
+      // 開いているこのURLが、このキャラクターの共有URL(ココフォリアに出す時の「参照URL」に使う。ccfoliaReferenceUrl参照)
+      state.characterShared = true;
+      state.characterShareToken = char;
       state.readOnly = true;
       state.screen = 'characterView';
       // 見知らぬ訪問者にとって意味の無い「テンプレートが更新されました」
