@@ -3,11 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>キャラシェア・ジェネラル — キャラクターシート設置サービス</title>
+<title>キャラシェア・ジェネラル — キャラクターシートメーカー</title>
 <meta name="description" content="TRPGのキャラクターシートを、GoogleアカウントでログインしてあなたのGoogle Driveに保存・共有できるWebツール。任意のTRPGシステムに対応したテンプレートを自分で作成できます。">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="キャラシェア">
-<meta property="og:title" content="キャラシェア・ジェネラル — キャラクターシート設置サービス">
+<meta property="og:title" content="キャラシェア・ジェネラル — キャラクターシートメーカー">
 <meta property="og:description" content="TRPGのキャラクターシートを、GoogleアカウントでログインしてあなたのGoogle Driveに保存・共有できるWebツール。任意のTRPGシステムに対応したテンプレートを自分で作成できます。">
 <meta property="og:url" content="https://magineco.com/charashare/general/">
 <meta property="og:image" content="https://magineco.com/charashare/general/og-image.png">
@@ -195,6 +195,28 @@
     padding:10px 0; border-bottom:1px solid var(--line); margin-bottom:16px; position:sticky; top:0; background:var(--bg); z-index:100;
   }
   .toolbar .tpl-name{ max-width:360px; }
+  /* ロゴの右隣のシステム名の欄は、狭い画面でロゴと同じ行に並べる(幅100%のままだと、ロゴだけで1行を使ってしまう) */
+  .toolbar .brand-logo + .tpl-name{ flex:1 1 150px; width:auto; min-width:0; }
+  /* ロゴ(2026-11-05): シート(キャラクター)にシェアの印を重ねた図案+文字。色は配色の変数から取り、
+     テンプレートごとの配色(アクセントカラー等)にも、暗い・明るいどちらの背景にもなじむ。
+     クリックで、トップ画面なら共通トップ(キャラシェア総合ページ)、それ以外ならジェネラルのトップへ。 */
+  .brand-logo{ display:inline-flex; align-items:center; gap:10px; flex:0 0 auto; text-decoration:none; color:var(--text); border-radius:6px; }
+  .brand-logo svg{ display:block; width:30px; height:30px; flex:0 0 auto; }
+  .brand-logo-full svg{ width:38px; height:38px; }
+  .brand-logo-text{ font-family:'Fraunces',serif; font-weight:600; font-size:1.5rem; line-height:1.2; color:var(--text); }
+  .brand-logo:hover .brand-logo-text{ color:var(--accent); }
+  .brand-logo:hover svg{ filter:brightness(1.15); }
+  .brand-logo:focus-visible{ outline:2px solid var(--accent); outline-offset:3px; }
+  /* ロゴの図案(開いた扉)の色。扉の枠・扉板・アイコンは強調カラー、開口部の地は背景色(配色の変数)。 */
+  .logo-ground{ fill:none; stroke:var(--accent); stroke-width:2.4; stroke-linecap:round; }
+  .logo-open{ fill:var(--bg); }
+  .logo-glow{ fill:var(--accent); opacity:.25; }
+  .logo-frame{ fill:none; stroke:var(--accent); stroke-width:2.4; stroke-linejoin:round; }
+  .logo-leaf{ fill:var(--surface-2); stroke:var(--accent); stroke-width:1.6; stroke-linejoin:round; }
+  .logo-knob{ fill:var(--accent); }
+  .logo-card{ fill:none; stroke:var(--accent); stroke-width:2; }
+  .logo-fig{ fill:var(--accent); }
+  .logo-badge{ fill:var(--accent); stroke:var(--bg); stroke-width:1.6; }
   .tpl-view-title{ font-family:'Fraunces',serif; font-weight:600; font-size:1.1rem; color:var(--accent); }
   .toolbar .spacer{ flex:1 1 auto; }
   /* Drive連携のボタンが増えて1行に収まらないため、上のtoolbar(sticky)とは
@@ -209,6 +231,11 @@
   .layout{ position:relative; }
   .sheet{ display:flex; flex-direction:column; gap:14px; }
   .sheet-author-note{ text-align:right; margin:0; }
+  /* シート最下部の注記(権利表記+シート作者・連絡先)。権利表記は複数行で、
+     書いた改行をそのまま見せる。長い文字列(URL等)は枠からはみ出さず折り返す。 */
+  .sheet-notes{ display:flex; flex-direction:column; gap:4px; }
+  .sheet-rights-note{ text-align:right; margin:0; white-space:pre-wrap; overflow-wrap:anywhere; }
+  .sheet-rights-note a{ color:var(--accent); }
 
   /* frames */
   .frame-section{ background:var(--surface); border:1px solid var(--line); border-radius:10px; padding:16px; }
@@ -626,6 +653,7 @@
   .share-panel p{ margin:0; }
   .author-fields-row{ display:flex; gap:12px; margin-top:8px; }
   .author-fields-row label{ flex:1 1 0; min-width:0; }
+  .rights-field{ margin-top:8px; }
   .share-url{ display:flex; gap:6px; margin:8px 0 0; flex-wrap:wrap; }
   /* 一覧画面で「共有中」かどうかを示すバッジ(フィフス版と同じ見た目)。
      テンプレート一覧・キャラクター一覧ともバッジの直後に名前/プレビュー
@@ -760,7 +788,7 @@
      (例:1024×600)にも対応するため。 */
   @media (max-height:900px){ .hero-banner{ height:150px; margin-bottom:18px; } }
   .gate-topbar{
-    display:flex; align-items:baseline; gap:10px; flex-wrap:wrap;
+    display:flex; align-items:center; gap:10px 14px; flex-wrap:wrap;
     padding-bottom:16px; margin-bottom:28px; border-bottom:1px solid var(--line);
   }
   .gate-topbar h1{ font-size:1.5rem; margin:0; }
@@ -809,6 +837,7 @@
   .gate-note{ margin-top:14px; color:var(--muted); font-size:0.85rem; max-width:50ch; }
   .gate-list{ max-width:760px; margin:40px auto; padding:0 20px 40px; }
   .gate-list-auth{ display:flex; justify-content:flex-end; align-items:center; gap:10px; margin-bottom:16px; }
+  .gate-list-auth-logo{ justify-content:space-between; flex-wrap:wrap; }
   .gate-list-head{ display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:16px; }
   /* 2026-09-22: 見出しを目立たせる(既定のh2は1.3remと小さいため)。
      margin:0はflex行内での縦位置ズレを防ぐため。 */
@@ -2879,10 +2908,50 @@ function renderTopScreen(){
     </div>
   </div>`;
 }
+// ロゴの図案(2026-11-05)。アーチ形ドアの両開きの扉を、手前(こちら側)に開いた形。扉の枠(アーチ)の
+// 開口部にジェネラルのアイコン(キャラクターシート+シェアの印)を置く。扉の板は、閉じた時のアーチの
+// 半分(上辺が1/4円)を、遠近をつけて左右に開いたもの。キャラシェア共通の「閉じた扉」と対になる
+// (各ツールは「開いた扉の枠+そのツールのアイコン」)。色は配色の変数(CSSのクラス)から取る。
+// 図案の座標は生成スクリプト(gen-open.js)の出力。数値を手で直さず、設計を変える時は作り直すこと。
+const BRAND_MARK_SVG = '<svg viewBox="0 0 48 48" aria-hidden="true" focusable="false">'
+  + '<path class="logo-ground" d="M4 44.5H44"/>'
+  + '<path class="logo-open" d="M10 44V18A14 14 0 0 1 38 18V44Z"/>'
+  + '<path class="logo-glow" d="M10 44V18A14 14 0 0 1 38 18V44Z"/>'
+  + '<g transform="translate(24 28) scale(1)">'
+  + '<rect class="logo-card" x="-6.5" y="-9" width="13" height="18" rx="2.6"/>'
+  + '<circle class="logo-fig" cx="-1" cy="-3.5" r="2.2"/>'
+  + '<path class="logo-fig" d="M-4.7 4.2C-4.7 1.4 -3 0.2 -1 0.2S2.7 1.4 2.7 4.2Z"/>'
+  + '<circle class="logo-badge" cx="5.2" cy="7" r="4.2"/>'
+  + '</g>'
+  + '<path class="logo-frame" d="M10 44V18A14 14 0 0 1 38 18V44Z"/>'
+  + '<path class="logo-leaf" d="M10 18L9.51 12.68L9.01 10.5L8.51 8.85L8 7.51L7.48 6.36L6.95 5.36L6.42 4.49L5.88 3.73L5.33 3.06L4.78 2.47L4.22 1.97L3.65 1.56L3.08 1.22L2.49 0.96L2.49 46.75L10 44Z"/>'
+  + '<path class="logo-leaf" d="M38 18L38.49 12.68L38.99 10.5L39.49 8.85L40 7.51L40.52 6.36L41.05 5.36L41.58 4.49L42.12 3.73L42.67 3.06L43.22 2.47L43.78 1.97L44.35 1.56L44.92 1.22L45.51 0.96L45.51 46.75L38 44Z"/>'
+  + '<circle class="logo-knob" cx="3.79" cy="29.49" r="1.51"/>'
+  + '<circle class="logo-knob" cx="44.21" cy="29.49" r="1.51"/>'
+  + '</svg>';
+// ロゴ(クリックでトップへ)。トップ画面では共通トップ(キャラシェア総合ページ、1つ上のフォルダ)へ、
+// それ以外の画面ではジェネラルのトップ画面(このページのトップ)へ移る。リンク(href)も持たせて
+// あるので、Ctrl・Shift+クリックや中クリックの「新しいタブで開く」「リンクのコピー」はブラウザの
+// 標準の動作になる(通常のクリックだけ、ページを読み込み直さずに画面を切り替える。goGeneralTop)。
+// full=trueは図案+文字、falseは図案だけ(編集画面のツールバー用)。
+function renderBrandLogo(full){
+  const onTop = state.screen === 'top';
+  const label = onTop ? 'キャラシェア総合ページへ' : 'キャラシェア・ジェネラルのトップへ';
+  const attrs = onTop ? 'href="../"' : 'href="./" onclick="return goGeneralTop(event)"';
+  return `<a class="brand-logo${full ? ' brand-logo-full' : ''}" ${attrs} title="${label}" aria-label="${label}">${BRAND_MARK_SVG}${full ? '<span class="brand-logo-text">キャラシェア・ジェネラル</span>' : ''}</a>`;
+}
+function goGeneralTop(ev){
+  // 新しいタブ・ウィンドウで開く操作(修飾キー・中クリック)は、ブラウザに任せる
+  if(ev && (ev.button !== 0 || ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey)) return true;
+  // 画面が切り替わると、履歴が1つ積まれる(navTrackScreen)ので、「戻る」で今の画面に戻れる
+  state.screen = 'top';
+  render();
+  return false;
+}
 function renderGateBrand(){
   return `<div class="gate-topbar">
-    <h1>キャラシェア・ジェネラル</h1>
-    <span class="gate-brand-tag">キャラクターシート設置サービス</span>
+    <h1>${renderBrandLogo(true)}</h1>
+    <span class="gate-brand-tag">キャラクターシートメーカー</span>
   </div>`;
 }
 // 統合トップ画面共通のブランド見出し。説明文(タグライン直下の段落)は
@@ -2903,8 +2972,9 @@ function renderGateHeroBanner(){
 function renderGateDataNote(){
   return `<p class="gate-note">データ本体(キャラクター・テンプレート)は、あなたのGoogle Driveに置かれます。<br>Googleアカウントのお名前は、共有相手には伝わりません。</p>`;
 }
-function renderGateListAuthBar(){
-  return `<div class="gate-list-auth">
+function renderGateListAuthBar(withLogo){
+  return `<div class="gate-list-auth${withLogo ? ' gate-list-auth-logo' : ''}">
+    ${withLogo ? renderBrandLogo(true) : ''}
     <span class="muted">Google Drive に接続済み</span>
     <button onclick="logout()">ログアウト</button>
   </div>`;
@@ -3084,7 +3154,7 @@ function renderTemplateListSection(b){
 function renderBrowseScreen(){
   const b = state.driveBrowser;
   return `<div class="gate-list">
-    ${renderGateListAuthBar()}
+    ${renderGateListAuthBar(true)}
     <hr class="gate-list-divider">
     ${renderCharacterListSection(b && b.characters)}
     <hr class="gate-list-divider">
@@ -3239,8 +3309,39 @@ function renderTemplateAuthorNote(){
   const parts = [];
   if(meta.author) parts.push(`シート作者:${meta.author}`);
   if(meta.contact) parts.push(`連絡先:${meta.contact}`);
-  if(!parts.length) return '';
-  return `<p class="sheet-author-note muted small">${esc(parts.join(' / '))}</p>`;
+  const rightsHtml = renderTemplateRightsNote(meta.rights);
+  if(!parts.length && !rightsHtml) return '';
+  const authorHtml = parts.length
+    ? `<p class="sheet-author-note muted small">${esc(parts.join(' / '))}</p>` : '';
+  return `<div class="sheet-notes">${rightsHtml}${authorHtml}</div>`;
+}
+// 権利表記・公式へのリンク(template.meta.rights、複数行の自由記述、2026-11-05)。
+// 空欄(空白・改行だけを含む)なら何も出さない。本文はエスケープしたうえで、
+// http(s)://で始まるURLだけをリンクにする(別タブで開く)。それ以外の記法
+// (HTMLタグ・javascript:等)は、文字としてそのまま表示されるだけで実行されない。
+function renderTemplateRightsNote(rights){
+  const text = String(rights ?? '').trim();
+  if(!text) return '';
+  return `<p class="sheet-rights-note muted small">${linkifyPlainText(text)}</p>`;
+}
+// 文章中のURLをリンクにしたHTMLを返す。URLに使う文字はASCIIの範囲に限り、
+// 日本語の文字・全角のかっこ・引用符・<>で止まる(URLの直後に日本語が続いても
+// 巻き込まない)。末尾の句読点(. , ; : ! ?)はURLに含めない。
+function linkifyPlainText(text){
+  const re = /https?:\/\/[A-Za-z0-9\-._~:\/?#@!$&*+,;=%]+/g;
+  let out = '';
+  let last = 0;
+  let m;
+  while((m = re.exec(text))){
+    const url = m[0].replace(/[.,;:!?]+$/, '');
+    if(url === 'http://' || url === 'https://') continue;
+    out += esc(text.slice(last, m.index));
+    out += `<a href="${escAttr(url)}" target="_blank" rel="noopener noreferrer">${esc(url)}</a>`;
+    last = m.index + url.length;
+    re.lastIndex = last;
+  }
+  out += esc(text.slice(last));
+  return out;
 }
 // characterEditor(値入力画面)・characterView(共有閲覧画面)の両方の
 // ツールバー左端に出す、テンプレート名の表示(2026-09-19にcharacterView
@@ -3260,6 +3361,7 @@ function renderToolbar(){
     const chatBtn = ensureChatOrder().length
       ? `<button class="share-btn" onclick="toggleFloatingChatPalette()">チャットパレットを表示</button>` : '';
     return `<header class="toolbar">
+      ${renderBrandLogo(false)}
       ${tplViewTitleHtml()}
       <span class="muted">これは共有された閲覧専用のキャラクターです。</span>
       <span class="spacer"></span>
@@ -3281,6 +3383,7 @@ function renderToolbar(){
     const chatBtn = ensureChatOrder().length
       ? `<button class="share-btn" onclick="toggleFloatingChatPalette()">チャットパレットを表示</button>` : '';
     return `<header class="toolbar">
+      ${renderBrandLogo(false)}
       ${tplViewTitleHtml()}
       <span class="spacer"></span>
       ${statusHtml}
@@ -3303,6 +3406,7 @@ function renderToolbar(){
   const templateDeleteBtn = (state.templateFileId && state.templateFileMine)
     ? `<button class="danger-btn" onclick="deleteDriveFile(state.templateFileId,'template')">削除</button>` : '';
   return `<header class="toolbar">
+    ${renderBrandLogo(false)}
     <input class="tpl-name" type="text" value="${escAttr(state.template.meta && state.template.meta.name || '')}" placeholder="システム名を記述" onchange="updateTemplateName(this.value)">
     <button class="${state.mode === 'edit' ? '' : 'share-btn'}" onclick="toggleMode()">${state.mode === 'edit' ? '確認画面に切替' : '編集画面に戻す'}</button>
     <span class="spacer"></span>
@@ -3352,6 +3456,14 @@ function updateTemplateContact(v){
   state.template.meta.contact = v;
   render();
 }
+// 権利表記・公式へのリンク(任意・複数行)。共有リンクの作成条件には含めない。
+// 空欄にしたら、キーごと消す(テンプレートJSONに空の項目を残さない)。
+function updateTemplateRights(v){
+  state.template.meta = state.template.meta || {};
+  if(String(v).trim()) state.template.meta.rights = v;
+  else delete state.template.meta.rights;
+  render();
+}
 // 起動時のURLパラメータ(?tpl=/?char=)読み込みに失敗した場合のバナー。
 // エラーで即座に行き詰まらせず、サンプルへのフォールバック状態のまま
 // 問題点だけを伝える(参照エラー表示などと同じ「壊れたら気付けるように
@@ -3373,11 +3485,12 @@ function renderLoadErrorBanner(){
 function renderTemplateAuthorFieldsHtml(){
   const meta = state.template.meta || {};
   return `
-    <p class="muted small">テンプレート作者名・連絡先はシートの右下端に表示されます。</p>
+    <p class="muted small">テンプレート作者名・連絡先・権利表記はシートの右下端に表示されます。</p>
     <div class="author-fields-row">
       <label><span>テンプレート作者名</span><input type="text" value="${escAttr(meta.author || '')}" onchange="updateTemplateAuthor(this.value)"></label>
       <label><span>連絡先</span><input type="text" placeholder="メールアドレス、SNSアカウント等" value="${escAttr(meta.contact || '')}" onchange="updateTemplateContact(this.value)"></label>
     </div>
+    <label class="rights-field"><span>権利表記・公式へのリンク（任意）</span><textarea rows="1" maxlength="2000" placeholder="権利表記や、公式サイトのURL等を記述できます。URLはリンクとして表示されます。" oninput="autoResizeTextarea(this)" onchange="updateTemplateRights(this.value)">\n${esc(meta.rights || '')}</textarea></label>
   `;
 }
 function renderInlineSharePanel(kind){
@@ -6201,10 +6314,13 @@ function changeNumberKind(id, kindValue){
     // として扱おうとして例外を投げ、設定パネルの表示がそこで止まって
     // しまう不具合があった)。
     if(kindValue === 'formula'){
-      if(oldRefType !== 'formula') f.terms = [];
+      // 計算式は、項を1つも選ばない使い方が無いので、最初から項の選択欄を1つ出しておく
+      // (2026-11-04。以前は0個で、毎回「+ 項を追加」を押す必要があった)。
+      if(oldRefType !== 'formula') f.terms = [{ op: null, field: '' }];
     } else if(kindValue === 'aggregateSum'){
       if(!f.set) f.set = '';
-      if(oldRefType !== 'aggregateSum') f.terms = [];
+      // 「各行の計算式」も、計算式と同じく最初から項を1つ出しておく(2026-11-05)
+      if(oldRefType !== 'aggregateSum') f.terms = [{ op: null, field: '' }];
     } else {
       delete f.terms;
     }
@@ -6414,7 +6530,9 @@ function renderAggregateEditor(f){
 }
 function setAggregateSet(id, setId){
   const f = findFrame('field', id); if(!f) return;
-  f.set = setId; f.terms = [];
+  // 対象の表形式を選んだら、「各行の計算式」の項を最初から1つ出しておく(2026-11-05。
+  // 以前は0個で、毎回「+ 項を追加」を押す必要があった)。
+  f.set = setId; f.terms = [{ op: null, field: '' }];
   // データリストの列を集計するモードでは、照合・個数のインプットがセットの項目を指すため、
   // セットを変えたら作り直す(データリストと集計する列はそのまま)。
   if(f.source === 'dataList'){ f.match = []; delete f.countField; }
@@ -6461,7 +6579,7 @@ function setAggregateSource(id, fromDataList){
     if(!f.output) f.output = '';
   } else {
     delete f.source; delete f.dataList; delete f.match; delete f.output; delete f.countField;
-    if(!Array.isArray(f.terms)) f.terms = [];
+    if(!Array.isArray(f.terms)) f.terms = [{ op: null, field: '' }];
   }
   render();
 }
