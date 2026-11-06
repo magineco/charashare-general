@@ -4,16 +4,17 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>よくある質問 | キャラシェア・ジェネラル</title>
-<meta name="description" content="キャラシェア・ジェネラル(TRPGキャラクターシートメーカー)のよくある質問。権利について、設置方法と配布について、商用利用について解説します。">
+<meta name="description" content="キャラシェア・ジェネラル(TRPGキャラクターシートメーカー)のよくある質問。権利について、使い方と共有について、商用利用について解説します。">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="キャラシェア">
 <meta property="og:title" content="よくある質問 | キャラシェア・ジェネラル">
-<meta property="og:description" content="キャラシェア・ジェネラル(TRPGキャラクターシートメーカー)のよくある質問。権利について、設置方法と配布について、商用利用について解説します。">
+<meta property="og:description" content="キャラシェア・ジェネラル(TRPGキャラクターシートメーカー)のよくある質問。権利について、使い方と共有について、商用利用について解説します。">
 <meta property="og:url" content="https://magineco.com/charashare/general/faq.html">
 <meta property="og:image" content="https://magineco.com/charashare/general/og-image.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta name="twitter:card" content="summary_large_image">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Cpath fill='none' stroke='%23c99a4f' stroke-width='2.4' stroke-linecap='round' d='M4 44.5H44'/%3E%3Cpath fill='%2314161b' d='M10 44V18A14 14 0 0 1 38 18V44Z'/%3E%3Cpath fill='%23c99a4f' opacity='.25' d='M10 44V18A14 14 0 0 1 38 18V44Z'/%3E%3Cg transform='translate(24 28) scale(1)'%3E%3Crect fill='none' stroke='%23c99a4f' stroke-width='2' x='-6.5' y='-9' width='13' height='18' rx='2.6'/%3E%3Ccircle fill='%23c99a4f' cx='-1' cy='-3.5' r='2.2'/%3E%3Cpath fill='%23c99a4f' d='M-4.7 4.2C-4.7 1.4 -3 0.2 -1 0.2S2.7 1.4 2.7 4.2Z'/%3E%3Ccircle fill='%23c99a4f' stroke='%2314161b' stroke-width='1.6' cx='5.2' cy='7' r='4.2'/%3E%3C/g%3E%3Cpath fill='none' stroke='%23c99a4f' stroke-width='2.4' stroke-linejoin='round' d='M10 44V18A14 14 0 0 1 38 18V44Z'/%3E%3Cpath fill='%2322262e' stroke='%23c99a4f' stroke-width='1.6' stroke-linejoin='round' d='M10 18L9.51 12.68L9.01 10.5L8.51 8.85L8 7.51L7.48 6.36L6.95 5.36L6.42 4.49L5.88 3.73L5.33 3.06L4.78 2.47L4.22 1.97L3.65 1.56L3.08 1.22L2.49 0.96L2.49 46.75L10 44Z'/%3E%3Cpath fill='%2322262e' stroke='%23c99a4f' stroke-width='1.6' stroke-linejoin='round' d='M38 18L38.49 12.68L38.99 10.5L39.49 8.85L40 7.51L40.52 6.36L41.05 5.36L41.58 4.49L42.12 3.73L42.67 3.06L43.22 2.47L43.78 1.97L44.35 1.56L44.92 1.22L45.51 0.96L45.51 46.75L38 44Z'/%3E%3Ccircle fill='%23c99a4f' cx='3.79' cy='29.49' r='1.51'/%3E%3Ccircle fill='%23c99a4f' cx='44.21' cy='29.49' r='1.51'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <!-- Google tag (gtag.js) -->
@@ -68,13 +69,30 @@
     border-bottom:1px solid var(--line);
     display:flex;
     justify-content:space-between;
-    align-items:baseline;
+    align-items:center;
     gap:12px;
     flex-wrap:wrap;
   }
   .topnav .brand{ font-family:'Fraunces',serif; font-weight:600; font-size:1.2rem; }
   .topnav a{ font-size:0.88rem; color:var(--muted); text-decoration:underline; }
   .topnav a:hover{ color:var(--accent-bright); }
+  .topnav a.brand-logo{ font-size:inherit; color:var(--text); text-decoration:none; }
+  .topnav a.brand-logo:hover{ color:var(--text); }
+  /* ロゴ(2026-11-06)。アーチ形ドアの図案。閉じた扉=キャラシェア共通、開いた扉+アイコン=各ツール。色は配色の変数から取る。図案の座標は生成スクリプト(リポジトリ外)の出力 */
+  .brand-logo{ display:inline-flex; align-items:center; gap:10px; color:var(--text); text-decoration:none; border-radius:6px; }
+  .brand-logo svg{ display:block; width:38px; height:38px; flex:0 0 auto; }
+  a.brand-logo:hover .brand{ color:var(--accent); }
+  a.brand-logo:hover svg{ filter:brightness(1.15); }
+  a.brand-logo:focus-visible{ outline:2px solid var(--accent); outline-offset:3px; }
+  .logo-ground{ fill:none; stroke:var(--accent); stroke-width:2.4; stroke-linecap:round; }
+  .logo-open{ fill:var(--bg); }
+  .logo-glow{ fill:var(--accent); opacity:.25; }
+  .logo-frame{ fill:none; stroke:var(--accent); stroke-width:2.4; stroke-linejoin:round; }
+  .logo-leaf{ fill:var(--surface-2); stroke:var(--accent); stroke-width:1.6; stroke-linejoin:round; }
+  .logo-knob{ fill:var(--accent); }
+  .logo-card{ fill:none; stroke:var(--accent); stroke-width:2; }
+  .logo-fig{ fill:var(--accent); }
+  .logo-badge{ fill:var(--accent); stroke:var(--bg); stroke-width:1.6; }
   .doc h1{
     font-size:1.7rem;
     margin-bottom:6px;
@@ -118,7 +136,7 @@
 <body>
 <div class="shell">
   <div class="topnav">
-    <span class="brand">キャラシェア・ジェネラル</span>
+    <a class="brand-logo" href="./" title="キャラシェア・ジェネラルのトップへ" aria-label="キャラシェア・ジェネラルのトップへ"><svg viewBox="0 0 48 48" aria-hidden="true" focusable="false"><path class="logo-ground" d="M4 44.5H44"/><path class="logo-open" d="M10 44V18A14 14 0 0 1 38 18V44Z"/><path class="logo-glow" d="M10 44V18A14 14 0 0 1 38 18V44Z"/><g transform="translate(24 28) scale(1)"><rect class="logo-card" x="-6.5" y="-9" width="13" height="18" rx="2.6"/><circle class="logo-fig" cx="-1" cy="-3.5" r="2.2"/><path class="logo-fig" d="M-4.7 4.2C-4.7 1.4 -3 0.2 -1 0.2S2.7 1.4 2.7 4.2Z"/><circle class="logo-badge" cx="5.2" cy="7" r="4.2"/></g><path class="logo-frame" d="M10 44V18A14 14 0 0 1 38 18V44Z"/><path class="logo-leaf" d="M10 18L9.51 12.68L9.01 10.5L8.51 8.85L8 7.51L7.48 6.36L6.95 5.36L6.42 4.49L5.88 3.73L5.33 3.06L4.78 2.47L4.22 1.97L3.65 1.56L3.08 1.22L2.49 0.96L2.49 46.75L10 44Z"/><path class="logo-leaf" d="M38 18L38.49 12.68L38.99 10.5L39.49 8.85L40 7.51L40.52 6.36L41.05 5.36L41.58 4.49L42.12 3.73L42.67 3.06L43.22 2.47L43.78 1.97L44.35 1.56L44.92 1.22L45.51 0.96L45.51 46.75L38 44Z"/><circle class="logo-knob" cx="3.79" cy="29.49" r="1.51"/><circle class="logo-knob" cx="44.21" cy="29.49" r="1.51"/></svg><span class="brand">キャラシェア・ジェネラル</span></a>
     <a href="./">← サービスに戻る</a>
   </div>
   <div class="doc">
@@ -139,7 +157,7 @@
 <h3>自分の権利を侵害しているテンプレートを見つけました。どうすればいいですか?</h3>
 <p class="answer">お手数をおかけしますが、キャラシェアの連絡先(maginecotrpg@gmail.com)までご連絡ください。内容を確認のうえ対応をいたします。</p>
 
-<h2 id="設置方法と配布について">設置方法と配布について</h2>
+<h2 id="使い方と共有について">使い方と共有について</h2>
 
 <h3>自分でサーバーを用意する必要はありますか?</h3>
 <p class="answer">いいえ、必要ありません。ブラウザだけで完結するツールで、作成したテンプレートやキャラクターのデータはご自身のGoogle Driveに保存されます。ログインしなくても、その場でシートを作ってファイルとしてダウンロードすることもできますよ。</p>

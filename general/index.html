@@ -14,6 +14,7 @@
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta name="twitter:card" content="summary_large_image">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Cpath fill='none' stroke='%23c99a4f' stroke-width='2.4' stroke-linecap='round' d='M4 44.5H44'/%3E%3Cpath fill='%2314161b' d='M10 44V18A14 14 0 0 1 38 18V44Z'/%3E%3Cpath fill='%23c99a4f' opacity='.25' d='M10 44V18A14 14 0 0 1 38 18V44Z'/%3E%3Cg transform='translate(24 28) scale(1)'%3E%3Crect fill='none' stroke='%23c99a4f' stroke-width='2' x='-6.5' y='-9' width='13' height='18' rx='2.6'/%3E%3Ccircle fill='%23c99a4f' cx='-1' cy='-3.5' r='2.2'/%3E%3Cpath fill='%23c99a4f' d='M-4.7 4.2C-4.7 1.4 -3 0.2 -1 0.2S2.7 1.4 2.7 4.2Z'/%3E%3Ccircle fill='%23c99a4f' stroke='%2314161b' stroke-width='1.6' cx='5.2' cy='7' r='4.2'/%3E%3C/g%3E%3Cpath fill='none' stroke='%23c99a4f' stroke-width='2.4' stroke-linejoin='round' d='M10 44V18A14 14 0 0 1 38 18V44Z'/%3E%3Cpath fill='%2322262e' stroke='%23c99a4f' stroke-width='1.6' stroke-linejoin='round' d='M10 18L9.51 12.68L9.01 10.5L8.51 8.85L8 7.51L7.48 6.36L6.95 5.36L6.42 4.49L5.88 3.73L5.33 3.06L4.78 2.47L4.22 1.97L3.65 1.56L3.08 1.22L2.49 0.96L2.49 46.75L10 44Z'/%3E%3Cpath fill='%2322262e' stroke='%23c99a4f' stroke-width='1.6' stroke-linejoin='round' d='M38 18L38.49 12.68L38.99 10.5L39.49 8.85L40 7.51L40.52 6.36L41.05 5.36L41.58 4.49L42.12 3.73L42.67 3.06L43.22 2.47L43.78 1.97L44.35 1.56L44.92 1.22L45.51 0.96L45.51 46.75L38 44Z'/%3E%3Ccircle fill='%23c99a4f' cx='3.79' cy='29.49' r='1.51'/%3E%3Ccircle fill='%23c99a4f' cx='44.21' cy='29.49' r='1.51'/%3E%3C/svg%3E">
 <!-- Google tag (gtag.js) -->
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-SZMJF3B3W0"></script>
 <script>
@@ -4410,18 +4411,54 @@ function dndSetGhost(ev, text){
   try{ ev.dataTransfer.setDragImage(ghost, 14, 14); }catch(e){ /* 未対応なら既定のドラッグ画像のまま */ }
   setTimeout(() => ghost.remove(), 0);
 }
+// 線が出ている間の「そこへ置く」処理(dndMarkの第3引数)。線が出ていない間はnull。
+// 枠の外(項目と項目の隙間・一覧の外)で離しても、線の位置に置くために使う(2026-11-07。下のdocumentのdragover・drop)。
+let dndPending = null;
 function dndClear(){
+  dndPending = null;
   document.querySelectorAll('.is-dragging, .drop-before, .drop-after')
     .forEach(el => el.classList.remove('is-dragging', 'drop-before', 'drop-after'));
 }
 // 挿入先の線を、elの前(pos==='before')/後(pos==='after')に出す。elがnull(線を出さない
 // 位置)なら消す。dragoverは頻繁に呼ばれるため、変化が無ければ何もしない。
-function dndMark(el, pos){
+// commitは、この線の位置に置く処理(線が出る時だけ渡す)。線と置く先が、必ず一致する。
+function dndMark(el, pos, commit){
+  dndPending = (el && pos && commit) ? commit : null;
   const current = document.querySelectorAll('.drop-before, .drop-after');
   if(el && pos && current.length === 1 && current[0] === el && el.classList.contains('drop-' + pos)) return;
   current.forEach(x => x.classList.remove('drop-before', 'drop-after'));
   if(el && pos) el.classList.add('drop-' + pos);
 }
+// 並べ替えのドラッグ中か(掴んでいるものがあるか)。3種類の並べ替えのどれかが始まっている間。
+function dndActive(){ return !!(chatOrderDragId || dragSetRowInfo || dragFieldId || dragSetId); }
+function dndResetDragState(){ chatOrderDragId = null; dragSetRowInfo = null; dragFieldId = null; dragSetId = null; }
+// 枠の外で離した時の扱い(2026-11-07、利用者の指摘):
+// 線は、各項目の上のdragoverで出す。ポインタが項目の外(項目と項目の隙間・一覧の外・ページの余白)へ出ると、
+// その項目のdragoverが来なくなるが、線は最後の位置に残る。以前は、その状態で離すと、置ける場所の上ではないので
+// ドロップが失敗し、「線が出ているのに置けない」ことになっていた。
+// 線が出ている間は、ページのどこで離しても、その線の位置に置く(線=置かれる先、が常に一致する)。
+// 線が出ていない時(元の位置・置けない所)は、これまでどおり何も起きない。やめたい時は、Escキーか、ブラウザの外で離す。
+// 項目の上で離した場合は、その項目のdropが先に処理して状態を片付けるので、ここは何もしない(二重に置かない)。
+document.addEventListener('dragover', ev => {
+  if(!dndPending) return;
+  ev.preventDefault();
+  if(ev.dataTransfer) ev.dataTransfer.dropEffect = 'move';
+});
+// 離した時の共通の処理: 線が出ている位置に置く(線が無ければ何もしない)。後始末を先に済ませてから置く。
+function dndDropAtMark(ev){
+  ev.preventDefault();
+  const run = dndPending;
+  dndClear();
+  dndResetDragState();
+  if(run) run();
+}
+document.addEventListener('drop', ev => {
+  // 並べ替えのドラッグでなければ(ファイルの読み込み等)、何もしない。
+  // 項目の上で離した時は、その項目のdropが先に処理して状態を片付けてあるので、ここには来ない(二重に置かない)。
+  if(!dndActive()) return;
+  // 入力欄の上で離した時に、掴んでいるもののID(text/plain)が文字として入るのを防ぐ(dndDropAtMark内のpreventDefault)
+  dndDropAtMark(ev);
+});
 // ポインタが、対象の範囲(rect)の前半にあるか後半にあるか(axis: 'y'=縦並び、'x'=横並び)。
 function dndPos(ev, rect, axis){
   return axis === 'x'
@@ -4466,37 +4503,32 @@ function handleChatOrderDragStart(ev, id){
   if(group) group.classList.add('is-dragging');
 }
 function handleChatOrderDragOver(ev, targetId){
-  if(!chatOrderDragId) return;
+  // 掴んでいるのがチャットの行でない時は、置けない所(線も出さない。出ていた線も消す)。
+  if(!chatOrderDragId){ dndMark(null); return; }
+  const order = ensureChatOrder();
+  const draggedId = chatOrderDragId;
+  const fromIdx = order.indexOf(draggedId);
+  const toIdx = order.indexOf(targetId);
+  const group = ev.currentTarget;
+  if(fromIdx === -1 || toIdx === -1){ dndMark(null); return; }
   // dragoverでpreventDefault()しないと、そもそもdropイベントが発火しない
   // (ブラウザの既定動作は「ここにはドロップさせない」)。
   ev.preventDefault();
   ev.dataTransfer.dropEffect = 'move';
-  const order = ensureChatOrder();
-  const fromIdx = order.indexOf(chatOrderDragId);
-  const toIdx = order.indexOf(targetId);
-  const group = ev.currentTarget;
-  if(fromIdx === -1 || toIdx === -1){ dndMark(null); return; }
-  const pos = dndPos(ev, group.getBoundingClientRect(), 'y');
-  dndMark(dndInsertIndex(fromIdx, toIdx, pos) === fromIdx ? null : group, pos);
-}
-function handleChatOrderDrop(ev, targetId){
-  ev.preventDefault();
-  const draggedId = chatOrderDragId;
-  chatOrderDragId = null;
-  const group = ev.currentTarget;
-  dndClear();
-  if(!draggedId || draggedId === targetId) return;
-  const order = ensureChatOrder();
-  const fromIdx = order.indexOf(draggedId);
-  const toIdx = order.indexOf(targetId);
-  if(fromIdx === -1 || toIdx === -1) return;
   // 対象の前半に落とせば手前、後半に落とせば後ろに入る(以前は常に手前で、最後には置けなかった)。
-  const ins = dndInsertIndex(fromIdx, toIdx, dndPos(ev, group.getBoundingClientRect(), 'y'));
-  if(ins === fromIdx) return;
-  order.splice(fromIdx, 1);
-  order.splice(ins, 0, draggedId);
-  render();
+  const pos = dndPos(ev, group.getBoundingClientRect(), 'y');
+  const ins = dndInsertIndex(fromIdx, toIdx, pos);
+  // 線を出す位置と、置かれる位置は、同じ計算(ins)から作る(2026-11-07)
+  dndMark(ins === fromIdx ? null : group, pos, () => {
+    const o = ensureChatOrder();
+    if(o[fromIdx] !== draggedId) return;
+    o.splice(fromIdx, 1);
+    o.splice(ins, 0, draggedId);
+    render();
+  });
 }
+// 離した時は、線が出ている位置に置く(線が無ければ何もしない)。置く処理は、dragoverの時に線と一緒に用意してある。
+function handleChatOrderDrop(ev){ dndDropAtMark(ev); }
 function handleChatOrderDragEnd(){
   chatOrderDragId = null;
   dndClear();
@@ -4996,32 +5028,25 @@ function handleSetRowDragStart(ev, setId, idx){
 }
 function handleSetRowDragOver(ev, setId, targetIdx){
   const info = dragSetRowInfo;
-  // 別のセットの行・行以外のもの(ファイル等)は、ここには置けない(線も出さない)。
-  if(!info || info.setId !== setId) return;
+  // 別のセットの行・行以外のもの(ファイル等)は、ここには置けない(線も出さない。出ていた線も消す)。
+  if(!info || info.setId !== setId){ dndMark(null); return; }
+  const rowEl = ev.currentTarget.closest('.set-row');
+  if(!rowEl){ dndMark(null); return; }
   ev.preventDefault();
   ev.dataTransfer.dropEffect = 'move';
-  const rowEl = ev.currentTarget.closest('.set-row');
-  if(!rowEl) return;
-  const pos = dndPos(ev, dndRect(rowEl), 'y');
-  dndMark(dndInsertIndex(info.idx, targetIdx, pos) === info.idx ? null : rowEl, pos);
-}
-function handleSetRowDrop(ev, setId, targetIdx){
-  ev.preventDefault();
-  const info = dragSetRowInfo;
-  dragSetRowInfo = null;
-  const rowEl = ev.currentTarget.closest('.set-row');
-  dndClear();
-  if(!info || info.setId !== setId) return;
-  const rows = state.character.sets[setId];
-  if(!rows) return;
   // 対象の行の前半に落とせば手前、後半に落とせば後ろに入る(以前は常に手前で、最後には置けなかった)。
-  const pos = rowEl ? dndPos(ev, dndRect(rowEl), 'y') : 'before';
+  const pos = dndPos(ev, dndRect(rowEl), 'y');
   const ins = dndInsertIndex(info.idx, targetIdx, pos);
-  if(ins === info.idx) return;
-  const [row] = rows.splice(info.idx, 1);
-  rows.splice(ins, 0, row);
-  render();
+  // 線を出す位置と、置かれる位置は、同じ計算(ins)から作る(2026-11-07)
+  dndMark(ins === info.idx ? null : rowEl, pos, () => {
+    const rows = state.character.sets[setId];
+    if(!rows || !rows[info.idx]) return;
+    const [row] = rows.splice(info.idx, 1);
+    rows.splice(ins, 0, row);
+    render();
+  });
 }
+function handleSetRowDrop(ev){ dndDropAtMark(ev); }
 function handleSetRowDragEnd(){
   dragSetRowInfo = null;
   dndClear();
@@ -5970,25 +5995,20 @@ function topDropPlan(ev, targetKind, targetId){
 }
 function topDragOver(ev, targetKind, targetId){
   const plan = topDropPlan(ev, targetKind, targetId);
-  if(!plan) return; // 置けない所は、受け付けない(線も出さない)
+  // 置けない所は、受け付けない(線も出さない。出ていた線も消す)
+  if(!plan){ dndMark(null); return; }
   ev.preventDefault();
   ev.dataTransfer.dropEffect = 'move';
-  dndMark(plan.next ? plan.el : null, plan.pos);
-}
-function topDrop(ev, targetKind, targetId){
-  ev.preventDefault();
-  const plan = topDropPlan(ev, targetKind, targetId);
-  dragFieldId = null;
-  dragSetId = null;
-  dndClear();
-  if(!plan || !plan.next) return;
-  setSectionOrder(plan.sec, plan.next);
-  render();
+  // 線を出す位置と、置かれる位置は、同じ計画(plan.next)から作る(2026-11-07)
+  dndMark(plan.next ? plan.el : null, plan.pos, plan.next ? () => {
+    setSectionOrder(plan.sec, plan.next);
+    render();
+  } : null);
 }
 function handleFieldDragOver(ev, targetId){ topDragOver(ev, 'field', targetId); }
-function handleFieldDrop(ev, targetId){ topDrop(ev, 'field', targetId); }
+function handleFieldDrop(ev){ dndDropAtMark(ev); }
 function handleSetDragOver(ev, targetId){ topDragOver(ev, 'set', targetId); }
-function handleSetDrop(ev, targetId){ topDrop(ev, 'set', targetId); }
+function handleSetDrop(ev){ dndDropAtMark(ev); }
 function handleFieldDragEnd(){
   dragFieldId = null;
   dragSetId = null;
