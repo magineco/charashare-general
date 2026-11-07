@@ -3393,7 +3393,7 @@ function renderToolbar(){
     <button onclick="document.getElementById('tpl-file').click()">テンプレートを読み込み</button>
     <input id="tpl-file" type="file" accept="application/json" style="display:none" onchange="handleImportTemplateFile(this)">
     <button onclick="exportTemplate()">テンプレートをダウンロード</button>
-    <button onclick="openDriveBrowser()">Driveの一覧を開く</button>
+    <button onclick="openDriveBrowser('templates')">Driveの一覧を開く</button>
     ${templateDeleteBtn}
   </div>
   <div class="toolbar-row">
