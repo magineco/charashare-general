@@ -1,3 +1,5 @@
+<p align="center"><img src="logo.svg" width="96" height="96" alt="キャラシェアのロゴ(開いた扉とキャラクターカード)"></p>
+
 # キャラシェア・ジェネラル (charashare general)
 
 TRPG(テーブルトークRPG)のキャラクターシートを、利用者自身が任意のシステム向けに
@@ -18,6 +20,7 @@ Driveに保存・共有できる**Webツールです。「キャラシェア」�
 ## リポジトリの構成
 
 ```
+logo.svg                READMEに載せているロゴ(色を直接指定した単体のSVG)
 privacy-policy.html     プライバシーポリシー
 terms-of-service.html   利用規約
 general/

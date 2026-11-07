@@ -4,16 +4,17 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>利用規約 | キャラシェア</title>
-<meta name="description" content="キャラシェア(TRPGキャラクターシート管理ツール)の利用規約です。">
+<meta name="description" content="キャラシェア(TRPGキャラクターシートメーカー)の利用規約です。">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="キャラシェア">
 <meta property="og:title" content="利用規約 | キャラシェア">
-<meta property="og:description" content="キャラシェア(TRPGキャラクターシート管理ツール)の利用規約です。">
+<meta property="og:description" content="キャラシェア(TRPGキャラクターシートメーカー)の利用規約です。">
 <meta property="og:url" content="https://magineco.com/charashare/terms-of-service.html">
 <meta property="og:image" content="https://magineco.com/charashare/og-image.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta name="twitter:card" content="summary_large_image">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Cpath fill='%231e2129' stroke='%23c99a4f' stroke-width='2.6' stroke-linejoin='round' d='M7 44V21A17 17 0 0 1 41 21V44Z'/%3E%3Cpath fill='none' stroke='%23c99a4f' stroke-width='1.2' opacity='.5' d='M11.2 41V21.5A12.8 12.8 0 0 1 24 8.7M36.8 41V21.5A12.8 12.8 0 0 0 24 8.7'/%3E%3Cpath fill='none' stroke='%23c99a4f' stroke-width='2' d='M24 4.2V44'/%3E%3Ccircle fill='%23c99a4f' cx='20.3' cy='28' r='1.7'/%3E%3Ccircle fill='%23c99a4f' cx='27.7' cy='28' r='1.7'/%3E%3Cpath fill='none' stroke='%23c99a4f' stroke-width='2.4' stroke-linecap='round' d='M4 44.5H44'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <!-- Google tag (gtag.js) -->
@@ -68,13 +69,26 @@
     border-bottom:1px solid var(--line);
     display:flex;
     justify-content:space-between;
-    align-items:baseline;
+    align-items:center;
     gap:12px;
     flex-wrap:wrap;
   }
   .topnav .brand{ font-family:'Fraunces',serif; font-weight:600; font-size:1.2rem; }
   .topnav a{ font-size:0.88rem; color:var(--muted); text-decoration:underline; }
   .topnav a:hover{ color:var(--accent-bright); }
+  .topnav a.brand-logo{ font-size:inherit; color:var(--text); text-decoration:none; }
+  .topnav a.brand-logo:hover{ color:var(--text); }
+  /* ロゴ(2026-11-06)。アーチ形ドアの図案。閉じた扉=キャラシェア共通、開いた扉+アイコン=各ツール。色は配色の変数から取る。図案の座標は生成スクリプト(リポジトリ外)の出力 */
+  .brand-logo{ display:inline-flex; align-items:center; gap:10px; color:var(--text); text-decoration:none; border-radius:6px; }
+  .brand-logo svg{ display:block; width:38px; height:38px; flex:0 0 auto; }
+  a.brand-logo:hover .brand{ color:var(--accent); }
+  a.brand-logo:hover svg{ filter:brightness(1.15); }
+  a.brand-logo:focus-visible{ outline:2px solid var(--accent); outline-offset:3px; }
+  .logo-ground{ fill:none; stroke:var(--accent); stroke-width:2.4; stroke-linecap:round; }
+  .logo-closed{ fill:var(--surface-2); stroke:var(--accent); stroke-width:2.6; stroke-linejoin:round; }
+  .logo-closed-line{ fill:none; stroke:var(--accent); stroke-width:1.2; opacity:.5; }
+  .logo-closed-seam{ fill:none; stroke:var(--accent); stroke-width:2; }
+  .logo-knob{ fill:var(--accent); }
   .doc h1{
     font-size:1.7rem;
     margin-bottom:6px;
@@ -111,7 +125,7 @@
 <body>
 <div class="shell">
   <div class="topnav">
-    <span class="brand">キャラシェア</span>
+    <a class="brand-logo" href="./" title="キャラシェア総合ページへ" aria-label="キャラシェア総合ページへ"><svg viewBox="0 0 48 48" aria-hidden="true" focusable="false"><path class="logo-closed" d="M7 44V21A17 17 0 0 1 41 21V44Z"/><path class="logo-closed-line" d="M11.2 41V21.5A12.8 12.8 0 0 1 24 8.7M36.8 41V21.5A12.8 12.8 0 0 0 24 8.7"/><path class="logo-closed-seam" d="M24 4.2V44"/><circle class="logo-knob" cx="20.3" cy="28" r="1.7"/><circle class="logo-knob" cx="27.7" cy="28" r="1.7"/><path class="logo-ground" d="M4 44.5H44"/></svg><span class="brand">キャラシェア</span></a>
     <a href="./">← サービスに戻る</a>
   </div>
   <div class="doc">
