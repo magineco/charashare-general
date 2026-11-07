@@ -6111,9 +6111,39 @@ function handleFieldDragEnd(){
   dragSetId = null;
   dndEnd();
 }
+// テンプレート編集画面で項目の初期値(defaultValue)を変えた時、確認用キャラクターの、その項目の値のうち
+// 「初期値のまま」のものを、新しい初期値に追従させる(2026-11-07)。確認用キャラクターは、次の2つの形で
+// 古い初期値を値として持ってしまい、初期値を変えてもシートが変わらなかった:
+// - 確認画面で表(TSV)をクリックして離す(blur)だけで、中身を変えなくても、commitTableTsv()がその時の
+//   値(=古い初期値)を、確認用キャラクターの値として書き込む(空の表なら''が入る)
+// - 表形式の行は、作られた時(ensureInitialSetRows()等のbuildDefaultSetRow())の初期値を、行の値として持つ
+// 「初期値のまま」= 未入力(undefined/null)、または、古い初期値(無ければ型ごとの空: 数値0・真偽値false・他は'')と同じ値。
+// 作者が確認画面で実際に別の値を入れた所は、そのまま残す(実際のキャラクターと同じ扱い)。キャラクター編集画面
+// (実際のキャラクター)は、初期値を変える画面が無いので対象外。1枠に複数チェックボックスを持つ真偽値は、
+// 値が配列で初期値を使わないので対象外。
+function followDefaultInPreview(f, oldDefault){
+  if(state.screen !== 'templateEditor' || !f || f.kind !== 'input' || !state.character) return;
+  if(f.type === 'boolean' && checkboxCountOf(f) > 1) return;
+  const empty = f.type === 'number' ? 0 : f.type === 'boolean' ? false : '';
+  const base = oldDefault !== undefined ? oldDefault : empty;
+  const untouched = v => v === undefined || v === null || (typeof v !== 'object' && String(v) === String(base));
+  const vals = state.character.values;
+  if(vals && Object.prototype.hasOwnProperty.call(vals, f.id) && untouched(vals[f.id])) delete vals[f.id];
+  const fresh = f.defaultValue !== undefined ? f.defaultValue : empty;
+  for(const s of state.template.sections){
+    for(const st of s.sets){
+      if(!(st.fields || []).some(x => x.id === f.id)) continue;
+      for(const row of (state.character.sets[st.id] || [])){
+        if(row && untouched(row[f.id])) row[f.id] = fresh;
+      }
+    }
+  }
+}
 function applyPatch(kind, id, patch){
   const f = findFrame(kind, id);
+  const oldDefault = f ? f.defaultValue : undefined;
   if(f) Object.assign(f, patch);
+  if(f && kind === 'field' && Object.prototype.hasOwnProperty.call(patch, 'defaultValue')) followDefaultInPreview(f, oldDefault);
   render();
 }
 
