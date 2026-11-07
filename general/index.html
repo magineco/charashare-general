@@ -6139,6 +6139,16 @@ function followDefaultInPreview(f, oldDefault){
     }
   }
 }
+// 設定パネルの表(TSV)の初期値欄の確定(フォーカスを外した時、2026-11-07)。以前はonchangeで確定していたが、Tabキーでの
+// タブ文字の挿入(handleDataListTsvTabKey)は、値をプログラムで書き換えるだけなので、Chromiumはchangeを出さず、「変更前後の
+// 違いがタブ記号だけ」の編集が保存されなかった(利用者の指摘)。changeに頼らず、blurの時に、保存済みの初期値と比べて確定する
+// (違う時だけ。空にした時は、初期値なし=undefined)。
+function commitTableDefault(fieldId, textareaEl){
+  const f = findFrame('field', fieldId); if(!f) return;
+  const next = textareaEl.value ? textareaEl.value : undefined;
+  if(next === f.defaultValue) return;
+  applyPatch('field', fieldId, { defaultValue: next });
+}
 function applyPatch(kind, id, patch){
   const f = findFrame(kind, id);
   const oldDefault = f ? f.defaultValue : undefined;
@@ -6393,7 +6403,7 @@ function renderFieldTypeEditor(f){
     // 編集の仕方は、キャラクター側の表(クリックしてTSVを入力)と同じ: タブ区切りで入力・貼り付け、
     // 1行目は見出し行、Tabキーはタブ文字の挿入(handleDataListTsvTabKey)、Tabキーが無い
     // ソフトウェアキーボード用に「タブ記号をコピー」ボタン。空にした時は、初期値なし(undefined)にする。
-    html += `<label><span>初期値（タブ区切り。1行目は見出し行）</span><textarea class="dl-tsv-input" rows="6" placeholder="タブ区切りで入力・貼り付け" onkeydown="handleDataListTsvTabKey(event)" onchange="applyPatch('field','${f.id}',{defaultValue:this.value ? this.value : undefined})">\n${esc(f.defaultValue ?? '')}</textarea></label>`;
+    html += `<label><span>初期値（タブ区切り。1行目は見出し行）</span><textarea class="dl-tsv-input" rows="6" placeholder="タブ区切りで入力・貼り付け" onkeydown="handleDataListTsvTabKey(event)" onblur="commitTableDefault('${f.id}',this)">\n${esc(f.defaultValue ?? '')}</textarea></label>`;
     html += `<div class="tsv-default-tools">${tsvTabCopyButtonHtml()}</div>`;
   }
   return html;
