@@ -1260,9 +1260,14 @@ function loginAndThen(action){
   login();
 }
 function logout(){
-  if(state.accessToken){
-    google.accounts.oauth2.revoke(state.accessToken, () => {});
-  }
+  // Google側のアクセス許可の取り消し(google.accounts.oauth2.revoke)は、あえて行わない
+  // (2026-11-08、「ログアウトすると、同じGoogleアカウントの別ブラウザのログインも
+  // 外れる」という報告)。revokeは「このアプリに許可した全スコープ」をアカウント単位で
+  // 取り消すため、別のブラウザ・端末のセッションのリフレッシュトークンまで無効になり、
+  // そちらの次の更新が invalid_grant で失敗してログアウトされていた。
+  // このブラウザのログアウトに必要なのは、下のセッション記録(Firestore)の削除と
+  // Cookieの失効だけ。リフレッシュトークンの控えはFirestoreにしか無いので、削除すれば
+  // 誰も使えない。メモリ上のアクセストークンも、下で捨てる(失効は最長1時間)。
   // このアプリ側のセッション記録(Firestore)とCookieの後片付け。
   // 応答を待たずfire-and-forgetにして、ログアウトの画面遷移速度を保つ。
   fetch(OAUTH_REVOKE_URL, { method: 'POST', credentials: 'include' }).catch(() => {});
