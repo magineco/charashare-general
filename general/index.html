@@ -266,6 +266,19 @@
      狭い画面(760px以下)は.group-gridが1カラムになり行を共有しないため
      影響が無く、通常時も同じ行の高さが揃っている場合は変化が出ない)。 */
   .frame-field{ display:flex; flex-direction:column; justify-content:flex-end; gap:4px; cursor:default; }
+  /* 同じ行の「入力欄の上端」をそろえる(2026-11-20、利用者の要望。名称の下のラインが合うように)。
+     上の下揃え(justify-content:flex-end)は、名称が折り返した欄がある時は入力欄の上端がそろうが、
+     背の高い欄(複数行・画像・表)が同じ行にあると、短い欄が名称ごと下へ引っ張られて、入力欄の上端がバラける。
+     そこで、項目を「名称の行+入力欄」の2行ぶんのsubgridにして、行の中の全項目で名称の行の高さを共有する
+     (折り返した名称に合わせて、他の項目の名称の行も高くなり、入力欄は常に同じ線から始まる)。
+     名称は入力欄にくっつけて下(align-self:end)、入力欄は上(start)に置く。名称と入力欄の間は4px、行と行の間は10pxのまま。
+     justify-content:normal・列1本は、上のflex-endがグリッドでも効いて、列が右に詰められるのを避けるため。
+     subgrid非対応のブラウザ(Firefox 71未満・Chrome 117未満・Safari 16未満)では、上の下揃えのまま(従来どおり)。 */
+  @supports (grid-template-rows: subgrid){
+    .group-grid > .frame-field{ display:grid; grid-template-columns:minmax(0,1fr); grid-template-rows:subgrid; grid-row:span 2; row-gap:4px; justify-content:normal; }
+    .group-grid > .frame-field > .field-label-row{ align-self:end; }
+    .group-grid > .frame-field > :not(.field-label-row){ align-self:start; }
+  }
   /* フィフス版の個々のインプット見出し(.field label{color:var(--muted)})に
      合わせる。見出し・テーブルヘッダーと同じ強さの明るいアクセント色を
      全インプットの名称にまで使うと、画面全体が明るすぎて逆に読みづらく
@@ -296,7 +309,16 @@
   .random-result-value::before{ content:"→ "; color:var(--muted); font-weight:400; }
   /* インプットセットの行の中: 🎲ボタンと入力欄を横に並べる */
   .field-with-random{ display:flex; gap:6px; align-items:stretch; }
-  .field-with-random > select, .field-with-random > input, .field-with-random > .field-value{ flex:1 1 0; min-width:0; width:auto; }
+  .field-with-random > select, .field-with-random > input, .field-with-random > .field-value, .field-with-random > .input-affix{ flex:1 1 0; min-width:0; width:auto; }
+  /* 入力欄の前後のテキスト(2026-11-15。項目の設定の「入力欄の前/後ろに付けるテキスト」)。
+     前のテキスト・入力欄・後ろのテキストを横に並べる。入力欄は余った幅いっぱいに伸びる(幅の指定は、他の入力欄と同じ100%を打ち消す) */
+  .input-affix{ display:flex; align-items:center; gap:6px; min-width:0; }
+  .input-affix > input, .input-affix > select, .input-affix > textarea, .input-affix > .field-value, .input-affix > .checkbox-frame, .input-affix > .field-image{ flex:1 1 0; min-width:0; width:auto; }
+  /* 前後のテキストは、控えめな文字色(ラベルと同じ--muted)。表(TSV)以外のすべての項目に付けられる(2026-11-20) */
+  .input-affix > .affix-text{ flex:0 1 auto; max-width:40%; overflow-wrap:anywhere; line-height:1.4; color:var(--muted); }
+  /* 背の高い入力欄(複数行・画像)では、前後のテキストを上端に揃える(複数行は、1行目の文字の高さに合わせる) */
+  .input-affix.is-multiline, .input-affix.is-image{ align-items:flex-start; }
+  .input-affix.is-multiline > .affix-text{ line-height:1.5; padding-top:6px; white-space:pre-wrap; }
   /* 設定パネルの、表(TSV)の初期値の下の「タブ記号をコピー」ボタンの行 */
   .tsv-default-tools{ margin:-4px 0 10px; }
   /* 読み取り専用の欄(計算式・lookup・集計、および閲覧専用画面での
@@ -459,6 +481,14 @@
   .frame-divider .divider-line{ flex:1 1 auto; border-top:1px solid var(--line); }
   .frame-divider .divider-caption{ flex:0 0 auto; }
   .frame-divider.is-dragging{ opacity:0.45; outline:2px dashed var(--accent); outline-offset:2px; }
+  /* テキスト(2026-11-15。カテゴリー内に置く、固定の文章)。区切り線と同じく、項目の並び(.group-grid)の1要素。
+     横幅(span)を決めていなければ、全列にまたがる(.frame-text-full)。.frame-fieldではなく専用のクラスにして、
+     モバイル幅の.group-grid > .frame-fieldの指定が効かない代わりに、下のモバイル幅の指定で1列にする。 */
+  .group-grid > .frame-text-full{ grid-column:1 / -1; }
+  .frame-text{ position:relative; display:flex; align-items:flex-start; gap:6px; }
+  .frame-text .frame-text-body{ flex:1 1 auto; min-width:0; white-space:pre-wrap; overflow-wrap:anywhere; line-height:1.6; }
+  .mode-edit .frame-text{ min-height:30px; }
+  .frame-text.is-dragging{ opacity:0.45; outline:2px dashed var(--accent); outline-offset:2px; }
   /* 表形式(カテゴリー直下の並べ替え、2026-10-27): 動かしている表形式は、項目と同じく薄く、点線で囲む */
   .frame-set{ position:relative; }
   .frame-set.is-dragging{ opacity:0.45; outline:2px dashed var(--accent); outline-offset:2px; }
@@ -912,7 +942,7 @@
        ブラウザが暗黙列を自動生成してしまい、結局複数列のグリッドに
        戻ってラベルが1文字ずつ縦に折り返される不具合があったため、
        子要素側のspanも1列に上書きする。 */
-    .group-grid > .frame-field{ grid-column:1 !important; }
+    .group-grid > .frame-field, .group-grid > .frame-text{ grid-column:1 !important; }
     .category-body-row{ flex-direction:column; }
     /* 画像エリアの幅(%)は--cols同様インラインstyleで個別指定している
        ため、group-gridの列数と同じくここも!importantで上書きする。 */
@@ -1678,7 +1708,7 @@ function buildCharacterPreview(characterObj){
   state.character = { ...characterObj, values, sets };
   // 項目として数えたらtrue(先頭の指定の数に届いたら、呼び出し側が打ち切る)
   const consider = (f, rowScope) => {
-    if(f.kind === 'divider' || f.kind === 'break') return false;
+    if(isDecorKind(f) || f.kind === 'break') return false;
     if(f.type === 'multiline' || f.type === 'table' || f.type === 'image') return false;
     let text = '';
     try{ text = characterPreviewValueText(f, rowScope); }catch(e){ console.error(e); }
@@ -2076,6 +2106,9 @@ function isFieldInsideSet(fieldId){
 // できない等)は、この関数とは別の話として引き続き適用される。
 // インプットセットの「改行」(kind:'break'、2026-10-18)は、sets[].fieldsの中にインプットと並ぶが、
 // インプットではない(値を持たず、参照・計算・チャットパレットの対象にならない)。
+// 区切り線(kind:'divider')・テキスト(kind:'text'。2026-11-15)は、カテゴリー直下の並び(sec.fields)に入るが、項目ではない
+// 飾りの要素(値・参照・チャットパレット・ココフォリア連携・変更通知の対象にならない)。項目を数える・集める所は、ここで除く。
+function isDecorKind(f){ return !!f && (f.kind === 'divider' || f.kind === 'text'); }
 function setInputFieldsOf(st){ return st.fields.filter(f => f.kind !== 'break'); }
 // 改行で区切った、インプットの並び(段ごとの配列)。先頭・末尾・連続する改行が作る空の段は、無いものとして飛ばす。
 // 改行が無ければ、全インプットの1段だけ(従来どおりの表)。
@@ -2090,7 +2123,7 @@ function setLinesOf(st){
   return lines;
 }
 function fieldMatchesTypeFilter(f, typeFilter){
-  if(f.kind === 'divider' || f.kind === 'break') return false; // 区切り線・改行は項目ではない(参照の候補に出さない)
+  if(isDecorKind(f) || f.kind === 'break') return false; // 区切り線・テキスト・改行は項目ではない(参照の候補に出さない)
   if(!typeFilter) return true;
   return Array.isArray(typeFilter) ? typeFilter.includes(f.type) : f.type === typeFilter;
 }
@@ -2712,8 +2745,13 @@ function render(opts){
   restoreFocus();
   if(focusPanelNameOnRender){
     focusPanelNameOnRender = false;
-    const nameInput = app.querySelector('.panel-pane input[data-panel-name]');
-    if(nameInput){ nameInput.focus({ preventScroll: true }); nameInput.select(); }
+    const nameInput = app.querySelector('.panel-pane input[data-panel-name], .panel-pane textarea[data-panel-name]');
+    if(nameInput){
+      nameInput.focus({ preventScroll: true });
+      // 名称は全選択(打ち直しやすい)。テキストの文章は、全選択せず、末尾にカーソルを置く(クリックしただけで消えないように)
+      if(nameInput.tagName === 'TEXTAREA') nameInput.setSelectionRange(nameInput.value.length, nameInput.value.length);
+      else nameInput.select();
+    }
   }
   window.scrollTo(0, toTop ? 0 : scrollY);
   navSaveDoc();
@@ -2743,9 +2781,10 @@ function sampleTemplateScaffold(){
           // 「3で割って切り上げ」を計算式の÷切り上げ演算子でそのまま表現する。
           { id: 'f_bodyMod', label: '肉体修正値', type: 'number', kind: 'ref', refType: 'formula', terms: [{ op: null, field: 'f_bodyBase' }, { op: '÷↑', value: 3 }], span: 1, chatEnabled: true, chatTemplate: '2d6+[この値] 肉体判定' },
           // 「リストからランダム」の例(2026-10-18、利用者指定の並び)。同じ値を複数回並べると、その回数だけ
-          // 選ばれやすくなる(2d6は、中央の値ほど多く並べて山型にしている)。
+          // 選ばれやすくなる(2d6は、出目の組み合わせの数だけ並べて山型にしている。2〜12が1,2,3,4,5,6,5,4,3,2,1個の計36個。
+          // 2026-11-20、「1が入っている・低い側が1つずつ多い」という指摘で、本物の2d6の分布に直した)。
           { id: 'f_d6', label: '1d6', type: 'list', kind: 'input', span: 1, options: ['1', '2', '3', '4', '5', '6'], randomButton: true },
-          { id: 'f_2d6', label: '2d6', type: 'list', kind: 'input', span: 1, options: '1,2,2,3,3,3,4,4,4,4,5,5,5,5,5,6,6,6,6,6,6,7,7,7,7,7,7,7,8,8,8,8,8,9,9,9,9,10,10,10,11,11,12'.split(','), randomButton: true },
+          { id: 'f_2d6', label: '2d6', type: 'list', kind: 'input', span: 1, options: '2,3,3,4,4,4,5,5,5,5,6,6,6,6,6,7,7,7,7,7,7,8,8,8,8,8,9,9,9,9,10,10,10,11,11,12'.split(','), randomButton: true },
           { id: 'f_memo', label: 'メモ', type: 'multiline', kind: 'input', span: 4, minRows: 3, defaultValue: '' },
           { id: 'f_freeTable', label: '自由入力表', type: 'table', kind: 'input', span: 4 },
         ],
@@ -3573,6 +3612,7 @@ function renderSectionFrame(sec){
   const addFieldBtn = state.mode === 'edit' ? `<button class="add-frame-btn small" onclick="event.stopPropagation();addFieldToSection('${sec.id}')">+ 項目を追加</button>` : '';
   const addImageAreaBtn = (state.mode === 'edit' && !sec.imageArea) ? `<button class="add-frame-btn small" onclick="event.stopPropagation();addCategoryImageArea('${sec.id}')">+ 画像エリアを追加</button>` : '';
   const addDividerBtn = state.mode === 'edit' ? `<button class="add-frame-btn small" onclick="event.stopPropagation();addDividerToSection(${jsArg(sec.id)})">+ 区切り線を追加</button>` : '';
+  const addTextBtn = state.mode === 'edit' ? `<button class="add-frame-btn small" onclick="event.stopPropagation();addTextToSection(${jsArg(sec.id)})">+ テキストを追加</button>` : '';
   const addSetBtn = state.mode === 'edit' ? `<button class="add-frame-btn small" onclick="event.stopPropagation();addSetDef('${sec.id}')">+ 表形式を追加</button>` : '';
   return `<section class="frame-section ${selected ? 'is-selected' : ''}" ${frameAttrs('section', sec.id)}>
     <h2 class="section-title">${toggleBtn}${esc(sec.label)}${sec.collapsible ? ' <span class="muted small">(折りたたみ可)</span>' : ''}${ccfoliaSectionBadgeHtml(sec)}</h2>
@@ -3581,7 +3621,7 @@ function renderSectionFrame(sec){
         ${imageAreaHtml}
         <div class="group-grid" style="--cols:${cols}">${firstFields}</div>
       </div>
-      ${restHtml}${addFieldBtn}${addSetBtn}${addDividerBtn}${addImageAreaBtn}
+      ${restHtml}${addFieldBtn}${addSetBtn}${addDividerBtn}${addTextBtn}${addImageAreaBtn}
     </div>
   </section>`;
 }
@@ -3729,8 +3769,35 @@ function renderDividerFrame(f){
   const caption = edit ? '<span class="divider-caption muted small">区切り線</span>' : '';
   return `<div class="frame-divider ${selected ? 'is-selected' : ''}" ${frameAttrs('field', f.id)}${dragTargetAttrs}>${handle}<span class="divider-line"></span>${caption}</div>`;
 }
+// テキスト(kind:'text'。2026-11-15)。カテゴリー直下の並び(sec.fields)の中に、項目・区切り線と同じように並べられる、
+// 固定の文章。値は持たず、キャラクターのデータにも入らない(参照・チャットパレット・パーティービュー・ココフォリア連携の対象外)。
+// 文章は作者が設定パネルで書く。横幅(span)を決めていなければ、全列にまたがる(.frame-text-full)。
+// 外から読み込んだテンプレートの文字は信用しない: esc()を通し、長さを制限する(TEXT_BLOCK_MAX)。ハンドラに渡すidはjsArg()を通す。
+const TEXT_BLOCK_MAX = 2000;
+function renderTextFrame(f, containerCols){
+  const edit = state.mode === 'edit';
+  const text = typeof f.text === 'string' ? f.text.slice(0, TEXT_BLOCK_MAX) : '';
+  const hasText = text.trim() !== '';
+  // 確認画面・キャラクター画面では、空のテキストは何も出さない(編集中だけ、置き場所が分かるように出す)
+  if(!edit && !hasText) return '';
+  const selected = state.selection && state.selection.kind === 'field' && state.selection.id === f.id;
+  const sp = parseInt(f.span);
+  const hasSpan = Number.isFinite(sp) && sp >= 1;
+  const spanStyle = hasSpan ? ` style="grid-column:span ${Math.min(sp, containerCols || 3)}"` : '';
+  const handle = edit
+    ? `<span class="chat-drag-handle field-drag-handle" draggable="true" title="ドラッグで並べ替え" onclick="event.preventDefault();event.stopPropagation();" ondragstart="handleFieldDragStart(event,${jsArg(f.id)})" ondragend="handleFieldDragEnd(event)">⠿</span>`
+    : '';
+  const dragTargetAttrs = edit
+    ? ` ondragover="handleFieldDragOver(event,${jsArg(f.id)})" ondrop="handleFieldDrop(event,${jsArg(f.id)})"`
+    : '';
+  const body = hasText
+    ? `<div class="frame-text-body">${esc(text)}</div>`
+    : `<div class="frame-text-body muted small">(テキストが空です。クリックして入力)</div>`;
+  return `<div class="frame-text ${hasSpan ? '' : 'frame-text-full'} ${selected ? 'is-selected' : ''}" ${frameAttrs('field', f.id)}${spanStyle}${dragTargetAttrs}>${handle}${body}</div>`;
+}
 function renderFieldFrame(f, rowScope, containerCols){
   if(f.kind === 'divider') return renderDividerFrame(f);
+  if(f.kind === 'text') return renderTextFrame(f, containerCols);
   const selected = state.selection && state.selection.kind === 'field' && state.selection.id === f.id;
   const broken = isFieldReferenceBroken(f);
   const span = Math.max(1, Math.min(parseInt(f.span) || 1, containerCols || 3));
@@ -3803,7 +3870,7 @@ function listOptionsOf(f, rowScope){
 // randomButton:trueを付けたもの。設定パネルの「データの種類」では、「リストから選ぶ」とは
 // 別の選択肢として出す(fieldTypeKeyOf)。値の形・計算・チャットパレット・パーティー
 // ビューでの扱いは、リスト型と全く同じ。
-function isRandomListField(f){ return !!(f && f.kind !== 'divider' && f.type === 'list' && f.randomButton); }
+function isRandomListField(f){ return !!(f && !isDecorKind(f) && f.type === 'list' && f.randomButton); }
 function hasRandomListFields(){
   return state.template.sections.some(s => s.fields.some(isRandomListField) || s.sets.some(st => st.fields.some(isRandomListField)));
 }
@@ -3840,7 +3907,32 @@ function randomButtonHtml(f, rowScope){
   else attrs = ` title="ランダムに選ぶ" onclick="rollRandomField(${jsArg(f.id)},${rowScope ? jsArg(rowScope.setId) + ',' + rowScope.rowIndex : 'null,0'})"`;
   return `<button type="button" class="random-btn" aria-label="ランダムに選ぶ"${attrs}>🎲</button>`;
 }
+// 入力欄の前後のテキスト(2026-11-15、利用者の依頼)。項目の設定の「入力欄の前に付けるテキスト」「後ろに付けるテキスト」
+// (prefix・suffix。どちらも省略可、各AFFIX_MAX文字まで)。数値・文字(1行)・リスト・計算の入力欄(表形式の中の項目も)に付けられる。
+// 表示だけの飾りで、値・計算・チャットパレット・ココフォリア連携・パーティービューには影響しない
+// (入力欄の中身は変わらず、前後に文字が並ぶだけ)。2026-11-20、利用者の指示で、数値・文字・リスト・計算だけでなく、
+// 表(TSV)以外のすべての項目(チェックボックス・複数行・画像も)に付けられるようにした。文字色は控えめ(--muted)。
+// 外から読み込んだテンプレートの文字は信用しない: 文字列だけを通し、長さを制限し、esc()を通す。
+const AFFIX_MAX = 30;
+// 前後のテキストを付けられる項目か(区切り線・テキストと、表(TSV)は付けられない)。設定パネルの欄を出すかの判定にも使う
+function fieldAcceptsAffix(f){
+  return !!f && !isDecorKind(f) && f.type !== 'table';
+}
+function fieldAffixOf(f){
+  if(!fieldAcceptsAffix(f)) return null;
+  const pre = typeof f.prefix === 'string' ? f.prefix.slice(0, AFFIX_MAX) : '';
+  const suf = typeof f.suffix === 'string' ? f.suffix.slice(0, AFFIX_MAX) : '';
+  return (pre || suf) ? { pre, suf } : null;
+}
 function renderFieldInput(f, rowScope){
+  const core = renderFieldInputCore(f, rowScope);
+  const a = fieldAffixOf(f);
+  if(!a) return core;
+  // 背の高い入力欄(複数行・画像)は、前後のテキストを上端に揃える(CSSの.is-multiline/.is-image)
+  const cls = f.type === 'multiline' ? ' is-multiline' : (f.type === 'image' ? ' is-image' : '');
+  return `<div class="input-affix${cls}">${a.pre ? `<span class="affix-text affix-pre">${esc(a.pre)}</span>` : ''}${core}${a.suf ? `<span class="affix-text affix-suf">${esc(a.suf)}</span>` : ''}</div>`;
+}
+function renderFieldInputCore(f, rowScope){
   if(f.kind === 'ref' && (f.refType === 'formula' || f.refType === 'lookup' || f.refType === 'aggregateSum')){
     const errors = getFieldReferenceErrors(f);
     if(errors.length){
@@ -5207,13 +5299,13 @@ function ccfoliaSetupActive(){ return !!state.ccfoliaSetup && state.screen === '
 // 対象の項目: カテゴリー直下のインプット・計算式等(区切り線は除く)。インプットセット内の項目は対象外。
 function ccfoliaTopFields(){
   const out = [];
-  state.template.sections.forEach(s => (s.fields || []).forEach(f => { if(f.kind !== 'divider') out.push(f); }));
+  state.template.sections.forEach(s => (s.fields || []).forEach(f => { if(!isDecorKind(f)) out.push(f); }));
   return out;
 }
 // 対象の項目(カテゴリー直下の項目)ならその項目、そうでなければnull
 function ccfoliaEligibleField(id){
   const f = findFrame('field', id);
-  return (f && f.kind !== 'divider' && f.kind !== 'break' && !isFieldInsideSet(id)) ? f : null;
+  return (f && !isDecorKind(f) && f.kind !== 'break' && !isFieldInsideSet(id)) ? f : null;
 }
 // 'number' | 'text' | 'unsupported'(チェックボックス・表・画像)
 function ccfoliaValueKind(f){
@@ -5504,7 +5596,7 @@ function setCcfoliaSectionRole(secId, role){
   const cfg = ccfoliaEnsureStored();
   let n = 0;
   (sec.fields || []).forEach(f => {
-    if(f.kind === 'divider' || ccfoliaValueKind(f) === 'unsupported') return;
+    if(isDecorKind(f) || ccfoliaValueKind(f) === 'unsupported') return;
     const cur = ccfoliaEntryOf(cfg, f);
     if(cur && (cur.role === 'name' || cur.role === 'initiative' || cur.role === 'status')) return;
     if(role === 'param' || role === 'skip') cfg.fields[f.id] = (role === 'param' && cur && cur.label) ? { role, label: cur.label } : { role };
@@ -5956,6 +6048,36 @@ function addDividerToSection(sectionId){
   state.selection = { kind: 'field', id: d.id };
   render();
 }
+// テキストを足す(2026-11-15)。区切り線と同じ: このカテゴリーの項目を選択中なら、その直後に入れる。無ければ末尾。
+// 追加したら、その設定パネルを開き、文章の欄にフォーカスする。
+function addTextToSection(sectionId){
+  const s = findFrame('section', sectionId); if(!s) return;
+  if(!s.fields) s.fields = [];
+  const t = { id: uid('f'), kind: 'text', label: '', text: '' };
+  let idx = s.fields.length;
+  let afterId = null;
+  if(state.selection && state.selection.kind === 'field'){
+    const i = s.fields.findIndex(x => x.id === state.selection.id);
+    if(i > -1){ idx = i + 1; afterId = s.fields[i].id; }
+  }
+  s.fields.splice(idx, 0, t);
+  addToSectionOrder(s, t.id, afterId);
+  state.selection = { kind: 'field', id: t.id };
+  requestPanelNameFocus();
+  render();
+}
+function setTextBlockText(id, value){
+  const f = findFrame('field', id); if(!f || f.kind !== 'text') return;
+  f.text = String(value).slice(0, TEXT_BLOCK_MAX);
+  render();
+}
+// 横幅(列数)。空欄・1未満は、「1行いっぱい」(span無し)
+function setTextBlockSpan(id, value){
+  const f = findFrame('field', id); if(!f || f.kind !== 'text') return;
+  const n = parseInt(value);
+  if(Number.isFinite(n) && n >= 1) f.span = n; else delete f.span;
+  render();
+}
 // 「+ 改行を追加」(2026-10-18)。このセットのインプット(または改行)を選択中なら、その直後に入れる
 // (区切り線と同じ。「ここまでを1段目にしたい」という操作の流れに合う)。選択が無ければ、最後の
 // インプットの手前(最後のインプットだけが次の段に回る)。インプットが1つしか無ければ末尾。
@@ -5992,7 +6114,7 @@ function addFieldToSet(setId){
 function duplicateField(id){
   const f = findFrame('field', id);
   const c = findContainer('field', id);
-  if(!f || !c || c.idx < 0 || f.kind === 'divider' || f.kind === 'break') return;
+  if(!f || !c || c.idx < 0 || isDecorKind(f) || f.kind === 'break') return;
   const copy = JSON.parse(JSON.stringify(f));
   copy.id = uid('f');
   copy.label = (f.label || '新しい項目') + 'のコピー';
@@ -6063,8 +6185,8 @@ function handleFieldDragStart(ev, id){
   ev.dataTransfer.setData('text/plain', id);
   // 掴んでいるインプットの見た目(2026-10-16): ポインタには名称のカード、元の位置は薄く。
   const f = findFrame('field', id);
-  dndSetGhost(ev, f ? (f.kind === 'divider' ? '区切り線' : f.label) : id);
-  dndBeginTop(ev.target.closest && ev.target.closest('.frame-field, .frame-divider'), id, topItemSection('field', id));
+  dndSetGhost(ev, f ? (f.kind === 'divider' ? '区切り線' : f.kind === 'text' ? 'テキスト' : f.label) : id);
+  dndBeginTop(ev.target.closest && ev.target.closest('.frame-field, .frame-divider, .frame-text'), id, topItemSection('field', id));
 }
 // ドロップ先(項目・区切り線・表形式)への挿入の計画。ドラッグしているもの(項目か表形式)と、ドロップ先が、同じカテゴリー直下の
 // 時だけ並べ替えられる(別のカテゴリー・表形式の中はできない。↑↓ボタンの移動範囲と揃える)。
@@ -6077,7 +6199,8 @@ function topDropPlan(ev, targetKind, targetId){
   const el = ev.currentTarget;
   // 項目は左右にも並ぶため、対象の左半分なら手前(左端)、右半分なら後ろ(右端)に線を出す。
   // 区切り線・表形式は横いっぱいの行なので、上半分なら手前、下半分なら後ろ(縦方向)で判定する
-  const axis = (targetKind === 'field' && !el.classList.contains('frame-divider')) ? 'x' : 'y';
+  // (全列にまたがるテキスト(.frame-text-full)も、区切り線と同じく横いっぱいの行なので、縦方向。横幅を決めたテキストは、項目と同じ横方向)
+  const axis = (targetKind === 'field' && !el.classList.contains('frame-divider') && !el.classList.contains('frame-text-full')) ? 'x' : 'y';
   const pos = dndPos(ev, el.getBoundingClientRect(), axis);
   return { sec, el, pos, next: reorderedTopIds(sec, src.id, targetId, pos) };
 }
@@ -6186,16 +6309,17 @@ function renderPanel(){
   const f = findFrame(kind, id);
   if(!f){ state.selection = null; return ''; }
   const isDivider = kind === 'field' && f.kind === 'divider';
+  const isText = kind === 'field' && f.kind === 'text';
   const isBreak = kind === 'field' && f.kind === 'break';
-  const title = isDivider ? '区切り線の設定' : isBreak ? '改行の設定' : panelTitle(kind);
-  const delLabel = isDivider ? '区切り線' : isBreak ? '改行' : panelTitle(kind).replace('の設定', '');
+  const title = isDivider ? '区切り線の設定' : isText ? 'テキストの設定' : isBreak ? '改行の設定' : panelTitle(kind);
+  const delLabel = isDivider ? '区切り線' : isText ? 'テキスト' : isBreak ? '改行' : panelTitle(kind).replace('の設定', '');
   return `<div class="panel-pane">
     <div class="panel-head"><strong>${esc(title)}</strong><button class="icon-btn" onclick="closePanel()">×</button></div>
     <div class="panel-body">${renderPanelBody(kind, f)}</div>
     <div class="panel-actions">
       <button onclick="moveFrame('${kind}','${id}',-1)">↑ 上へ</button>
       <button onclick="moveFrame('${kind}','${id}',1)">↓ 下へ</button>
-      ${kind === 'field' && !isDivider && !isBreak ? `<button onclick="duplicateField(${jsArg(id)})">複製</button>` : ''}
+      ${kind === 'field' && !isDivider && !isText && !isBreak ? `<button onclick="duplicateField(${jsArg(id)})">複製</button>` : ''}
       <button class="danger-btn" onclick="removeFrame('${kind}','${id}')">この${esc(delLabel)}を削除</button>
     </div>
   </div>`;
@@ -6265,6 +6389,13 @@ function renderPanelBody(kind, f){
   if(kind === 'field' && f.kind === 'divider'){
     return `<p class="muted small">カテゴリー内で、項目の並びを横いっぱいの線で区切ります。この線より後ろの項目は、次の行から並びます。「⠿」をドラッグするか、下の「↑ 上へ」「↓ 下へ」で位置を動かせます。</p>`;
   }
+  if(kind === 'field' && f.kind === 'text'){
+    // テキスト(2026-11-15): 固定の文章。文章の欄は、選んだ時・追加した時にフォーカスする(data-panel-name)
+    const sp = parseInt(f.span);
+    return `<label><span>テキスト</span><textarea rows="6" maxlength="${TEXT_BLOCK_MAX}" data-panel-name onchange="setTextBlockText(${jsArg(f.id)},this.value)">\n${esc(typeof f.text === 'string' ? f.text.slice(0, TEXT_BLOCK_MAX) : '')}</textarea></label>`
+      + `<label><span>横幅（空欄の時は1行いっぱい）</span><input type="number" min="1" value="${Number.isFinite(sp) && sp >= 1 ? sp : ''}" onchange="setTextBlockSpan(${jsArg(f.id)},this.value)"></label>`
+      + `<p class="muted small">シートに、固定の文章を表示します。改行はそのまま表示されます。キャラクターの値には入りません。「⠿」をドラッグするか、下の「↑ 上へ」「↓ 下へ」で位置を動かせます。</p>`;
+  }
   if(kind === 'field'){
     // カテゴリー直下のインプットは、横幅をカテゴリーの列数を単位とした
     // 占有列数(span)で設定できる。上限は特に設けない。カテゴリーの列数を
@@ -6284,7 +6415,12 @@ function renderPanelBody(kind, f){
     // 設定できる(セット内は行ごとに繰り返し出力される。後述の
     // renderChatPaletteEditor/renderChatPalette参照)。
     const chatEditor = (f.type !== 'table' && f.type !== 'image') ? renderChatPaletteEditor(f) : '';
-    return labelInput + spanInput + renderFieldTypeEditor(f) + chatEditor;
+    // 入力欄の前後のテキスト(2026-11-15): 表(TSV)以外のすべての項目に付けられる(2026-11-20に拡大。fieldAcceptsAffix)
+    const affixEditor = fieldAcceptsAffix(f)
+      ? `<label><span>入力欄の前に付けるテキスト（任意）</span><input type="text" maxlength="${AFFIX_MAX}" placeholder="例: ¥" value="${escAttr(f.prefix ?? '')}" onchange="setFieldAffix(${jsArg(f.id)},'prefix',this.value)"></label>`
+        + `<label><span>入力欄の後ろに付けるテキスト（任意）</span><input type="text" maxlength="${AFFIX_MAX}" placeholder="例: 点" value="${escAttr(f.suffix ?? '')}" onchange="setFieldAffix(${jsArg(f.id)},'suffix',this.value)"></label>`
+      : '';
+    return labelInput + spanInput + renderFieldTypeEditor(f) + affixEditor + chatEditor;
   }
   return '';
 }
@@ -6412,6 +6548,14 @@ function renderFieldTypeEditor(f){
     html += `<div class="tsv-default-tools">${tsvTabCopyButtonHtml()}</div>`;
   }
   return html;
+}
+// 入力欄の前後のテキストを設定する(which: 'prefix' | 'suffix')。前後の空白は取り除き、空にしたら項目から外す。
+// データの種類を、付けられない種類(チェックボックス等)に変えても、値は消さずに残す(戻した時に、そのまま使える)
+function setFieldAffix(id, which, value){
+  const f = findFrame('field', id); if(!f || (which !== 'prefix' && which !== 'suffix')) return;
+  const v = String(value).trim().slice(0, AFFIX_MAX);
+  if(v) f[which] = v; else delete f[which];
+  render();
 }
 // 文字の入力の「複数行にする」(type:'string'⇄'multiline')。初期値・入力例は持ち越す。
 function setStringMultiline(id, on){
@@ -7069,7 +7213,7 @@ function renderDataListEditorBlock(dl){
 function allFieldsInTemplate(){
   const out = [];
   for(const s of state.template.sections){
-    for(const f of s.fields) if(f.kind !== 'divider') out.push(f); // 区切り線は項目ではない
+    for(const f of s.fields) if(!isDecorKind(f)) out.push(f); // 区切り線・テキストは項目ではない
     for(const st of s.sets) for(const f of setInputFieldsOf(st)) out.push(f); // 改行は項目ではない
   }
   return out;
@@ -7079,7 +7223,7 @@ function allFieldsInTemplate(){
 function templateFieldLabelMap(tpl){
   const map = {};
   (tpl.sections || []).forEach(s => {
-    (s.fields || []).forEach(f => { if(f.kind !== 'divider') map[f.id] = f.label; }); // 区切り線は、追加・削除の通知の対象にしない
+    (s.fields || []).forEach(f => { if(!isDecorKind(f)) map[f.id] = f.label; }); // 区切り線・テキストは、追加・削除の通知の対象にしない
     (s.sets || []).forEach(st => (st.fields || []).forEach(f => { if(f.kind !== 'break') map[f.id] = f.label; })); // 改行は、追加・削除の通知の対象にしない
   });
   return map;
