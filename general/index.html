@@ -380,7 +380,9 @@
      見出し・セルは、自分の枠を出さない。 */
   .set-table-framed{ position:relative; }
   .mode-edit .set-table-framed .set-table-header .set-cell-label[data-frame-id],
-  .mode-edit .set-table-framed .set-row .set-cell[data-frame-id]{ outline:none; }
+  .mode-edit .set-table-framed .set-row .set-cell[data-frame-id],
+  .mode-ccfolia .set-table-framed .set-table-header .set-cell-label[data-frame-id],
+  .mode-ccfolia .set-table-framed .set-row .set-cell[data-frame-id]{ outline:none; }
   .set-col-frame{ position:absolute; box-sizing:border-box; border:2px solid var(--accent); border-radius:6px; pointer-events:none; z-index:2; }
   .set-col-frame.is-hover{ border-style:dashed; }
   /* インプットセットの「改行」(2026-10-18)。編集中は、インプットの並びの中に、1行いっぱいの
@@ -567,6 +569,8 @@
   /* 狭い欄では、タグを名称の下の行に回す(名称が1文字ずつ折り返されないように) */
   .mode-ccfolia .field-label-left{ flex-wrap:wrap; row-gap:2px; }
   .mode-ccfolia .ccfolia-badge{ margin-left:0; }
+  /* 表形式の列の見出し: タグは、列の名称の下の行に置く(狭い列でも、名称が折り返されて潰れないように) */
+  .mode-ccfolia .set-cell-label .ccfolia-badge{ display:block; width:fit-content; max-width:100%; margin-top:3px; white-space:normal; overflow-wrap:anywhere; border-radius:10px; }
   .ccfolia-badge.is-set{ color:var(--accent); border-color:var(--accent); }
   .ccfolia-badge.is-unset{ border-style:dashed; color:var(--text); }
   .ccfolia-badge.is-skip, .ccfolia-badge.is-unsupported{ opacity:0.7; }
@@ -2734,8 +2738,11 @@ function render(opts){
   // ココフォリア連携の設定画面は、テンプレート編集画面の確認画面(state.mode==='view')の間だけ成り立つ
   if(state.ccfoliaSetup && !ccfoliaSetupActive()) state.ccfoliaSetup = false;
   if(state.ccfoliaExportOpen && !(state.screen === 'characterEditor' || state.screen === 'characterView' || state.screen === 'templateEditor')) state.ccfoliaExportOpen = false;
-  ccfoliaRenderRows = null; ccfoliaRowMap = null;
-  if(ccfoliaSetupActive()) ccfoliaRowMap = new Map(ccfoliaRows().map(r => [r.f.id, r]));
+  ccfoliaRenderRows = null; ccfoliaRenderSetRows = null; ccfoliaRowMap = null;
+  if(ccfoliaSetupActive()){
+    ccfoliaRowMap = new Map(ccfoliaRows().map(r => [r.f.id, r]));
+    ccfoliaSetRows().forEach(r => ccfoliaRowMap.set(r.f.id, r)); // 行数を固定した表形式の列も、クリックで扱いを決められる
+  }
   app.className = state.mode === 'edit' ? 'mode-edit' : (ccfoliaSetupActive() ? 'mode-view mode-ccfolia' : 'mode-view');
   // チャットパレットは、テンプレート編集画面では従来通りシート内に
   // インライン表示するが、キャラクター編集/表示画面ではフローティング
@@ -2755,7 +2762,7 @@ function render(opts){
     renderRandomResultModal() +
     renderCcfoliaExportModal() +
     (isCharacterScreen ? renderFloatingChatPalette() : '');
-  ccfoliaRenderRows = undefined; ccfoliaRowMap = null;
+  ccfoliaRenderRows = undefined; ccfoliaRenderSetRows = undefined; ccfoliaRowMap = null;
   applyTemplateColors(false);
   app.querySelectorAll('textarea').forEach(autoResizeTextarea);
   syncSetColumnFrames();
@@ -4221,7 +4228,7 @@ function placeSetColumnFrame(fieldId, cls){
 }
 function syncSetColumnFrames(){
   document.querySelectorAll('.set-col-frame').forEach(el => el.remove());
-  if(state.mode !== 'edit') return;
+  if(state.mode !== 'edit' && !ccfoliaSetupActive()) return; // 編集中と、ココフォリア連携の設定画面(行数を固定した表形式の列)で使う
   const sel = state.selection && state.selection.kind === 'field' ? state.selection.id : null;
   if(sel) placeSetColumnFrame(sel, 'is-selected');
   if(setColHoverId && setColHoverId !== sel) placeSetColumnFrame(setColHoverId, 'is-hover');
@@ -4300,9 +4307,15 @@ function renderSetFrame(set){
     // 改行で複数の段に分けたセットでは、表の先頭の見出しと列は1段目のインプットだけ(2段目以降は各行の中に見出しを出す。renderSetRow())
     const firstLine = setLinesOf(set)[0] || [];
     const tc = setTableCols(set);
-    const headerCells = (tc.left ? spacerCell : '') + firstLine.map(f =>
-      `<span class="set-cell-label${isFieldReferenceBroken(f) ? ' is-broken' : ''}">${esc(f.label)}</span>`
-    ).join('') + (tc.right ? spacerCell : '');
+    // ココフォリア連携の設定画面(2026-11-21): 行数を固定した表形式は、列(見出し・各セル)をクリックして、ココフォリアでの扱いを決める。
+    // 選んだ列・指した列は、編集中の表と同じ、見出しから最後の行まで通る1つの枠(.set-table-framed)で囲む
+    const cfCols = ccfoliaSetupActive() && !!set.fixedRows && !!ccfoliaRowMap;
+    const headerCells = (tc.left ? spacerCell : '') + firstLine.map(f => {
+      const cf = cfCols && ccfoliaRowMap.has(f.id);
+      const picked = cf && state.selection && state.selection.kind === 'field' && state.selection.id === f.id;
+      const pick = cf ? ` data-frame-id="${f.id}" onclick="selectCcfoliaField(event,${jsArg(f.id)})"` : '';
+      return `<span class="set-cell-label${isFieldReferenceBroken(f) ? ' is-broken' : ''}${picked ? ' is-selected' : ''}"${pick}>${esc(f.label)}${cf ? ccfoliaBadgeHtml(f) : ''}</span>`;
+    }).join('') + (tc.right ? spacerCell : '');
     const header = rows.length ? `<div class="set-table-header">${headerCells}</div>` : '';
     const rowsHtml = rows.map((row, idx) => renderSetRow(set, row, idx, rows.length)).join('');
     // 各項目のwidth(既定1)をfr値として使い、列ごとの相対的な太さを
@@ -4310,7 +4323,8 @@ function renderSetFrame(set){
     // 最低幅(90px)は今まで通り確保しつつ、width比率に応じて余った
     // スペースを配分する。両端のautoは操作列(左が⠿↑↓、右が−)。
     const colTemplate = (tc.left ? 'auto ' : '') + firstLine.map(setColTrack).join(' ') + (tc.right ? ' auto' : '');
-    body = `<div class="set-table-wrap"><div class="set-table" style="grid-template-columns:${colTemplate}">${header}${rowsHtml}</div></div>`;
+    const cfFramed = cfCols && setLinesOf(set).length === 1; // 改行のある表は、列を囲む1つの枠は使わない(編集中の表と同じ)
+    body = `<div class="set-table-wrap"><div class="set-table${cfFramed ? ' set-table-framed' : ''}" style="grid-template-columns:${colTemplate}">${header}${rowsHtml}</div></div>`;
     if(!state.readOnly && !set.fixedRows) addRowBtn = `<button class="add-row-btn" onclick="addSetRow('${set.id}')">+ 行を追加</button>`;
   }
   // 編集中は、項目と同じように、⠿のドラッグで並べ替えられる(項目・区切り線・表形式を、まとめて並べ替える)
@@ -4323,7 +4337,9 @@ function renderSetFrame(set){
   return `<div class="frame-set ${selected ? 'is-selected' : ''}" ${frameAttrs('set', set.id)}${dragTargetAttrs}>
     <div class="set-header">
       <h3 class="set-title">${dragHandle}${esc(set.label)}</h3>
-      <div class="set-header-actions">${ccfoliaSetupActive() ? '<span class="muted small">ココフォリアには出ません（チャットパレットだけ）</span>' : ''}${addRowBtn}${addFieldBtn}</div>
+      <div class="set-header-actions">${ccfoliaSetupActive() ? (set.fixedRows
+        ? '<span class="muted small">列をクリックして、ココフォリアに出す列を決めます（ラベルは「行の見出し 列の名称」）</span>'
+        : '<span class="muted small">ココフォリアには出ません（チャットパレットだけ）。行の数を固定した表形式は、列ごとに出せます</span>') : ''}${addRowBtn}${addFieldBtn}</div>
     </div>
     ${body}
   </div>`;
@@ -4345,10 +4361,14 @@ function renderSetRow(set, row, idx, rowCount){
   // テンプレート編集中(行の数を固定した表形式だけが、表の形で出る。renderSetFixedEditTable())は、並べ替えが無いのでドロップ先は持たず、
   // セルは触れなくして、クリックで項目の選択にする
   const editing = state.mode === 'edit';
+  // ココフォリア連携の設定画面で、行数を固定した表形式の列は、セルをクリックしてその列の扱いを決める(入力欄は触れない)
+  const cfCols = !editing && ccfoliaSetupActive() && !!set.fixedRows && !!ccfoliaRowMap;
+  const cfPick = f => cfCols && ccfoliaRowMap.has(f.id);
   const dropAttrs = editing ? '' : ` ondragover="handleSetRowDragOver(event,'${set.id}',${idx})" ondrop="handleSetRowDrop(event,'${set.id}',${idx})"`;
-  const pickAttrs = f => editing ? ` data-frame-id="${f.id}" onclick="selectFrame(event,'field','${f.id}')"` : '';
-  const pickClass = f => (editing && state.selection && state.selection.kind === 'field' && state.selection.id === f.id) ? ' is-selected' : '';
-  const inertIf = html => editing ? inertInputsHtml(html) : html;
+  const pickAttrs = f => editing ? ` data-frame-id="${f.id}" onclick="selectFrame(event,'field','${f.id}')"`
+    : (cfPick(f) ? ` data-frame-id="${f.id}" onclick="selectCcfoliaField(event,${jsArg(f.id)})"` : '');
+  const pickClass = f => ((editing || cfPick(f)) && state.selection && state.selection.kind === 'field' && state.selection.id === f.id) ? ' is-selected' : '';
+  const inertIf = html => editing ? inertInputsHtml(html) : (cfCols ? inertInputsHtml(html) : html);
   const lines = setLinesOf(set);
   const firstLine = lines[0] || [];
   // 改行のあるセット(2段以上)は、この行を、表のグリッドの中で段の数だけ縦にまたがらせる(2026-10-18)。
@@ -5305,13 +5325,22 @@ function setSectionInitialCollapsed(id, closed){
  * template.ccfolia = { v:1, fields:{ [項目ID]: { role, label?, maxFieldId?, maxValue? } } }
  *   role: 'name' | 'initiative' | 'status' | 'param' | 'memo' | 'skip'(出さない)。
  *   fieldsに無い項目は「未設定」(設定が1つでもある時は、ココフォリアに出さない)。
- *   対象はカテゴリー直下のインプット・計算式等。インプットセット内の項目は対象外(チャットパレットには出る)。
+ *   対象はカテゴリー直下のインプット・計算式等と、行の数を固定した表形式の列(ステータス・パラメータ・出さない、だけ。下のCCFOLIA_ROW_LABEL_SEPARATORの説明)。
+ *   行数が固定でない表形式の項目は対象外(チャットパレットには出る)。
  *   チェックボックス・表・画像は出せない。
  * 値が空(未入力)の名前・パラメータ・メモは「[項目名]」を仮に入れる(数値のステータスは0)。
  */
 const CCFOLIA_ROLE_LABELS = { name: '名前', initiative: 'イニシアチブ', status: 'ステータス', param: 'パラメータ', memo: 'メモ', skip: '出さない' };
 const CCFOLIA_ROLES_BY_KIND = { text: ['name', 'param', 'memo', 'skip'], number: ['initiative', 'status', 'param', 'skip'] };
 const CCFOLIA_MAX_LABEL_LENGTH = 60;
+/* 表形式の列(2026-11-21、利用者の依頼): 行の数を固定した表形式(fixedRows)の、列(表形式の中の項目)ごとに、
+ * 「ステータス」「パラメータ」「出さない」を選んで、ココフォリアに出せる。設定は、ふつうの項目と同じ template.ccfolia.fields に、
+ * 列(項目)のIDで持つ(IDはテンプレート全体で一意)。名前・イニシアチブ・メモは、1つずつなので、列には選べない。
+ * ココフォリアに送るラベルは「その行の見出し + 区切り + 列の名称」(例: 魅力の行の「修正値」の列 → 「魅力 修正値」)。
+ * 見出しが空の行は、「N行目」(1始まり)を見出しの代わりにする(同じラベルが並ばないように)。
+ * 行数が固定でない表形式は、行に見出しが無いので対象外(チャットパレットだけ)。
+ * 自動の仮設定(ccfoliaAutoEntries)には含めない(既存の出力を、設定なしで変えないため。列は「未設定」から、作者が選ぶ)。 */
+const CCFOLIA_ROW_LABEL_SEPARATOR = ' '; // 行の見出しと列の名称の区切り(半角スペース)
 const CCFOLIA_NAME_LABELS = ['キャラクター名', 'キャラ名', 'キャラクターの名前', '名前', '氏名', 'pc名', 'name'];
 const CCFOLIA_INITIATIVE_LABELS = ['イニシアチブ', 'イニシアティブ', '行動値', '先攻値', 'initiative'];
 let ccfoliaRowMap = null; // 設定画面の描画中だけ持つ、項目ID→resolveの結果
@@ -5329,10 +5358,12 @@ function ccfoliaTopFields(){
   state.template.sections.forEach(s => (s.fields || []).forEach(f => { if(!isDecorKind(f)) out.push(f); }));
   return out;
 }
-// 対象の項目(カテゴリー直下の項目)ならその項目、そうでなければnull
+// 対象の項目(カテゴリー直下の項目、または行数を固定した表形式の列)ならその項目、そうでなければnull
 function ccfoliaEligibleField(id){
   const f = findFrame('field', id);
-  return (f && !isDecorKind(f) && f.kind !== 'break' && !isFieldInsideSet(id)) ? f : null;
+  if(!f || isDecorKind(f) || f.kind === 'break') return null;
+  const st = isFieldInsideSet(id);
+  return (!st || st.fixedRows) ? f : null;
 }
 // 'number' | 'text' | 'unsupported'(チェックボックス・表・画像)
 function ccfoliaValueKind(f){
@@ -5341,6 +5372,18 @@ function ccfoliaValueKind(f){
 }
 function ccfoliaNumberFields(){ return ccfoliaTopFields().filter(f => ccfoliaValueKind(f) === 'number'); }
 function ccfoliaIsNumberFieldId(id){ return ccfoliaNumberFields().some(f => f.id === id); }
+// 項目に選べる扱い。st = その項目が入っている表形式(カテゴリー直下ならnull)。表形式の列は、ステータス・パラメータ・出さない、だけ
+function ccfoliaRolesFor(f, st){
+  const kind = ccfoliaValueKind(f);
+  if(kind === 'unsupported') return [];
+  const roles = CCFOLIA_ROLES_BY_KIND[kind];
+  return st ? roles.filter(r => r === 'status' || r === 'param' || r === 'skip') : roles;
+}
+// ステータスの最大値に使える項目。カテゴリー直下の項目は、直下の数値の項目。表形式の列は、同じ表形式の、同じ行の、別の数値の列
+function ccfoliaMaxCandidates(f, st){
+  if(st) return setInputFieldsOf(st).filter(x => x.id !== f.id && ccfoliaValueKind(x) === 'number');
+  return ccfoliaNumberFields().filter(x => x.id !== f.id);
+}
 
 function ccfoliaStored(){
   const c = state.template.ccfolia;
@@ -5349,15 +5392,15 @@ function ccfoliaStored(){
   return c;
 }
 // 保存されている設定のうち、その項目の今の種類で有効なもの(外から読み込んだ値を信用しない)。無効なら null。
-function ccfoliaEntryOf(cfg, f){
+// st: その項目が入っている表形式(カテゴリー直下の項目ならnull。呼ぶ側が分かっているので、ここでは探さない)
+function ccfoliaEntryOf(cfg, f, st){
   if(!Object.prototype.hasOwnProperty.call(cfg.fields, f.id)) return null;
   const e = cfg.fields[f.id];
   if(!e || typeof e !== 'object') return null;
-  const kind = ccfoliaValueKind(f);
-  if(kind === 'unsupported' || !CCFOLIA_ROLES_BY_KIND[kind].includes(e.role)) return null;
+  if(!ccfoliaRolesFor(f, st || null).includes(e.role)) return null;
   const out = { role: e.role, label: typeof e.label === 'string' ? e.label.slice(0, CCFOLIA_MAX_LABEL_LENGTH) : '', maxFieldId: '', maxValue: null };
   if(e.role === 'status'){
-    if(typeof e.maxFieldId === 'string' && e.maxFieldId !== f.id && ccfoliaIsNumberFieldId(e.maxFieldId)) out.maxFieldId = e.maxFieldId;
+    if(typeof e.maxFieldId === 'string' && e.maxFieldId !== f.id && ccfoliaMaxCandidates(f, st || null).some(x => x.id === e.maxFieldId)) out.maxFieldId = e.maxFieldId;
     else if(typeof e.maxValue === 'number' && Number.isFinite(e.maxValue)) out.maxValue = e.maxValue;
   }
   return out;
@@ -5424,22 +5467,55 @@ function ccfoliaResolve(){
     return { f, kind, state: st, role: e.role, label: e.label, maxFieldId: e.maxFieldId, maxValue: e.maxValue };
   });
 }
+// 行数を固定した表形式の、全列の今の扱い(resolveと同じ形に、setを足したもの)。自動の仮設定は無い: 設定が無ければ、すべて「未設定」
+function ccfoliaResolveSetColumns(){
+  const cfg = ccfoliaStored();
+  const out = [];
+  state.template.sections.forEach(sec => (sec.sets || []).forEach(st => {
+    if(!st.fixedRows) return;
+    setInputFieldsOf(st).forEach(f => {
+      const kind = ccfoliaValueKind(f);
+      if(kind === 'unsupported'){ out.push({ f, set: st, kind, state: 'unsupported', role: '', label: '', maxFieldId: '', maxValue: null }); return; }
+      const e = cfg ? ccfoliaEntryOf(cfg, f, st) : null;
+      out.push(e
+        ? { f, set: st, kind, state: 'set', role: e.role, label: e.label, maxFieldId: e.maxFieldId, maxValue: e.maxValue }
+        : { f, set: st, kind, state: 'unset', role: '', label: '', maxFieldId: '', maxValue: null });
+    });
+  }));
+  return out;
+}
+// ccfoliaRows()と同じ、描画中の使い回し
+let ccfoliaRenderSetRows;
+function ccfoliaSetRows(){
+  if(ccfoliaRenderSetRows === undefined) return ccfoliaResolveSetColumns();
+  return ccfoliaRenderSetRows || (ccfoliaRenderSetRows = ccfoliaResolveSetColumns());
+}
+// その行の見出し(空なら「N行目」)
+function ccfoliaRowHeading(st, idx){
+  const h = rowLabelOf(st, idx).trim();
+  return h || ((idx + 1) + '行目');
+}
+// ココフォリアに送るラベル: 行の見出し + 区切り + 列の名称(設定した表示名があれば、そちら)
+function ccfoliaSetColumnLabel(r, idx){
+  return (ccfoliaRowHeading(r.set, idx) + CCFOLIA_ROW_LABEL_SEPARATOR + (r.label || r.f.label).trim()).slice(0, CCFOLIA_MAX_LABEL_LENGTH * 2);
+}
 
 /* --- 書き出し --- */
-function ccfoliaValueText(f){
-  const v = getEffectiveValue(f, null);
+// rowScope: 表形式の列の時、その行({setId,rowIndex,row})。カテゴリー直下の項目はnull
+function ccfoliaValueText(f, rowScope){
+  const v = getEffectiveValue(f, rowScope || null);
   if(v === DIV_BY_ZERO_ERROR) return 'ゼロで割っています';
   if(v === undefined || v === null || Array.isArray(v)) return '';
   return String(v);
 }
-function ccfoliaNumberValue(f){
-  const v = getEffectiveValue(f, null);
+function ccfoliaNumberValue(f, rowScope){
+  const v = getEffectiveValue(f, rowScope || null);
   return v === DIV_BY_ZERO_ERROR ? 0 : toCalcNumber(v);
 }
-// 値が空(未入力)なら「[項目名]」を仮に入れる
-function ccfoliaTextOrPlaceholder(f){
-  const v = ccfoliaValueText(f);
-  return v.trim() === '' ? '[' + f.label + ']' : v;
+// 値が空(未入力)なら「[項目名]」を仮に入れる(placeholderを渡すと、項目名の代わりにそれを使う。表形式の列は、行の見出しつきのラベル)
+function ccfoliaTextOrPlaceholder(f, rowScope, placeholder){
+  const v = ccfoliaValueText(f, rowScope);
+  return v.trim() === '' ? '[' + (placeholder || f.label) + ']' : v;
 }
 // コマの「参照URL」(externalUrl)に入れる、キャラクターの公開URL(2026-11-02)。キャラクターをURLで共有している
 // (共有リンクを作成済みで、解除していない)時だけ。共有ビューで開いた時は、開いているそのURL。
@@ -5464,25 +5540,48 @@ function buildCcfoliaCharacter(){
   if(iniRow) data.initiative = ccfoliaNumberValue(iniRow.f);
   const refUrl = ccfoliaReferenceUrl();
   if(refUrl) data.externalUrl = refUrl;
-  data.status = [];
-  rows.filter(r => r.role === 'status').forEach(r => {
-    const label = (r.label || r.f.label).trim();
-    if(!label) return;
-    const value = ccfoliaNumberValue(r.f);
-    let max = value;
-    if(r.maxFieldId){
-      const mf = findFrame('field', r.maxFieldId);
-      if(mf) max = ccfoliaNumberValue(mf);
-    } else if(typeof r.maxValue === 'number'){
-      max = r.maxValue;
+  // ステータス・パラメータにする項目を、シートの並び順に集める。カテゴリー直下の項目は1件、行数を固定した表形式の列は、行ごとに1件
+  // (行ごとにまとめて、その行の中は列の順)。item = { role, f, rowScope(表形式の列だけ), label, placeholder, maxFieldId, maxValue }
+  const items = [];
+  const topById = new Map(rows.map(r => [r.f.id, r]));
+  const setColById = new Map(ccfoliaSetRows().map(r => [r.f.id, r]));
+  state.template.sections.forEach(sec => sectionItemsInOrder(sec).forEach(it => {
+    if(it.kind === 'field'){
+      const r = topById.get(it.obj.id);
+      if(!r || (r.role !== 'status' && r.role !== 'param')) return;
+      items.push({ role: r.role, f: r.f, rowScope: null, label: (r.label || r.f.label).trim(), placeholder: r.f.label, maxFieldId: r.maxFieldId, maxValue: r.maxValue });
+      return;
     }
-    data.status.push({ label, value, max });
-  });
+    const st = it.obj;
+    if(!st.fixedRows) return;
+    const cols = setInputFieldsOf(st).map(f => setColById.get(f.id)).filter(r => r && (r.role === 'status' || r.role === 'param'));
+    if(!cols.length) return;
+    const setRows = state.character.sets[st.id] || [];
+    for(let i = 0; i < fixedRowCountOf(st); i++){
+      const rowScope = { setId: st.id, rowIndex: i, row: setRows[i] || {} };
+      cols.forEach(r => {
+        const label = ccfoliaSetColumnLabel(r, i);
+        items.push({ role: r.role, f: r.f, rowScope, label, placeholder: label, maxFieldId: r.maxFieldId, maxValue: r.maxValue });
+      });
+    }
+  }));
+  data.status = [];
   data.params = [];
-  rows.filter(r => r.role === 'param').forEach(r => {
-    const label = (r.label || r.f.label).trim();
-    if(!label) return;
-    data.params.push({ label, value: ccfoliaTextOrPlaceholder(r.f) });
+  items.forEach(it => {
+    if(!it.label) return;
+    if(it.role === 'status'){
+      const value = ccfoliaNumberValue(it.f, it.rowScope);
+      let max = value;
+      if(it.maxFieldId){
+        const mf = findFrame('field', it.maxFieldId);
+        if(mf) max = ccfoliaNumberValue(mf, it.rowScope); // 表形式の列は、同じ行の別の列
+      } else if(typeof it.maxValue === 'number'){
+        max = it.maxValue;
+      }
+      data.status.push({ label: it.label, value, max });
+    } else {
+      data.params.push({ label: it.label, value: ccfoliaTextOrPlaceholder(it.f, it.rowScope, it.placeholder) });
+    }
   });
   data.commands = chatOrderLines(activeChatOrder()).join('\n');
   return { kind: 'character', data };
@@ -5541,7 +5640,7 @@ function renderCcfoliaExportModal(){
           <textarea id="ccfolia-json" class="chat-palette-textarea" readonly onfocus="this.select()">${esc(ex.json)}</textarea>
           <button onclick="copyCcfoliaJson()">コピー</button>
         </div>
-        <p class="muted small">立ち絵・アイコンの画像は、ココフォリア側で設定してください（画像は貼り付けでは渡せません）。表形式の内容は、チャットパレットだけに出ます。</p>
+        <p class="muted small">立ち絵・アイコンの画像は、ココフォリア側で設定してください（画像は貼り付けでは渡せません）。行の数を固定した表形式は、設定した列が、行ごとにステータス・パラメータに出ます。それ以外の表形式の内容は、チャットパレットだけに出ます。</p>
         ${ex.data.externalUrl
           ? '<p class="muted small">コマの「参照URL」に、このキャラクターの共有URLが入ります。</p>'
           : (state.screen === 'characterEditor' ? '<p class="muted small">キャラクターを共有（「共有リンクを作成」）していると、コマの「参照URL」に、その共有URLが入ります。</p>' : '')}
@@ -5683,7 +5782,7 @@ function renderCcfoliaBanner(){
   const resetBtn = cfg ? `<button class="danger-btn" onclick="resetCcfolia()">設定をすべて消す</button>` : '';
   return `<div class="ccfolia-banner">
     <strong>ココフォリア連携の設定</strong>
-    <p class="muted small">シートの項目をクリックして、ココフォリアでの扱い（名前・イニシアチブ・ステータス・パラメータ・メモ）を決めます。ここでの設定は、シートの項目そのものを変えません。</p>
+    <p class="muted small">シートの項目をクリックして、ココフォリアでの扱い（名前・イニシアチブ・ステータス・パラメータ・メモ）を決めます。ここでの設定は、シートの項目そのものを変えません。行の数を固定した表形式は、列をクリックして、ステータス・パラメータにするかを決めます（ラベルは「行の見出し 列の名称」）。</p>
     <p class="small">${esc(note)}</p>
     ${ccfoliaSinglesHtml()}
     <div class="ccfolia-banner-actions">${autoBtn}${resetBtn}<button onclick="exitCcfoliaSetup()">シートの編集に戻る</button></div>
@@ -5741,13 +5840,16 @@ function renderCcfoliaPanel(){
   if(!f){ state.selection = null; return ''; }
   const r = ccfoliaRowMap.get(f.id);
   const idArg = jsArg(f.id);
-  const head = `<div class="panel-head"><strong>ココフォリアでの扱い</strong><button class="icon-btn" onclick="closePanel()">×</button></div>`;
-  const nameLine = `<p class="ccfolia-field-name">${esc(f.label)}</p>`;
-  const toEditor = `<div class="panel-actions"><button onclick="exitCcfoliaSetup({kind:'field',id:${idArg}})">シートの編集で、この項目を開く</button></div>`;
+  const st = isFieldInsideSet(f.id); // 表形式の列なら、その表形式(行数を固定したもの)。カテゴリー直下の項目ならnull
+  const head = `<div class="panel-head"><strong>${st ? 'ココフォリアでの扱い（表形式の列）' : 'ココフォリアでの扱い'}</strong><button class="icon-btn" onclick="closePanel()">×</button></div>`;
+  const nameLine = st
+    ? `<p class="ccfolia-field-name">${esc(st.label)} ／ ${esc(f.label)}</p>`
+    : `<p class="ccfolia-field-name">${esc(f.label)}</p>`;
+  const toEditor = `<div class="panel-actions"><button onclick="exitCcfoliaSetup({kind:'field',id:${idArg}})">${st ? 'シートの編集で、この列を開く' : 'シートの編集で、この項目を開く'}</button></div>`;
   if(!r || r.state === 'unsupported'){
-    return `<div class="panel-pane">${head}<div class="panel-body">${nameLine}<p class="muted small">チェックボックス・表・画像は、ココフォリアに出せません。（表形式の中の項目も、チャットパレットだけに出ます。）</p></div>${toEditor}</div>`;
+    return `<div class="panel-pane">${head}<div class="panel-body">${nameLine}<p class="muted small">チェックボックス・表・画像は、ココフォリアに出せません。${st ? '（この列は、チャットパレットだけに出ます。）' : ''}</p></div>${toEditor}</div>`;
   }
-  const allowed = CCFOLIA_ROLES_BY_KIND[r.kind];
+  const allowed = ccfoliaRolesFor(f, st);
   const roleOptions = [`<option value="" ${r.state === 'unset' ? 'selected' : ''}>（未設定）</option>`]
     .concat(allowed.map(role => `<option value="${role}" ${r.role === role && r.state !== 'unset' ? 'selected' : ''}>${esc(CCFOLIA_ROLE_LABELS[role])}</option>`)).join('');
   const help = {
@@ -5758,20 +5860,27 @@ function renderCcfoliaPanel(){
     memo: 'ココフォリアのメモ欄に、「■項目名」の見出しをつけてまとまります。',
     skip: 'ココフォリアには出しません。',
   }[r.role] || '扱いを決めていません。ココフォリアには出ません。';
+  const helpRows = (st && (r.role === 'status' || r.role === 'param')) ? '表形式の行ごとに、1つずつ出ます。' : '';
   let extra = '';
-  if(r.role === 'status' || r.role === 'param' || r.role === 'memo'){
+  if(st && (r.role === 'status' || r.role === 'param')){
+    // 表形式の列: ココフォリアに送るラベルは「行の見出し + 区切り + 列の名称」。1行目の見出しで、実際の見え方を例に出す
+    const example = ccfoliaSetColumnLabel(r, 0);
+    const sepText = CCFOLIA_ROW_LABEL_SEPARATOR === ' ' ? '半角スペース' : '「' + CCFOLIA_ROW_LABEL_SEPARATOR + '」';
+    extra += `<label><span>ココフォリアでの列の名称（空欄なら、設定済みの名称）</span><input type="text" maxlength="${CCFOLIA_MAX_LABEL_LENGTH}" placeholder="${escAttr(f.label)}" value="${escAttr(r.label)}" onchange="setCcfoliaLabel(${idArg},this.value)"></label>`
+      + `<p class="muted small">ココフォリアのラベルは、「行の見出し」と「列の名称」を${esc(sepText)}でつないだものになります。例：1行目 →「${esc(example)}」（${fixedRowCountOf(st)}行ぶん出ます。見出しが空の行は「N行目」になります）</p>`;
+  } else if(r.role === 'status' || r.role === 'param' || r.role === 'memo'){
     extra += `<label><span>ココフォリアでの表示名（空欄なら、設定済みの名称）</span><input type="text" maxlength="${CCFOLIA_MAX_LABEL_LENGTH}" placeholder="${escAttr(f.label)}" value="${escAttr(r.label)}" onchange="setCcfoliaLabel(${idArg},this.value)"></label>`;
   }
   if(r.role === 'status'){
     const mode = r.maxFieldId ? 'field' : (typeof r.maxValue === 'number' ? 'value' : 'none');
     extra += `<label><span>最大値</span><select onchange="setCcfoliaMaxMode(${idArg},this.value)">
       <option value="none" ${mode === 'none' ? 'selected' : ''}>なし（現在値と同じにする）</option>
-      <option value="field" ${mode === 'field' ? 'selected' : ''}>別の項目の値を使う</option>
+      <option value="field" ${mode === 'field' ? 'selected' : ''}>${st ? '同じ行の、別の列の値を使う' : '別の項目の値を使う'}</option>
       <option value="value" ${mode === 'value' ? 'selected' : ''}>決まった数にする</option></select></label>`;
     if(mode === 'field'){
-      const opts = ccfoliaNumberFields().filter(x => x.id !== f.id)
+      const opts = ccfoliaMaxCandidates(f, st)
         .map(x => `<option value="${escAttr(x.id)}" ${x.id === r.maxFieldId ? 'selected' : ''}>${esc(x.label)}</option>`).join('');
-      extra += `<label><span>最大値に使う項目</span><select onchange="setCcfoliaMaxField(${idArg},this.value)">${opts}</select></label>`;
+      extra += `<label><span>${st ? '最大値に使う列' : '最大値に使う項目'}</span><select onchange="setCcfoliaMaxField(${idArg},this.value)">${opts}</select></label>`;
     } else if(mode === 'value'){
       extra += `<label><span>最大値</span><input type="number" step="any" value="${escAttr(r.maxValue)}" onchange="setCcfoliaMaxValue(${idArg},this.value)"></label>`;
     }
@@ -5779,7 +5888,7 @@ function renderCcfoliaPanel(){
   const autoNote = r.state === 'auto' ? '<p class="muted small">今は自動の仮設定です。ここで変えると、他の項目の自動の設定も含めて、設定として確定します。</p>' : '';
   return `<div class="panel-pane">${head}<div class="panel-body">${nameLine}
     <label><span>この項目の扱い</span><select onchange="setCcfoliaRole(${idArg},this.value)">${roleOptions}</select></label>
-    <p class="muted small">${esc(help)}</p>${extra}${autoNote}</div>${toEditor}</div>`;
+    <p class="muted small">${esc(help + helpRows)}</p>${extra}${autoNote}</div>${toEditor}</div>`;
 }
 
 /* --- 設定の変更 --- */
@@ -5803,8 +5912,7 @@ function setCcfoliaRole(id, role){
   if(!f) return;
   const cfg = ccfoliaEnsureStored();
   if(!role){ delete cfg.fields[id]; render(); return; }
-  const kind = ccfoliaValueKind(f);
-  if(kind === 'unsupported' || !CCFOLIA_ROLES_BY_KIND[kind].includes(role)) return;
+  if(!ccfoliaRolesFor(f, isFieldInsideSet(id)).includes(role)) return; // 表形式の列は、名前・イニシアチブ・メモには選べない
   // 名前・イニシアチブは1つだけ。前の項目はパラメータに回す
   if(role === 'name' || role === 'initiative'){
     Object.keys(cfg.fields).forEach(k => {
@@ -5834,16 +5942,18 @@ function setCcfoliaMaxMode(id, mode){
   if(!f || !e || e.role !== 'status') return;
   delete e.maxFieldId; delete e.maxValue;
   if(mode === 'field'){
-    const first = ccfoliaNumberFields().find(x => x.id !== id);
+    const first = ccfoliaMaxCandidates(f, isFieldInsideSet(id))[0];
     if(first) e.maxFieldId = first.id;
   } else if(mode === 'value'){
-    e.maxValue = ccfoliaNumberValue(f) || 10;
+    const st = isFieldInsideSet(id);
+    e.maxValue = ccfoliaNumberValue(f, st ? { setId: st.id, rowIndex: 0, row: (state.character.sets[st.id] || [])[0] || {} } : null) || 10;
   }
   render();
 }
 function setCcfoliaMaxField(id, fieldId){
+  const f = findFrame('field', id);
   const e = ccfoliaEnsureEntry(id);
-  if(!e || e.role !== 'status' || fieldId === id || !ccfoliaIsNumberFieldId(fieldId)) return;
+  if(!f || !e || e.role !== 'status' || fieldId === id || !ccfoliaMaxCandidates(f, isFieldInsideSet(id)).some(x => x.id === fieldId)) return;
   e.maxFieldId = fieldId; delete e.maxValue;
   render();
 }
