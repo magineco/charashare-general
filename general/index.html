@@ -3793,6 +3793,12 @@ function renderDividerFrame(f){
 // 文章は作者が設定パネルで書く。横幅(span)を決めていなければ、全列にまたがる(.frame-text-full)。
 // 外から読み込んだテンプレートの文字は信用しない: esc()を通し、長さを制限する(TEXT_BLOCK_MAX)。ハンドラに渡すidはjsArg()を通す。
 const TEXT_BLOCK_MAX = 2000;
+// 項目(kind:'input'/'ref')の「空欄の場合は横幅いっぱい」(2026-11-21)。設定パネルの横幅の欄を空にすると、span:0 になる。
+// 0は、古い版の画面では1列として読まれる(拒否されない)ので、後方互換を保てる。spanが無い(古い)項目は、1列のまま。
+function isFullRowSpan(f){
+  const n = parseInt(f.span);
+  return Number.isFinite(n) && n === 0;
+}
 function renderTextFrame(f, containerCols){
   const edit = state.mode === 'edit';
   const text = typeof f.text === 'string' ? f.text.slice(0, TEXT_BLOCK_MAX) : '';
@@ -3819,7 +3825,9 @@ function renderFieldFrame(f, rowScope, containerCols){
   if(f.kind === 'text') return renderTextFrame(f, containerCols);
   const selected = state.selection && state.selection.kind === 'field' && state.selection.id === f.id;
   const broken = isFieldReferenceBroken(f);
-  const span = Math.max(1, Math.min(parseInt(f.span) || 1, containerCols || 3));
+  // 横幅(span)。「空欄の場合は横幅いっぱい」(2026-11-21)の項目は span:0 で持ち、カテゴリーの列数ぶんを占める
+  // (spanが無い項目は、これまでどおり1列。古いテンプレートの見た目を変えない)
+  const span = isFullRowSpan(f) ? Math.max(1, containerCols || 3) : Math.max(1, Math.min(parseInt(f.span) || 1, containerCols || 3));
   const spanStyle = span > 1 ? ` style="grid-column:span ${span}"` : '';
   // 「タブ記号をコピー」ボタンはtextareaの上に新しい行を作らず、ラベル行に
   // 同居させることで縦方向のスペースを増やさないようにしている。
@@ -6090,11 +6098,18 @@ function setTextBlockText(id, value){
   f.text = String(value).slice(0, TEXT_BLOCK_MAX);
   render();
 }
-// 横幅(列数)。空欄・1未満は、「1行いっぱい」(span無し)
+// 横幅(列数)。空欄・1未満は、「横幅いっぱい」(span無し)
 function setTextBlockSpan(id, value){
   const f = findFrame('field', id); if(!f || f.kind !== 'text') return;
   const n = parseInt(value);
   if(Number.isFinite(n) && n >= 1) f.span = n; else delete f.span;
+  render();
+}
+// 項目の横幅(列数)。空欄・1未満は、「横幅いっぱい」(span:0。テキストはspan無しで同じ意味。項目はspan無し=1列の古い見た目を残すため、0で持つ)
+function setFieldSpan(id, value){
+  const f = findFrame('field', id); if(!f || f.kind === 'text' || f.kind === 'divider' || f.kind === 'break') return;
+  const n = parseInt(value);
+  f.span = (Number.isFinite(n) && n >= 1) ? n : 0;
   render();
 }
 // 「+ 改行を追加」(2026-10-18)。このセットのインプット(または改行)を選択中なら、その直後に入れる
@@ -6412,7 +6427,7 @@ function renderPanelBody(kind, f){
     // テキスト(2026-11-15): 固定の文章。文章の欄は、選んだ時・追加した時にフォーカスする(data-panel-name)
     const sp = parseInt(f.span);
     return `<label><span>テキスト</span><textarea rows="6" maxlength="${TEXT_BLOCK_MAX}" data-panel-name onchange="setTextBlockText(${jsArg(f.id)},this.value)">\n${esc(typeof f.text === 'string' ? f.text.slice(0, TEXT_BLOCK_MAX) : '')}</textarea></label>`
-      + `<label><span>横幅（空欄の時は1行いっぱい）</span><input type="number" min="1" value="${Number.isFinite(sp) && sp >= 1 ? sp : ''}" onchange="setTextBlockSpan(${jsArg(f.id)},this.value)"></label>`
+      + `<label><span>横幅（空欄の場合は横幅いっぱい）</span><input type="number" min="1" value="${Number.isFinite(sp) && sp >= 1 ? sp : ''}" onchange="setTextBlockSpan(${jsArg(f.id)},this.value)"></label>`
       + `<p class="muted small">シートに、固定の文章を表示します。改行はそのまま表示されます。キャラクターの値には入りません。「⠿」をドラッグするか、下の「↑ 上へ」「↓ 下へ」で位置を動かせます。</p>`;
   }
   if(kind === 'field'){
@@ -6428,7 +6443,7 @@ function renderPanelBody(kind, f){
     // 各項目のwidthをそのままgrid-template-columnsのfr値として使う。
     const spanInput = isFieldInsideSet(f.id)
       ? `<label><span>横幅(表形式内での相対的な太さ)</span><input type="number" min="1" value="${numAttr(f.width, 1) || 1}" onchange="applyPatch('field','${f.id}',{width:Math.max(1,parseInt(this.value)||1)})"></label>`
-      : `<label><span>横幅</span><input type="number" min="1" value="${numAttr(f.span, 1) || 1}" onchange="applyPatch('field','${f.id}',{span:Math.max(1,parseInt(this.value)||1)})"></label>`;
+      : `<label><span>横幅（空欄の場合は横幅いっぱい）</span><input type="number" min="1" value="${isFullRowSpan(f) ? '' : (numAttr(f.span, 1) || 1)}" onchange="setFieldSpan(${jsArg(f.id)},this.value)"></label>`;
     // チャットパレット出力は、値を文中にそのまま埋め込む用途に馴染まない
     // 表・画像型を除いて、インプットセットの中の項目も含め全ての型で
     // 設定できる(セット内は行ごとに繰り返し出力される。後述の
