@@ -507,6 +507,14 @@
   .add-frame-btn{
     align-self:flex-start; border-style:dashed; color:var(--accent); background:transparent;
   }
+  /* カテゴリーの「+ 項目を追加」「+ 表形式を追加」…は、カテゴリー名の右側に、横に並べる
+     (入りきらない幅では折り返す。2026-11-21、利用者の依頼)。編集画面と確認画面の見出しの高さを
+     そろえるため(切り替えた時に、見ていた項目を見失わないように)、ボタンは見出し(h2、約30px)に
+     収まるよう、文字の大きさは変えず(1rem)、上下の余白だけを詰める。 */
+  .section-head{ display:flex; align-items:center; flex-wrap:wrap; gap:4px 12px; margin-bottom:10px; }
+  .section-head .section-title{ margin-bottom:0; }
+  .add-frame-row{ display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin-left:auto; justify-content:flex-end; }
+  .section-head .add-frame-btn{ padding:2px 9px; }
   .add-row-btn{
     border-style:dashed; color:var(--accent); background:transparent;
     padding:3px 8px; font-size:0.9rem; height:fit-content; flex:0 0 auto;
@@ -964,7 +972,7 @@
      操作用のボタン・パネル・モーダルは紙面では意味を持たないため非表示にする。 */
   @media print{
     .toolbar, .toolbar-row, .panel-pane, .modal-backdrop,
-    .add-frame-btn, .add-row-btn, .remove-row-btn, .row-move-btn,
+    .add-frame-row, .add-frame-btn, .add-row-btn, .remove-row-btn, .row-move-btn,
     .collapse-btn, .field-image-actions, .random-btn, .chat-palette-block button{
       display:none !important;
     }
@@ -3638,14 +3646,21 @@ function renderSectionFrame(sec){
   const addDividerBtn = state.mode === 'edit' ? `<button class="add-frame-btn small" onclick="event.stopPropagation();addDividerToSection(${jsArg(sec.id)})">+ 区切り線を追加</button>` : '';
   const addTextBtn = state.mode === 'edit' ? `<button class="add-frame-btn small" onclick="event.stopPropagation();addTextToSection(${jsArg(sec.id)})">+ テキストを追加</button>` : '';
   const addSetBtn = state.mode === 'edit' ? `<button class="add-frame-btn small" onclick="event.stopPropagation();addSetDef('${sec.id}')">+ 表形式を追加</button>` : '';
+  // 追加ボタンは、カテゴリー名の右側(見出しの行)に置く(2026-11-21、利用者の依頼)。末尾に置くと、編集画面と
+  // 確認画面で、その行の分だけカテゴリーの高さが違い、切り替えた時に見ていた項目を見失うため。見出しの行は、
+  // ボタンを小さくして、確認画面の見出しと同じ高さに収める(.section-head)。編集画面だけ、見出しを包む。
+  const titleHtml = `<h2 class="section-title">${toggleBtn}${esc(sec.label)}${sec.collapsible ? ' <span class="muted small">(折りたたみ可)</span>' : ''}${ccfoliaSectionBadgeHtml(sec)}</h2>`;
+  const headHtml = state.mode === 'edit'
+    ? `<div class="section-head">${titleHtml}<div class="add-frame-row">${addFieldBtn}${addSetBtn}${addDividerBtn}${addTextBtn}${addImageAreaBtn}</div></div>`
+    : titleHtml;
   return `<section class="frame-section ${selected ? 'is-selected' : ''}" ${frameAttrs('section', sec.id)}>
-    <h2 class="section-title">${toggleBtn}${esc(sec.label)}${sec.collapsible ? ' <span class="muted small">(折りたたみ可)</span>' : ''}${ccfoliaSectionBadgeHtml(sec)}</h2>
+    ${headHtml}
     <div class="section-body" ${isCollapsed ? 'style="display:none"' : ''}>
       <div class="category-body-row">
         ${imageAreaHtml}
         <div class="group-grid" style="--cols:${cols}">${firstFields}</div>
       </div>
-      ${restHtml}${addFieldBtn}${addSetBtn}${addDividerBtn}${addTextBtn}${addImageAreaBtn}
+      ${restHtml}
     </div>
   </section>`;
 }
