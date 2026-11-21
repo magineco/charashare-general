@@ -7082,12 +7082,30 @@ function copyTabCharacter(btn){
     setTimeout(() => { btn.textContent = old; }, 1200);
   }).catch(() => { alert('コピーできませんでした。'); });
 }
+// データリストのTSV欄は、フォーカスが外れた時(onblur)に確定する。確定処理の中で警告(alert/confirm)を出し、
+// 直せていない時は同じ欄へフォーカスを戻す。この「blurの中で警告を出し、同じ欄にフォーカスを戻す」形は、
+// ダイアログを閉じた直後に、もう一度blurが来て、警告が連続で出ることがある(2026-11-21、利用者の指摘
+// 「警告を閉じても連続で発生することがある」。クリックで別の場所へ移る途中のフォーカス移動が、ダイアログを閉じた後に
+// 続き、戻したばかりの欄から、もう一度外れるため)。次の2つで防ぐ:
+//  (1) 確定処理(警告の表示中を含む)の間と、その直後の同じタスクの間は、blurが再び来ても処理しない(dataListTsvCommitBusy)
+//  (2) フォーカスの戻しは、blurの処理が終わってから(setTimeout 0)行う(refocusTsvTextarea)。
+//      その場で戻すと、進行中のフォーカス移動と衝突する
+let dataListTsvCommitBusy = false;
+function refocusTsvTextarea(textareaEl){
+  setTimeout(() => { if(textareaEl.isConnected) textareaEl.focus(); }, 0);
+}
 function commitDataListTsv(dlId, textareaEl){
+  if(dataListTsvCommitBusy) return;
+  dataListTsvCommitBusy = true;
+  try{ commitDataListTsvCore(dlId, textareaEl); }
+  finally{ setTimeout(() => { dataListTsvCommitBusy = false; }, 0); } // フォーカスの戻し(上の(2))より後に解除する
+}
+function commitDataListTsvCore(dlId, textareaEl){
   const dl = findDataList(dlId); if(!dl) return;
   const parsed = parseDataListTsv(textareaEl.value);
   if(parsed.duplicateNames.length){
     alert(`列名が重複しています: ${[...new Set(parsed.duplicateNames)].join(', ')}\n\n列名を一意にしてから、あらためて確定してください。`);
-    textareaEl.focus();
+    refocusTsvTextarea(textareaEl);
     return;
   }
   const oldNames = [...(dl.conditionColumns || []), ...(dl.contentColumns || [])];
@@ -7117,7 +7135,7 @@ function commitDataListTsv(dlId, textareaEl){
     }
     const ok = confirm(`列名を「${oldName}」から「${newName}」に変更したとみなしてよいですか？\n\n以下の参照も新しい列名に追従させます。\n${refs.map(r => '・' + r).join('\n')}\n\nキャンセルすると、この確定は中止されます。`);
     if(!ok){
-      textareaEl.focus();
+      refocusTsvTextarea(textareaEl);
       return;
     }
     renameMap[oldName] = newName;
@@ -7130,7 +7148,7 @@ function commitDataListTsv(dlId, textareaEl){
   });
   if(blockedRefs.length){
     alert(`以下の列は他から参照されているため削除できません。\n\n${blockedRefs.join('\n\n')}\n\n先にこれらの参照を外してから、あらためて確定してください。`);
-    textareaEl.focus();
+    refocusTsvTextarea(textareaEl);
     return;
   }
   if(Object.keys(renameMap).length){
