@@ -2144,6 +2144,17 @@ function referenceableFieldsFor(fieldId, typeFilter){
   if(parentSet) return [...setInputFields(parentSet.id, typeFilter), ...globals];
   return globals;
 }
+// 「この行の見出し」(2026-11-21、利用者の依頼)。行数を固定した表形式(fixedRows)の各行には見出し(rowLabels)をつけられる。
+// 「リストから選ぶ」(listFilter)の項目が、その表形式の中にある時、データリストの表示条件に、他の項目の値の代わりに
+// 「その行の見出し」を使える。f.match[].field に、項目のIDの代わりにこの固定の文字列を入れる(項目のIDは、必ずuid()が作る
+// 英数字+_-だけで、'@'は含まれないので、IDとは絶対に重ならない)。この文字列は比較に使うだけで、コード・ID・HTMLには
+// 一切使わない。行数が固定でない表形式・表形式の外では使えない(参照エラーにする)。
+const ROW_LABEL_REF = '@rowLabel';
+// 項目fが、行数を固定した表形式の中にあるか(=「この行の見出し」が使えるか)
+function canUseRowLabelRef(f){
+  const st = f ? isFieldInsideSet(f.id) : null;
+  return !!(st && st.fixedRows);
+}
 // fが直接参照している他のインプットのIDの一覧を返す。キャラクターの
 // 実データには依存しない、テンプレートの構造だけを見た静的な情報。
 function fieldDirectRefs(f){
@@ -2151,7 +2162,8 @@ function fieldDirectRefs(f){
   const refs = [];
   if(f.kind === 'ref'){
     if(f.refType === 'formula') refs.push(...(f.terms || []).map(t => t.field).filter(Boolean));
-    if(f.refType === 'lookup' || f.refType === 'listFilter') refs.push(...(f.match || []).map(m => m.field).filter(Boolean));
+    // 「この行の見出し」は項目ではないので、循環参照の判定の対象に入れない
+    if(f.refType === 'lookup' || f.refType === 'listFilter') refs.push(...(f.match || []).map(m => m.field).filter(id => id && id !== ROW_LABEL_REF));
     if(f.refType === 'aggregateSum'){
       // 「データリストの列を集計する」モード(source:'dataList')は、照合に使うインプットと
       // 個数のインプットが参照先。通常のモードは各項(terms)の参照先。
@@ -2221,6 +2233,11 @@ function getEffectiveValue(f, rowScope){
 // ためのガードで、検出したらundefinedを返す(0や空欄として扱われる)。
 function resolveTermValue(fieldId, rowScope, visiting){
   if(!fieldId) return undefined;
+  if(fieldId === ROW_LABEL_REF){
+    // 表形式の行の中で、その表形式が行数固定の時だけ、その行の見出し。それ以外は参照先なし(参照エラーとして別に表示される)
+    const st = (rowScope && rowScope.setId) ? findFrame('set', rowScope.setId) : null;
+    return (st && st.fixedRows) ? rowLabelOf(st, rowScope.rowIndex) : undefined;
+  }
   const f = findFrame('field', fieldId);
   if(!f) return undefined;
   if(f.kind === 'input') return getEffectiveValue(f, rowScope);
@@ -3721,7 +3738,9 @@ function getFieldReferenceErrors(f){
     if(f.refType === 'listFilter' && f.optionValue && !allCols.includes(f.optionValue)) missing(f.optionValue);
     if(f.refType === 'listFilter' && f.randomWeight && !allCols.includes(f.randomWeight)) missing(f.randomWeight);
     (f.match || []).forEach(m => {
-      if(!isValidReferenceTarget(m.field)) missing(m.field);
+      if(m.field === ROW_LABEL_REF){
+        if(!canUseRowLabelRef(f)) errors.push('「この行の見出し」は、行数を固定した表形式の中の項目でだけ使えます');
+      } else if(!isValidReferenceTarget(m.field)) missing(m.field);
       if(!(dl.conditionColumns || []).includes(m.key)) missing(m.key);
     });
     return errors;
@@ -6763,9 +6782,16 @@ function renderListFilterEditor(f){
   const dl = dataLists.find(d => d.id === f.dataList);
   if(dl){
     const candidates = referenceableFieldsFor(f.id).filter(c => c.id !== f.id);
+    // 行数を固定した表形式の中の項目は、「この行の見出し」も、表示条件に対応させられる(先頭に出す)。
+    // すでに選んでいるのに、表形式の行数固定をやめた場合は、選択肢に残して、使えない旨を添える(黙って別の選択に見えないように)。
+    const rowLabelOk = canUseRowLabelRef(f);
     html += (dl.conditionColumns || []).map(key => {
       const m = (f.match || []).find(mm => mm.key === key) || { key, field: '' };
-      return `<label><span>表示条件「${esc(key)}」に対応する項目</span><select onchange="setListFilterMatch(${jsArg(f.id)},${jsArg(key)},this.value)"><option value="">(選択)</option>${candidates.map(c => `<option value="${c.id}" ${m.field === c.id ? 'selected' : ''}>${esc(c.label)}</option>`).join('')}</select></label>`;
+      const rowLabelSelected = m.field === ROW_LABEL_REF;
+      const rowLabelOpt = (rowLabelOk || rowLabelSelected)
+        ? `<option value="${ROW_LABEL_REF}" ${rowLabelSelected ? 'selected' : ''}>この行の見出し${rowLabelOk ? '' : '（行数が固定の表形式の中でだけ使えます）'}</option>`
+        : '';
+      return `<label><span>表示条件「${esc(key)}」に対応する項目</span><select onchange="setListFilterMatch(${jsArg(f.id)},${jsArg(key)},this.value)"><option value="">(選択)</option>${rowLabelOpt}${candidates.map(c => `<option value="${c.id}" ${m.field === c.id ? 'selected' : ''}>${esc(c.label)}</option>`).join('')}</select></label>`;
     }).join('');
     const allCols = [...(dl.conditionColumns || []), ...(dl.contentColumns || [])];
     html += `<label><span>選択肢として表示する列</span><select onchange="applyPatch('field','${f.id}',{optionLabel:this.value})"><option value="">(選択)</option>${allCols.map(c => `<option value="${escAttr(c)}" ${f.optionLabel === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select></label>`;
@@ -6905,11 +6931,13 @@ function collectReferenceRows(){
   const rows = [];
   const describe = (f, location) => {
     const deps = fieldDirectRefs(f);
-    if(!deps.length) return;
+    const usesRowLabel = (f.refType === 'listFilter' || f.refType === 'lookup') && (f.match || []).some(m => m.field === ROW_LABEL_REF);
+    if(!deps.length && !usesRowLabel) return;
     const depLabels = deps.map(depId => {
       const df = findFrame('field', depId);
       return df ? df.label : `(不明:${depId})`;
     });
+    if(usesRowLabel) depLabels.push('この行の見出し');
     rows.push({ label: f.label, location, kindLabel: refKindLabel(f), depLabels, errors: getFieldReferenceErrors(f) });
   };
   for(const s of state.template.sections){
