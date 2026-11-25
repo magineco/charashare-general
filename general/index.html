@@ -2261,14 +2261,15 @@ function resolveTermValue(fieldId, rowScope, visiting){
     nextVisiting.add(fieldId);
     if(f.refType === 'lookup') return evalLookup(f, rowScope, nextVisiting);
     if(f.refType === 'formula') return evalFormula(f, rowScope, nextVisiting);
-    if(f.refType === 'aggregateSum') return evalAggregateSum(f, nextVisiting);
+    // 集計は、表形式の中にも置ける(2026-11-25)。rowScopeは、その集計が置かれている行(「この行の見出し」を引くため)
+    if(f.refType === 'aggregateSum') return evalAggregateSum(f, nextVisiting, rowScope);
   }
   return undefined;
 }
 function resolveRefValue(f, rowScope, visiting){
   if(f.refType === 'formula') return evalFormula(f, rowScope, visiting);
   if(f.refType === 'lookup') return evalLookup(f, rowScope, visiting);
-  if(f.refType === 'aggregateSum') return evalAggregateSum(f, visiting);
+  if(f.refType === 'aggregateSum') return evalAggregateSum(f, visiting, rowScope);
   return '';
 }
 // ゼロ除算(÷・%でv===0)を示す番兵オブジェクト。数値ではなくこの
@@ -2335,16 +2336,19 @@ function evalFormula(f, rowScope, visiting){
   }
   return acc;
 }
-function evalLookup(f, rowScope, visiting){
+// labelScope: 出力する列が「この行の見出しと同じ名前の列」の時に、見出しを引く行。lookupは、項目自身の行(=rowScope)。
+// 集計(aggregateSum)のデータリスト集計は、rowScopeが集計する表形式(f.set)の行で、見出しは、集計の項目が置かれている行から引くため、
+// その行をlabelScopeで受け取る(表形式の外に置いた集計は、行が無いので見出しも無い=空欄)
+function evalLookup(f, rowScope, visiting, labelScope){
   const dl = findDataList(f.dataList);
   if(!dl) return '';
   const matches = f.match || [];
   const row = dl.rows.find(r => matches.every(m => String(r[m.key]) === String(resolveTermValue(m.field, rowScope, visiting))));
   // 出力する列が「この行の見出し」(ROW_LABEL_REF、2026-11-25)の時は、表示条件で引いた行から、その行の見出しと同じ名前の列の値を返す
   // (見出しA・B・Cの行に、データリストの列A・B・Cを、行ごとに出す)。同じ名前の表示内容列が無い・行数固定の表形式の外・見出しが空の時は空欄。
-  // 集計(aggregateSum)のデータリスト集計も、この関数を使うので、refTypeがlookupの時だけ(集計の出力する列には、この選択肢は無い)
-  if(f.refType === 'lookup' && f.output === ROW_LABEL_REF){
-    const label = resolveTermValue(ROW_LABEL_REF, rowScope, visiting);
+  // 集計(aggregateSum)のデータリスト集計の「集計する列」にも選べる(2026-11-25)
+  if((f.refType === 'lookup' || f.refType === 'aggregateSum') && f.output === ROW_LABEL_REF){
+    const label = resolveTermValue(ROW_LABEL_REF, f.refType === 'lookup' ? rowScope : labelScope, visiting);
     if(!row || typeof label !== 'string' || !(dl.contentColumns || []).includes(label)) return '';
     return row[label];
   }
@@ -2470,8 +2474,10 @@ function materializeDefaultValues(){
 // 壊れないよう、render()のたびに古い形式を検出して新しい形式へその場で
 // 変換する(1度変換すれば以降は何もしない、非破壊的なマイグレーション)。
 // 「先頭は演算子なし、以降は×」という変換は、以前の「全項を掛け算して
-// から合計」という挙動と完全に等価。aggregateSumはインプットセットの
-// 外(s.fields側)にしか置けない設計のため、st.fields側は見なくてよい。
+// から合計」という挙動と完全に等価。この変換が必要な古い形式の集計は、
+// インプットセットの外(s.fields側)にしか置けなかった時代のものだけ
+// (表形式の中に置けるようになった2026-11-25以降の集計は、最初から新形式)
+// なので、st.fields側は見なくてよい。
 function normalizeLegacyAggregateTerms(){
   for(const s of state.template.sections){
     for(const f of s.fields){
@@ -2490,9 +2496,11 @@ function normalizeLegacyAggregateTerms(){
 // 問題なく動く)。いずれかの行でゼロ除算が起きた場合は、その行だけを
 // 0として扱わず合計全体をDIV_BY_ZERO_ERRORにする(一部の行が壊れて
 // いるのに合計だけは正常な数値に見えてしまう事故を避けるため)。
-function evalAggregateSum(f, visiting){
+// outerScope: この集計が置かれている行({setId,rowIndex,row})。表形式の中に置いた集計(2026-11-25)の「集計する列」を
+// 「この行の見出しと同じ名前の列」にした時に、見出しを引くために使う。カテゴリー直下の集計は、null
+function evalAggregateSum(f, visiting, outerScope){
   const rows = (state.character.sets && state.character.sets[f.set]) || [];
-  if(f.source === 'dataList') return evalAggregateLookup(f, rows, visiting);
+  if(f.source === 'dataList') return evalAggregateLookup(f, rows, visiting, outerScope);
   let total = 0;
   for(let idx = 0; idx < rows.length; idx++){
     const rowScope = { setId: f.set, rowIndex: idx, row: rows[idx] };
@@ -2514,7 +2522,7 @@ function evalAggregateSum(f, visiting){
 // - 取り出した値は計算式と同じtoCalcNumber()で数値にする(「+2」「1,000円」等も可)
 // - f.countField(任意、そのセットの数値のインプット)があれば、各行の値にその個数を
 //   掛けてから合計する(「同じ装備を2つ持っている」場合など)
-function evalAggregateLookup(f, rows, visiting){
+function evalAggregateLookup(f, rows, visiting, outerScope){
   const matches = f.match || [];
   if(!matches.length) return 0;
   let total = 0;
@@ -2522,7 +2530,7 @@ function evalAggregateLookup(f, rows, visiting){
     const rowScope = { setId: f.set, rowIndex: idx, row: rows[idx] };
     const keyValues = matches.map(m => resolveTermValue(m.field, rowScope, visiting));
     if(keyValues.every(v => v === undefined || v === null || v === '')) continue;
-    const value = toCalcNumber(evalLookup(f, rowScope, visiting));
+    const value = toCalcNumber(evalLookup(f, rowScope, visiting, outerScope));
     const count = f.countField ? toCalcNumber(resolveTermValue(f.countField, rowScope, visiting)) : 1;
     total += value * count;
   }
@@ -3790,7 +3798,11 @@ function getFieldReferenceErrors(f){
       const dl = findDataList(f.dataList);
       if(!dl){ missing(f.dataList); return errors; }
       const allCols = [...(dl.conditionColumns || []), ...(dl.contentColumns || [])];
-      if(f.output && !allCols.includes(f.output)) missing(f.output);
+      // 「集計する列」が「この行の見出しと同じ名前の列」(2026-11-25)の時は、データリストの列にあるかの検査をせず、
+      // 集計の項目が行数を固定した表形式の中に無ければエラーにする(見出しを引く行が無いため)
+      if(f.output === ROW_LABEL_REF){
+        if(!canUseRowLabelRef(f)) errors.push('「この行の見出し」は、行数を固定した表形式の中の項目でだけ使えます');
+      } else if(f.output && !allCols.includes(f.output)) missing(f.output);
       (f.match || []).forEach(m => {
         if(!isValidReferenceTarget(m.field)) missing(m.field);
         if(!(dl.conditionColumns || []).includes(m.key)) missing(m.key);
@@ -4157,7 +4169,9 @@ function hasRowLabels(st){
 }
 // 表の左右にある列(左: 並べ替え等の操作列、または固定した表の行の見出し / 右: 削除の列)。見出し・各行・列の定義で、そろえて使う
 function setTableCols(st){
-  if(st.fixedRows) return { fixed: true, left: hasRowLabels(st) || state.mode === 'edit', right: false };
+  // 「見出しを表示しない」(hideRowLabels、2026-11-25)の時は、見出しを持ったまま、シートには出さない(列を作らない)。
+  // テンプレート編集中だけは、見出しを書き込む入力欄が要るので、左端の列を出す
+  if(st.fixedRows) return { fixed: true, left: (hasRowLabels(st) && !st.hideRowLabels) || state.mode === 'edit', right: false };
   return { fixed: false, left: !state.readOnly, right: !state.readOnly };
 }
 // 行が、初期値のまま(中身が無い)か
@@ -4193,6 +4207,14 @@ function setSetFixedRows(setId, on){
   delete st.fixedRows;
   render();
 }
+// 行の見出しを、シートに表示しない(2026-11-25、利用者の依頼)。見出し(rowLabels)は持ったまま:
+// 「この行の見出しと同じ名前の列」・ココフォリアのラベル(「見出し 列名」)・チャットパレットの参照には、これまでどおり使われる。
+// 行数固定をやめても、設定は残す(固定に戻した時に、そのまま効く。rowLabelsと同じ)
+function setSetHideRowLabels(setId, on){
+  const st = findFrame('set', setId); if(!st) return;
+  if(on) st.hideRowLabels = true; else delete st.hideRowLabels;
+  render();
+}
 function setSetRowLabel(setId, idx, v){
   const st = findFrame('set', setId); if(!st) return;
   if(!Array.isArray(st.rowLabels)) st.rowLabels = [];
@@ -4223,7 +4245,8 @@ function renderSetFixedEditTable(set){
   const rows = (state.character.sets[set.id] || []).slice(0, fixedRowCountOf(set));
   const firstLine = setLinesOf(set)[0] || [];
   const tc = setTableCols(set);
-  const spacerCell = '<span class="set-cell-label set-cell-label-spacer"></span>';
+  // 見出しを表示しない設定の時は、左端の列(見出しの入力欄)の上に「見出し（非表示）」と添える(シートには出ないことが、編集中に分かるように)
+  const spacerCell = `<span class="set-cell-label set-cell-label-spacer">${set.hideRowLabels ? '見出し（非表示）' : ''}</span>`;
   const headerCells = (tc.left ? spacerCell : '') + firstLine.map(f => {
     const picked = state.selection && state.selection.kind === 'field' && state.selection.id === f.id;
     return `<span class="set-cell-label${isFieldReferenceBroken(f) ? ' is-broken' : ''}${picked ? ' is-selected' : ''}" data-frame-id="${f.id}" onclick="selectFrame(event,'field','${f.id}')">${esc(f.label)}</span>`;
@@ -6570,7 +6593,11 @@ function renderPanelBody(kind, f){
       const n = fixedRowCountOf(f);
       return labelInput + rowsMode
         + `<label><span>行数（1〜${MAX_INITIAL_SET_ROWS}）</span><input type="number" min="1" max="${MAX_INITIAL_SET_ROWS}" step="1" value="${n}" onchange="setSetInitialRows('${f.id}',this.value)"></label>`
-        + `<p class="muted small">行数は変わらず、利用者は行を追加・削除・並べ替えできません。各行の見出しは、中央の表の左端の入力欄に書き込みます（空欄の行は見出しなし）。</p>`;
+        + `<p class="muted small">行数は変わらず、利用者は行を追加・削除・並べ替えできません。各行の見出しは、中央の表の左端の入力欄に書き込みます（空欄の行は見出しなし）。</p>`
+        + checkboxToggleHtml(!!f.hideRowLabels, `onchange="setSetHideRowLabels(${jsArg(f.id)},this.checked)"`, '見出しをシートに表示しない')
+        + `<p class="muted small">${f.hideRowLabels
+          ? '見出しは内部に持ったまま、シートには表示しません。「この行の見出しと同じ名前の列」やココフォリアに送るラベルには、これまでどおり使われます。見出しは、このテンプレート編集画面の表の左端でだけ書き込めます。'
+          : '見出しは表の左端に表示されます。'}</p>`;
     }
     return labelInput + rowsMode
       + `<label><span>初期の行数（0〜${MAX_INITIAL_SET_ROWS}）</span><input type="number" min="0" max="${MAX_INITIAL_SET_ROWS}" step="1" value="${initialRowsOf(f)}" onchange="setSetInitialRows('${f.id}',this.value)"></label>`
@@ -6682,7 +6709,8 @@ function renderFieldTypeEditor(f){
   } else if(f.type === 'number'){
     // 計算(2026-10-18): 計算式・データリストから参照・集計。入力値は「数値の入力」。
     const kindOptions = [['formula', '計算式'], ['lookup', 'データリストから参照']];
-    if(!isFieldInsideSet(f.id)) kindOptions.push(['aggregateSum', '集計(表形式の合計)']);
+    // 集計は、表形式の中の項目にも使える(2026-11-25、利用者の依頼。「見出し」ごとに、別の表形式の合計を出す用途)
+    kindOptions.push(['aggregateSum', '集計(表形式の合計)']);
     html += `<label><span>計算方法</span><select onchange="changeNumberKind('${f.id}',this.value)">${
       kindOptions.map(([v, l]) => `<option value="${v}" ${f.refType === v ? 'selected' : ''}>${l}</option>`).join('')
     }</select></label>`;
@@ -6951,21 +6979,28 @@ function renderLookupEditor(f){
     if(outputIsRowLabel){
       html += `<p class="muted small">表示条件で引いたデータリストの行から、行ごとに、その行の見出しと同じ名前の列の値を出力します（見出しAの行は列A、見出しBの行は列B）。</p>`;
       // 見出しと同じ名前の表示内容列が無い行は、空欄になる(静かに空になるので、作る時に気づけるよう、この項目の表形式の見出しを調べて知らせる)
-      const st = isFieldInsideSet(f.id);
-      if(st && st.fixedRows){
-        const cols = dl.contentColumns || [];
-        const unmatched = [];
-        let emptyCount = 0;
-        for(let i = 0; i < fixedRowCountOf(st); i++){
-          const label = rowLabelOf(st, i);
-          if(label.trim() === '') emptyCount++;
-          else if(!cols.includes(label) && !unmatched.includes(label)) unmatched.push(label);
-        }
-        if(unmatched.length) html += `<p class="muted small term-warning">⚠ 次の見出しは、このデータリストの表示内容列に同じ名前の列が無いので、空欄になります: ${unmatched.map(l => `「${esc(l)}」`).join('')}</p>`;
-        if(emptyCount) html += `<p class="muted small term-warning">⚠ 見出しが空の行（${emptyCount}行）は、空欄になります。</p>`;
-      }
+      html += rowLabelColumnWarningsHtml(f, dl, '空欄');
     }
   }
+  return html;
+}
+// 出力する列(集計は「集計する列」)が「この行の見出しと同じ名前の列」の時の、見出しと列名の食い違いの警告(設定パネル用、2026-11-25に共通化)。
+// 項目が入っている表形式(行数固定)のすべての行の見出しを、データリストの表示内容列と照らし、同じ名前の列が無い見出し・見出しが空の行を知らせる。
+// resultWord: そうなった時の結果(lookupは「空欄」、集計は、その行の合計が「0」)。参照エラー(赤い表示)にはしない
+function rowLabelColumnWarningsHtml(f, dl, resultWord){
+  const st = isFieldInsideSet(f.id);
+  if(!(st && st.fixedRows)) return '';
+  const cols = dl.contentColumns || [];
+  const unmatched = [];
+  let emptyCount = 0;
+  for(let i = 0; i < fixedRowCountOf(st); i++){
+    const label = rowLabelOf(st, i);
+    if(label.trim() === '') emptyCount++;
+    else if(!cols.includes(label) && !unmatched.includes(label)) unmatched.push(label);
+  }
+  let html = '';
+  if(unmatched.length) html += `<p class="muted small term-warning">⚠ 次の見出しは、このデータリストの表示内容列に同じ名前の列が無いので、${resultWord}になります: ${unmatched.map(l => `「${esc(l)}」`).join('')}</p>`;
+  if(emptyCount) html += `<p class="muted small term-warning">⚠ 見出しが空の行（${emptyCount}行）は、${resultWord}になります。</p>`;
   return html;
 }
 function setLookupDataList(id, dlId){
@@ -7098,8 +7133,20 @@ function renderAggregateDataListEditor(f, st){
       const m = (f.match || []).find(mm => mm.key === key) || { key, field: '' };
       return `<label><span>表示条件「${esc(key)}」に対応する項目</span><select onchange="setLookupMatch(${jsArg(f.id)},${jsArg(key)},this.value)"><option value="">(選択)</option>${candidateOptions(m.field)}</select></label>`;
     }).join('');
+    // 「集計する列」に「この行の見出しと同じ名前の列」を選べる(2026-11-25、利用者の依頼)。表形式(行数固定)の中に置いた集計は、
+    // 行ごとに、その行の見出しと同じ名前のデータリストの列を集計する(見出しAの行は列A、見出しBの行は列Bの合計)。
+    // すでに選んでいるのに、表形式の行数固定をやめた場合は、選択肢に残して、使えない旨を添える(lookupの出力する列と同じ)
+    const rowLabelOk = canUseRowLabelRef(f);
+    const outputIsRowLabel = f.output === ROW_LABEL_REF;
+    const rowLabelOutputOpt = (rowLabelOk || outputIsRowLabel)
+      ? `<option value="${ROW_LABEL_REF}" ${outputIsRowLabel ? 'selected' : ''}>この行の見出しと同じ名前の列${rowLabelOk ? '' : '（行数が固定の表形式の中でだけ使えます）'}</option>`
+      : '';
     const valOptions = (dl.contentColumns || []).map(v => `<option value="${escAttr(v)}" ${f.output === v ? 'selected' : ''}>${esc(v)}</option>`).join('');
-    html += `<label><span>集計する列</span><select onchange="applyPatch('field',${jsArg(f.id)},{output:this.value})"><option value="">(選択)</option>${valOptions}</select></label>`;
+    html += `<label><span>集計する列</span><select onchange="applyPatch('field',${jsArg(f.id)},{output:this.value})"><option value="">(選択)</option>${rowLabelOutputOpt}${valOptions}</select></label>`;
+    if(outputIsRowLabel){
+      html += `<p class="muted small">この項目がある行の見出しと同じ名前の列の値を、全行分合計します（見出しAの行は列A、見出しBの行は列Bの合計）。</p>`;
+      html += rowLabelColumnWarningsHtml(f, dl, '0');
+    }
     // 個数のインプットには、数値に加えてチェックボックスも選べる(2026-10-16。「使用」のチェックが
     // 入った行だけ合計する、という使い方のため。チェックボックスは、計算でtrue=1/false=0になる)。
     const countOptions = st.fields.filter(c => (c.type === 'number' || c.type === 'boolean') && c.id !== f.id)
@@ -7137,7 +7184,8 @@ function collectReferenceRows(){
   const rows = [];
   const describe = (f, location) => {
     const deps = fieldDirectRefs(f);
-    const usesRowLabel = (f.refType === 'listFilter' || f.refType === 'lookup') && ((f.match || []).some(m => m.field === ROW_LABEL_REF) || (f.refType === 'lookup' && f.output === ROW_LABEL_REF));
+    const usesRowLabel = (f.refType === 'listFilter' || f.refType === 'lookup' || f.refType === 'aggregateSum')
+      && ((f.match || []).some(m => m.field === ROW_LABEL_REF) || ((f.refType === 'lookup' || f.refType === 'aggregateSum') && f.output === ROW_LABEL_REF));
     if(!deps.length && !usesRowLabel) return;
     const depLabels = deps.map(depId => {
       const df = findFrame('field', depId);
