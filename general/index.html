@@ -2340,6 +2340,14 @@ function evalLookup(f, rowScope, visiting){
   if(!dl) return '';
   const matches = f.match || [];
   const row = dl.rows.find(r => matches.every(m => String(r[m.key]) === String(resolveTermValue(m.field, rowScope, visiting))));
+  // 出力する列が「この行の見出し」(ROW_LABEL_REF、2026-11-25)の時は、表示条件で引いた行から、その行の見出しと同じ名前の列の値を返す
+  // (見出しA・B・Cの行に、データリストの列A・B・Cを、行ごとに出す)。同じ名前の表示内容列が無い・行数固定の表形式の外・見出しが空の時は空欄。
+  // 集計(aggregateSum)のデータリスト集計も、この関数を使うので、refTypeがlookupの時だけ(集計の出力する列には、この選択肢は無い)
+  if(f.refType === 'lookup' && f.output === ROW_LABEL_REF){
+    const label = resolveTermValue(ROW_LABEL_REF, rowScope, visiting);
+    if(!row || typeof label !== 'string' || !(dl.contentColumns || []).includes(label)) return '';
+    return row[label];
+  }
   return row ? row[f.output] : '';
 }
 function evalListFilter(f, rowScope, visiting){
@@ -3755,13 +3763,16 @@ function getFieldReferenceErrors(f){
     const dl = findDataList(f.dataList);
     if(!dl){ missing(f.dataList); return errors; }
     const allCols = [...(dl.conditionColumns || []), ...(dl.contentColumns || [])];
-    if(f.refType === 'lookup' && f.output && !allCols.includes(f.output)) missing(f.output);
+    const rowLabelError = '「この行の見出し」は、行数を固定した表形式の中の項目でだけ使えます';
+    if(f.refType === 'lookup' && f.output === ROW_LABEL_REF){
+      if(!canUseRowLabelRef(f)) errors.push(rowLabelError);
+    } else if(f.refType === 'lookup' && f.output && !allCols.includes(f.output)) missing(f.output);
     if(f.refType === 'listFilter' && f.optionLabel && !allCols.includes(f.optionLabel)) missing(f.optionLabel);
     if(f.refType === 'listFilter' && f.optionValue && !allCols.includes(f.optionValue)) missing(f.optionValue);
     if(f.refType === 'listFilter' && f.randomWeight && !allCols.includes(f.randomWeight)) missing(f.randomWeight);
     (f.match || []).forEach(m => {
       if(m.field === ROW_LABEL_REF){
-        if(!canUseRowLabelRef(f)) errors.push('「この行の見出し」は、行数を固定した表形式の中の項目でだけ使えます');
+        if(!canUseRowLabelRef(f) && !errors.includes(rowLabelError)) errors.push(rowLabelError);
       } else if(!isValidReferenceTarget(m.field)) missing(m.field);
       if(!(dl.conditionColumns || []).includes(m.key)) missing(m.key);
     });
@@ -6890,22 +6901,53 @@ function renderLookupEditor(f){
   const dl = dataLists.find(d => d.id === f.dataList);
   if(dl){
     const candidates = referenceableFieldsFor(f.id).filter(c => c.id !== f.id);
+    // 行数を固定した表形式の中の項目は、「この行の見出し」を、表示条件に対応させる項目にも、出力する列にも選べる(2026-11-25)。
+    // すでに選んでいるのに、表形式の行数固定をやめた場合は、選択肢に残して、使えない旨を添える(黙って別の選択に見えないように)。
+    const rowLabelOk = canUseRowLabelRef(f);
+    const outputIsRowLabel = f.output === ROW_LABEL_REF;
+    const rowLabelNote = rowLabelOk ? '' : '（行数が固定の表形式の中でだけ使えます）';
     html += (dl.conditionColumns || []).map(key => {
       const m = (f.match || []).find(mm => mm.key === key) || { key, field: '' };
+      const rowLabelSelected = m.field === ROW_LABEL_REF;
+      const rowLabelOpt = (rowLabelOk || rowLabelSelected)
+        ? `<option value="${ROW_LABEL_REF}" ${rowLabelSelected ? 'selected' : ''}>この行の見出し${rowLabelNote}</option>`
+        : '';
       return `<label><span>表示条件「${esc(key)}」に対応する項目</span>
         <select onchange="setLookupMatch(${jsArg(f.id)},${jsArg(key)},this.value)">
           <option value="">(選択)</option>
-          ${candidates.map(c => `<option value="${c.id}" ${m.field === c.id ? 'selected' : ''}>${esc(c.label)}</option>`).join('')}
+          ${rowLabelOpt}${candidates.map(c => `<option value="${c.id}" ${m.field === c.id ? 'selected' : ''}>${esc(c.label)}</option>`).join('')}
         </select></label>`;
     }).join('');
+    // 出力する列に「この行の見出しと同じ名前の列」を選ぶと、行ごとに、その行の見出しと同じ名前の表示内容列の値を出す
+    const rowLabelOutputOpt = (rowLabelOk || outputIsRowLabel)
+      ? `<option value="${ROW_LABEL_REF}" ${outputIsRowLabel ? 'selected' : ''}>この行の見出しと同じ名前の列${rowLabelNote}</option>`
+      : '';
     const valOptions = (dl.contentColumns || []).map(v => `<option value="${escAttr(v)}" ${f.output === v ? 'selected' : ''}>${esc(v)}</option>`).join('');
-    html += `<label><span>出力する列</span><select onchange="applyPatch('field','${f.id}',{output:this.value})"><option value="">(選択)</option>${valOptions}</select></label>`;
+    html += `<label><span>出力する列</span><select onchange="applyPatch('field','${f.id}',{output:this.value})"><option value="">(選択)</option>${rowLabelOutputOpt}${valOptions}</select></label>`;
+    if(outputIsRowLabel){
+      html += `<p class="muted small">表示条件で引いたデータリストの行から、行ごとに、その行の見出しと同じ名前の列の値を出力します（見出しAの行は列A、見出しBの行は列B）。</p>`;
+      // 見出しと同じ名前の表示内容列が無い行は、空欄になる(静かに空になるので、作る時に気づけるよう、この項目の表形式の見出しを調べて知らせる)
+      const st = isFieldInsideSet(f.id);
+      if(st && st.fixedRows){
+        const cols = dl.contentColumns || [];
+        const unmatched = [];
+        let emptyCount = 0;
+        for(let i = 0; i < fixedRowCountOf(st); i++){
+          const label = rowLabelOf(st, i);
+          if(label.trim() === '') emptyCount++;
+          else if(!cols.includes(label) && !unmatched.includes(label)) unmatched.push(label);
+        }
+        if(unmatched.length) html += `<p class="muted small term-warning">⚠ 次の見出しは、このデータリストの表示内容列に同じ名前の列が無いので、空欄になります: ${unmatched.map(l => `「${esc(l)}」`).join('')}</p>`;
+        if(emptyCount) html += `<p class="muted small term-warning">⚠ 見出しが空の行（${emptyCount}行）は、空欄になります。</p>`;
+      }
+    }
   }
   return html;
 }
 function setLookupDataList(id, dlId){
   const f = findFrame('field', id); if(!f) return;
-  f.dataList = dlId; f.match = []; f.output = '';
+  // 出力する列が「この行の見出しと同じ名前の列」なら、特定の列ではなく出し方の選択なので、データリストを選び直しても保つ(表示条件の設定だけ消す)
+  f.dataList = dlId; f.match = []; f.output = f.output === ROW_LABEL_REF ? ROW_LABEL_REF : '';
   render();
 }
 function setLookupMatch(id, key, fieldId){
@@ -7071,7 +7113,7 @@ function collectReferenceRows(){
   const rows = [];
   const describe = (f, location) => {
     const deps = fieldDirectRefs(f);
-    const usesRowLabel = (f.refType === 'listFilter' || f.refType === 'lookup') && (f.match || []).some(m => m.field === ROW_LABEL_REF);
+    const usesRowLabel = (f.refType === 'listFilter' || f.refType === 'lookup') && ((f.match || []).some(m => m.field === ROW_LABEL_REF) || (f.refType === 'lookup' && f.output === ROW_LABEL_REF));
     if(!deps.length && !usesRowLabel) return;
     const depLabels = deps.map(depId => {
       const df = findFrame('field', depId);
@@ -7448,7 +7490,7 @@ function findColumnReferences(dlId, columnName){
   fieldsReferencingDataList(dlId).forEach(f => {
     const label = f.label || f.id;
     if((f.match || []).some(m => m.key === columnName)) refs.push(`項目「${label}」の絞り込み条件`);
-    if(f.refType === 'lookup' && f.output === columnName) refs.push(`項目「${label}」の出力する列`);
+    if(f.refType === 'lookup' && f.output === columnName && f.output !== ROW_LABEL_REF) refs.push(`項目「${label}」の出力する列`);
     if(f.refType === 'listFilter' && f.optionLabel === columnName) refs.push(`項目「${label}」の表示に使う列`);
     if(f.refType === 'listFilter' && f.optionValue === columnName) refs.push(`項目「${label}」の値として使う列`);
     if(f.refType === 'listFilter' && f.randomWeight === columnName) refs.push(`項目「${label}」の出現確率に使う列`);
