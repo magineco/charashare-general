@@ -2448,7 +2448,10 @@ function materializeDefaultValues(){
   const fill = (store, f) => {
     if(f.kind !== 'input' || f.defaultValue === undefined) return;
     if(f.type === 'boolean' && checkboxCountOf(f) > 1) return;
-    if(store[f.id] === undefined || store[f.id] === null) store[f.id] = f.defaultValue;
+    // 数値の項目の''は、入力からは入らない(updateValue()は数にして保存する)。項目の種類を「文字の入力」から
+    // 変えた後に残った古い値なので、未入力と同じく初期値で埋める(2026-11-25)
+    const v = store[f.id];
+    if(v === undefined || v === null || (f.type === 'number' && v === '')) store[f.id] = f.defaultValue;
   };
   if(!state.character.values) state.character.values = {};
   for(const s of state.template.sections){
@@ -6419,12 +6422,32 @@ function handleFieldDragEnd(){
 // 作者が確認画面で実際に別の値を入れた所は、そのまま残す(実際のキャラクターと同じ扱い)。キャラクター編集画面
 // (実際のキャラクター)は、初期値を変える画面が無いので対象外。1枠に複数チェックボックスを持つ真偽値は、
 // 値が配列で初期値を使わないので対象外。
+// 項目の「データの種類」を変えた時、確認用キャラクターが持っている、その項目の値(前の種類の値)を、新しい種類の
+// 空の値に戻す(2026-11-25、利用者の指摘「表形式の中で、数値の入力の初期値が機能していない」)。表形式の行は、項目を
+// 作った時(既定は文字の入力)の空文字''を値として持つため、数値の入力に変えて初期値を設定しても、確認画面の既存の行は
+// 空欄のままで、後から足した行だけが初期値になっていた(カテゴリー直下の項目は、新規作成の時点では値を持たないので起きない)。
+// 空に戻しておけば、その後の初期値の設定に、followDefaultInPreview()が追従する。f.typeは、変えた後の種類。
+function forgetPreviewValuesOf(f){
+  if(state.screen !== 'templateEditor' || !f || !state.character) return;
+  const empty = f.type === 'number' ? 0 : f.type === 'boolean' ? false : '';
+  if(state.character.values) delete state.character.values[f.id];
+  for(const s of state.template.sections){
+    for(const st of s.sets){
+      if(!(st.fields || []).some(x => x.id === f.id)) continue;
+      for(const row of (state.character.sets[st.id] || [])){
+        if(row) row[f.id] = empty;
+      }
+    }
+  }
+}
 function followDefaultInPreview(f, oldDefault){
   if(state.screen !== 'templateEditor' || !f || f.kind !== 'input' || !state.character) return;
   if(f.type === 'boolean' && checkboxCountOf(f) > 1) return;
   const empty = f.type === 'number' ? 0 : f.type === 'boolean' ? false : '';
   const base = oldDefault !== undefined ? oldDefault : empty;
-  const untouched = v => v === undefined || v === null || (typeof v !== 'object' && String(v) === String(base));
+  // 数値の項目の''は、入力からは決して入らない(updateValue()は数にして保存する)。「文字の入力」から種類を
+  // 変えた時に残った古い値なので、未入力と同じ扱いにする(2026-11-25)
+  const untouched = v => v === undefined || v === null || (f.type === 'number' && v === '') || (typeof v !== 'object' && String(v) === String(base));
   const vals = state.character.values;
   if(vals && Object.prototype.hasOwnProperty.call(vals, f.id) && untouched(vals[f.id])) delete vals[f.id];
   const fresh = f.defaultValue !== undefined ? f.defaultValue : empty;
@@ -6761,6 +6784,7 @@ function changeFieldType(id, newTypeKey){
   delete f.refType; delete f.terms; delete f.dataList; delete f.match; delete f.output; delete f.set;
   delete f.optionLabel; delete f.optionValue; delete f.randomWeight;
   delete f.defaultValue; delete f.placeholder;
+  forgetPreviewValuesOf(f);
   if(newType === 'list' && !f.options) f.options = ['選択肢A', '選択肢B'];
   if(newType !== 'list'){ delete f.options; delete f.allowCustomInput; delete f.randomButton; }
   if(toRandom) f.randomButton = true;
