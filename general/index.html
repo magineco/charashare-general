@@ -2040,9 +2040,18 @@ function assertSafeTemplateIds(tpl){
     throw new Error('テンプレートの内部データに不正な形式が含まれているため読み込めません。');
   };
   const checkFieldNums = (f) => {
-    checkNum(f.span); checkNum(f.width); checkNum(f.minRows); checkNum(f.checkboxCount);
+    checkNum(f.span); checkNum(f.width); checkNum(f.minRows); checkNum(f.checkboxCount); checkNum(f.rowIndex);
     if(f.type === 'number' && f.kind === 'input') checkNum(f.defaultValue);
     if(Array.isArray(f.terms)) f.terms.forEach(t => { if(t && typeof t === 'object') checkNum(t.value); });
+  };
+  // 対応表(match[].map、2026-11-27)は、[左の値, 右の値]の組の配列(値は文字か数)に限る。ほかの形は、比較の時に例外になりうる
+  const checkMatchMaps = (f) => {
+    if(!Array.isArray(f.match)) return;
+    f.match.forEach(m => {
+      if(!m || m.map === undefined) return;
+      const ok = Array.isArray(m.map) && m.map.every(p => Array.isArray(p) && p.every(v => typeof v === 'string' || typeof v === 'number'));
+      if(!ok) throw new Error('テンプレートの内部データに不正な形式が含まれているため読み込めません。');
+    });
   };
   (tpl.sections || []).forEach(sec => {
     checkId(sec.id);
@@ -2051,12 +2060,12 @@ function assertSafeTemplateIds(tpl){
       checkNum(sec.imageArea.width);
     }
     checkNum(sec.columns);
-    (sec.fields || []).forEach(f => { checkId(f.id); checkFieldNums(f); });
+    (sec.fields || []).forEach(f => { checkId(f.id); checkFieldNums(f); checkMatchMaps(f); });
     if(Array.isArray(sec.order)) sec.order.forEach(id => checkId(id));
     (sec.sets || []).forEach(st => {
       checkId(st.id);
       checkNum(st.initialRows);
-      (st.fields || []).forEach(f => { checkId(f.id); checkFieldNums(f); });
+      (st.fields || []).forEach(f => { checkId(f.id); checkFieldNums(f); checkMatchMaps(f); });
     });
   });
   (tpl.dataLists || []).forEach(dl => checkId(dl.id));
@@ -2185,6 +2194,13 @@ function fieldDirectRefs(f){
       else refs.push(...(f.terms || []).map(t => t.field));
       for(let i = refs.length - 1; i >= 0; i--) if(!refs[i]) refs.splice(i, 1);
     }
+    if(f.refType === 'setLookup'){
+      // 表形式から参照: 探す列・対応する項目(条件で探す時)と、出力する列が参照先。「行の見出し」は項目ではないので入れない
+      if(f.rowMode === 'match') (f.match || []).forEach(m => refs.push(m.key, m.field));
+      if(f.output === ROW_LABEL_REF) refs.push(...setLookupHeadingColumns(f).map(c => c.id));
+      else refs.push(f.output);
+      for(let i = refs.length - 1; i >= 0; i--) if(!refs[i] || refs[i] === ROW_LABEL_REF) refs.splice(i, 1);
+    }
   }
   return refs;
 }
@@ -2265,6 +2281,7 @@ function resolveTermValue(fieldId, rowScope, visiting){
     if(f.refType === 'formula') return evalFormula(f, rowScope, nextVisiting);
     // 集計は、表形式の中にも置ける(2026-11-25)。rowScopeは、その集計が置かれている行(「この行の見出し」を引くため)
     if(f.refType === 'aggregateSum') return evalAggregateSum(f, nextVisiting, rowScope);
+    if(f.refType === 'setLookup') return evalSetLookup(f, rowScope, nextVisiting);
   }
   return undefined;
 }
@@ -2272,6 +2289,7 @@ function resolveRefValue(f, rowScope, visiting){
   if(f.refType === 'formula') return evalFormula(f, rowScope, visiting);
   if(f.refType === 'lookup') return evalLookup(f, rowScope, visiting);
   if(f.refType === 'aggregateSum') return evalAggregateSum(f, visiting, rowScope);
+  if(f.refType === 'setLookup') return evalSetLookup(f, rowScope, visiting);
   return '';
 }
 // ゼロ除算(÷・%でv===0)を示す番兵オブジェクト。数値ではなくこの
@@ -2338,6 +2356,18 @@ function evalFormula(f, rowScope, visiting){
   }
   return acc;
 }
+// 対応表(2026-11-27、利用者の依頼): 条件(f.match[]の1件)の「対応する項目」の値を、表で読み替えてから探す。
+// m.map = [[左の値, 右の値], ...]。左の値と一致する組があれば右の値、無ければ元の値のまま(同じ左の値が複数なら、上の組)。
+// 左か右が空の組は使わない。lookup・listFilter・集計(データリスト)・表形式から参照で共通
+function isFilledMapPair(p){
+  return Array.isArray(p) && [p[0], p[1]].every(v => v !== undefined && v !== null && String(v) !== '');
+}
+function mapMatchValue(m, value){
+  if(!Array.isArray(m.map) || value === undefined || value === null || value === DIV_BY_ZERO_ERROR) return value;
+  const text = String(value);
+  const pair = m.map.find(p => isFilledMapPair(p) && String(p[0]) === text);
+  return pair ? pair[1] : value;
+}
 // labelScope: 出力する列が「この行の見出しと同じ名前の列」の時に、見出しを引く行。lookupは、項目自身の行(=rowScope)。
 // 集計(aggregateSum)のデータリスト集計は、rowScopeが集計する表形式(f.set)の行で、見出しは、集計の項目が置かれている行から引くため、
 // その行をlabelScopeで受け取る(表形式の外に置いた集計は、行が無いので見出しも無い=空欄)
@@ -2345,7 +2375,7 @@ function evalLookup(f, rowScope, visiting, labelScope){
   const dl = findDataList(f.dataList);
   if(!dl) return '';
   const matches = f.match || [];
-  const row = dl.rows.find(r => matches.every(m => String(r[m.key]) === String(resolveTermValue(m.field, rowScope, visiting))));
+  const row = dl.rows.find(r => matches.every(m => String(r[m.key]) === String(mapMatchValue(m, resolveTermValue(m.field, rowScope, visiting)))));
   // 出力する列が「この行の見出し」(ROW_LABEL_REF、2026-11-25)の時は、表示条件で引いた行から、その行の見出しと同じ名前の列の値を返す
   // (見出しA・B・Cの行に、データリストの列A・B・Cを、行ごとに出す)。同じ名前の表示内容列が無い・行数固定の表形式の外・見出しが空の時は空欄。
   // 集計(aggregateSum)のデータリスト集計の「集計する列」にも選べる(2026-11-25)
@@ -2356,6 +2386,65 @@ function evalLookup(f, rowScope, visiting, labelScope){
   }
   return row ? row[f.output] : '';
 }
+// 計算の「表形式から参照」(refType:'setLookup'、2026-11-27、利用者の依頼)。表形式の1行を選び、その行の列の値を出す。
+// - f.set: 参照する表形式
+// - f.rowMode: 'match'=条件で探す / それ以外=行を直接選ぶ(f.rowIndex、0始まり)
+// - f.match: 条件で探す時の条件(1つ)。[{key: 探す列(参照する表形式の項目のIDか、行の見出し=ROW_LABEL_REF),
+//   field: 対応する項目(項目のIDか、この項目がある行の見出し=ROW_LABEL_REF)}]。合う行が複数なら、上から最初の行
+// - f.output: 出力する列(参照する表形式の項目のID)。ROW_LABEL_REFは「行の見出しと同名」の列
+// 行が無い・合う行が無い・対応する項目が空欄の時は、空欄
+const SET_LOOKUP_COLUMN_TYPES = ['number', 'boolean', 'string', 'list'];
+// 出力する列が「行の見出しと同名」の時に、出力の候補になる列(この項目がある表形式のいずれかの行の見出しと、同じ名前の列)
+function setLookupHeadingColumns(f){
+  const own = isFieldInsideSet(f.id);
+  if(!(own && own.fixedRows)) return [];
+  const labels = new Set(Array.from({ length: fixedRowCountOf(own) }, (_, i) => rowLabelOf(own, i)).filter(l => l.trim() !== ''));
+  return setInputFields(f.set, SET_LOOKUP_COLUMN_TYPES).filter(c => labels.has(c.label) && c.id !== f.id);
+}
+// 参照する表形式のidx行目。行数固定の表は、キャラクターに行がまだ無くても、初期値の行として扱う
+function setLookupRowScope(st, rows, idx){
+  const row = rows[idx] || (st.fixedRows && idx < fixedRowCountOf(st) ? {} : null);
+  return row ? { setId: st.id, rowIndex: idx, row } : null;
+}
+function findSetLookupRow(f, st, rows, rowScope, visiting){
+  if(f.rowMode !== 'match'){
+    const count = st.fixedRows ? fixedRowCountOf(st) : rows.length;
+    const idx = f.rowIndex;
+    return (Number.isInteger(idx) && idx >= 0 && idx < count) ? setLookupRowScope(st, rows, idx) : null;
+  }
+  const m = (f.match || [])[0];
+  if(!m || !m.key || !m.field) return null;
+  const isBlank = v => v === undefined || v === null || v === '' || v === DIV_BY_ZERO_ERROR;
+  const source = resolveTermValue(m.field, rowScope, visiting);
+  if(isBlank(source)) return null;
+  const target = mapMatchValue(m, source);
+  const count = st.fixedRows ? Math.max(rows.length, fixedRowCountOf(st)) : rows.length;
+  for(let idx = 0; idx < count; idx++){
+    const scope = setLookupRowScope(st, rows, idx);
+    if(!scope) continue;
+    const value = resolveTermValue(m.key, scope, visiting);
+    if(!isBlank(value) && String(value) === String(target)) return scope;
+  }
+  return null;
+}
+function evalSetLookup(f, rowScope, visiting){
+  const st = findFrame('set', f.set);
+  if(!st) return '';
+  const rows = (state.character.sets && state.character.sets[st.id]) || [];
+  const found = findSetLookupRow(f, st, rows, rowScope, visiting);
+  if(!found) return '';
+  let columnId = f.output;
+  if(columnId === ROW_LABEL_REF){
+    const label = resolveTermValue(ROW_LABEL_REF, rowScope, visiting);
+    const column = (typeof label === 'string' && label !== '') ? setLookupHeadingColumns(f).find(c => c.label === label) : null;
+    columnId = column ? column.id : '';
+  }
+  if(!st.fields.some(c => c.id === columnId)) return '';
+  const value = resolveTermValue(columnId, found, visiting);
+  if(value === DIV_BY_ZERO_ERROR) return value;
+  if(typeof value === 'boolean') return value ? 1 : 0;
+  return (value === undefined || value === null) ? '' : value;
+}
 function evalListFilter(f, rowScope, visiting){
   const dl = findDataList(f.dataList);
   if(!dl) return [];
@@ -2364,7 +2453,7 @@ function evalListFilter(f, rowScope, visiting){
   // 保存する値としても使う(通常はこれで十分なため、省略可能にしている)。
   const valueCol = f.optionValue || f.optionLabel;
   return dl.rows
-    .filter(r => matches.every(m => String(r[m.key]) === String(resolveTermValue(m.field, rowScope, visiting))))
+    .filter(r => matches.every(m => String(r[m.key]) === String(mapMatchValue(m, resolveTermValue(m.field, rowScope, visiting)))))
     .map(r => f.randomWeight
       ? { value: r[valueCol], label: r[f.optionLabel], weight: r[f.randomWeight] }
       : { value: r[valueCol], label: r[f.optionLabel] });
@@ -2714,6 +2803,7 @@ function alignBrowseScroll(){
   // (成功・失敗とも)が終わったら、合わせるのは終わり
   if(b && !b.characters.loading && !b.templates.loading && b.characters.files.every(f => f.preview !== undefined)) browseScrollTarget = null;
 }
+let lastPanelKey = ''; // 直前に描いた設定パネルの対象(スクロール位置を保つかの判定に使う)
 function render(opts){
   // 文字入力欄の確定(change/blur)の最中は、描画を後回しにする(上の「文字入力欄の「確定」で起きる
   // 再描画は、操作が落ち着くまで遅らせる」参照)。後回しにした分が残っていれば、ここで取り込む
@@ -2773,6 +2863,12 @@ function render(opts){
     ccfoliaSetRows().forEach(r => ccfoliaRowMap.set(r.f.id, r)); // 行数を固定した表形式の列も、クリックで扱いを決められる
   }
   app.className = state.mode === 'edit' ? 'mode-edit' : (ccfoliaSetupActive() ? 'mode-view mode-ccfolia' : 'mode-view');
+  // 右の設定パネルのスクロール位置(2026-11-27): 描き直すと先頭に戻るため、同じ対象の設定を開いている間は位置を保つ。
+  // 対象(選んでいる枠・色・ココフォリア連携の設定)が変わった時は、先頭から
+  const panelKey = JSON.stringify([!!state.colorPanelOpen, !!state.ccfoliaSetup, state.selection]);
+  const oldPanel = app.querySelector('.panel-pane');
+  const panelScrollTop = (oldPanel && panelKey === lastPanelKey) ? oldPanel.scrollTop : 0;
+  lastPanelKey = panelKey;
   // チャットパレットは、テンプレート編集画面では従来通りシート内に
   // インライン表示するが、キャラクター編集/表示画面ではフローティング
   // 表示に統一する(ボタンで開閉、枠外クリックで閉じる)。
@@ -2796,6 +2892,8 @@ function render(opts){
   app.querySelectorAll('textarea').forEach(autoResizeTextarea);
   syncSetColumnFrames();
   restoreFocus();
+  const newPanel = app.querySelector('.panel-pane');
+  if(newPanel && panelScrollTop) newPanel.scrollTop = panelScrollTop;
   if(focusPanelNameOnRender){
     focusPanelNameOnRender = false;
     const nameInput = app.querySelector('.panel-pane input[data-panel-name], .panel-pane textarea[data-panel-name]');
@@ -3817,6 +3915,27 @@ function getFieldReferenceErrors(f){
     });
     return errors;
   }
+  if(f.refType === 'setLookup'){
+    const st = findFrame('set', f.set);
+    if(!st){ missing(f.set || ''); return errors; }
+    const inSet = id => st.fields.some(x => x.id === id);
+    const rowLabelError = '「行の見出しと同名」は、行数を固定した表形式の中の項目でだけ使えます';
+    if(f.rowMode === 'match'){
+      const m = (f.match || [])[0];
+      if(m && m.key === ROW_LABEL_REF){
+        if(!st.fixedRows) errors.push('探す列の「行の見出し」は、行数を固定した表形式を参照する時だけ使えます');
+      } else if(m && m.key && !inSet(m.key)) missing(m.key);
+      if(m && m.field === ROW_LABEL_REF){
+        if(!canUseRowLabelRef(f)) errors.push(rowLabelError);
+      } else if(m && m.field && !isValidReferenceTarget(m.field)) missing(m.field);
+    } else if(st.fixedRows && Number.isInteger(f.rowIndex) && f.rowIndex >= fixedRowCountOf(st)){
+      missing(`${f.rowIndex + 1}行目`);
+    }
+    if(f.output === ROW_LABEL_REF){
+      if(!canUseRowLabelRef(f) && !errors.includes(rowLabelError)) errors.push(rowLabelError);
+    } else if(f.output && !inSet(f.output)) missing(f.output);
+    return errors;
+  }
   return errors;
 }
 function isFieldReferenceBroken(f){
@@ -4010,7 +4129,7 @@ function renderFieldInput(f, rowScope){
   return `<div class="input-affix${cls}">${a.pre ? `<span class="affix-text affix-pre">${esc(a.pre)}</span>` : ''}${core}${a.suf ? `<span class="affix-text affix-suf">${esc(a.suf)}</span>` : ''}</div>`;
 }
 function renderFieldInputCore(f, rowScope){
-  if(f.kind === 'ref' && (f.refType === 'formula' || f.refType === 'lookup' || f.refType === 'aggregateSum')){
+  if(f.kind === 'ref' && ['formula', 'lookup', 'aggregateSum', 'setLookup'].includes(f.refType)){
     const errors = getFieldReferenceErrors(f);
     if(errors.length){
       return `<div class="field-value ref-value is-broken-value">⚠ ${errors.map(e => esc(e)).join('<br>⚠ ')}</div>`;
@@ -6710,7 +6829,8 @@ function renderFieldTypeEditor(f){
     html += `<label><span>初期値</span><input type="number" step="any" value="${numAttr(f.defaultValue, 0)}" onchange="applyPatch('field','${f.id}',{defaultValue:Number(this.value)||0})"></label>`;
   } else if(f.type === 'number'){
     // 計算(2026-10-18): 計算式・データリストから参照・集計。入力値は「数値の入力」。
-    const kindOptions = [['formula', '計算式'], ['lookup', 'データリストから参照']];
+    // 表形式から参照(2026-11-27)
+    const kindOptions = [['formula', '計算式'], ['lookup', 'データリストから参照'], ['setLookup', '表形式から参照']];
     // 集計は、表形式の中の項目にも使える(2026-11-25、利用者の依頼。「見出し」ごとに、別の表形式の合計を出す用途)
     kindOptions.push(['aggregateSum', '集計(表形式の合計)']);
     html += `<label><span>計算方法</span><select onchange="changeNumberKind('${f.id}',this.value)">${
@@ -6718,6 +6838,7 @@ function renderFieldTypeEditor(f){
     }</select></label>`;
     if(f.refType === 'formula') html += renderFormulaEditor(f);
     if(f.refType === 'lookup') html += renderLookupEditor(f);
+    if(f.refType === 'setLookup') html += renderSetLookupEditor(f);
     if(f.refType === 'aggregateSum') html += renderAggregateEditor(f);
   } else if(f.type === 'string' || f.type === 'multiline'){
     // 文字の入力(2026-10-18)。「複数行にする」で、1行の入力欄と複数行の入力欄(以前の「複数行テキスト」)を
@@ -6812,6 +6933,7 @@ function changeFieldType(id, newTypeKey){
   f.type = newType;
   f.kind = 'input';
   delete f.refType; delete f.terms; delete f.dataList; delete f.match; delete f.output; delete f.set;
+  delete f.rowMode; delete f.rowIndex;
   delete f.optionLabel; delete f.optionValue; delete f.randomWeight;
   delete f.defaultValue; delete f.placeholder;
   forgetPreviewValuesOf(f);
@@ -6831,7 +6953,7 @@ function changeNumberKind(id, kindValue){
   if(kindValue === 'input'){
     f.kind = 'input';
     delete f.refType; delete f.terms; delete f.dataList; delete f.match; delete f.output; delete f.set;
-    delete f.source; delete f.countField;
+    delete f.source; delete f.countField; delete f.rowMode; delete f.rowIndex;
   } else {
     f.kind = 'ref'; f.refType = kindValue;
     delete f.defaultValue;
@@ -6860,6 +6982,11 @@ function changeNumberKind(id, kindValue){
     if(oldRefType !== kindValue && (oldRefType === 'aggregateSum' || kindValue === 'aggregateSum')){
       delete f.source; delete f.countField; delete f.dataList; delete f.match; delete f.output;
     }
+    // 表形式から参照と他の種類を行き来する時は、match・outputの意味が違うので持ち越さない(対象の表形式f.setは残す)
+    if(oldRefType !== kindValue && (oldRefType === 'setLookup' || kindValue === 'setLookup')){
+      delete f.source; delete f.countField; delete f.dataList; delete f.match; delete f.output; delete f.rowMode; delete f.rowIndex;
+    }
+    if(kindValue === 'setLookup'){ if(!f.set) f.set = ''; if(!f.output) f.output = ''; }
     if(kindValue === 'lookup'){ if(!f.dataList) f.dataList = ''; if(!f.match) f.match = []; if(!f.output) f.output = ''; }
   }
   render();
@@ -6970,7 +7097,7 @@ function renderLookupEditor(f){
         <select onchange="setLookupMatch(${jsArg(f.id)},${jsArg(key)},this.value)">
           <option value="">(選択)</option>
           ${rowLabelOpt}${candidates.map(c => `<option value="${c.id}" ${m.field === c.id ? 'selected' : ''}>${esc(c.label)}</option>`).join('')}
-        </select></label>`;
+        </select></label>` + renderMatchMapEditor(f, m);
     }).join('');
     // 出力する列に「この行の見出しと同じ名前の列」を選ぶと、行ごとに、その行の見出しと同じ名前の表示内容列の値を出す
     const rowLabelOutputOpt = (rowLabelOk || outputIsRowLabel)
@@ -6989,7 +7116,7 @@ function renderLookupEditor(f){
 // 出力する列(集計は「集計する列」)が「この行の見出しと同じ名前の列」の時の、見出しと列名の食い違いの警告(設定パネル用、2026-11-25に共通化)。
 // 項目が入っている表形式(行数固定)のすべての行の見出しを、データリストの表示内容列と照らし、同じ名前の列が無い見出し・見出しが空の行を知らせる。
 // resultWord: そうなった時の結果(lookupは「空欄」、集計は、その行の合計が「0」)。参照エラー(赤い表示)にはしない
-function rowLabelColumnWarningsHtml(f, dl, resultWord){
+function rowLabelColumnWarningsHtml(f, dl, resultWord, where = 'このデータリストの表示内容列'){
   const st = isFieldInsideSet(f.id);
   if(!(st && st.fixedRows)) return '';
   const cols = dl.contentColumns || [];
@@ -7001,12 +7128,68 @@ function rowLabelColumnWarningsHtml(f, dl, resultWord){
     else if(!cols.includes(label) && !unmatched.includes(label)) unmatched.push(label);
   }
   let html = '';
-  if(unmatched.length) html += `<p class="muted small term-warning">⚠ 次の見出しは、このデータリストの表示内容列に同じ名前の列が無いので、${resultWord}になります: ${unmatched.map(l => `「${esc(l)}」`).join('')}</p>`;
+  if(unmatched.length) html += `<p class="muted small term-warning">⚠ 次の見出しは、${where}に同じ名前の列が無いので、${resultWord}になります: ${unmatched.map(l => `「${esc(l)}」`).join('')}</p>`;
   if(emptyCount) html += `<p class="muted small term-warning">⚠ 見出しが空の行（${emptyCount}行）は、${resultWord}になります。</p>`;
   return html;
 }
+// 対応表(2026-11-27)の設定欄。「対応する項目」を選ぶと、その下に「対応表を使う」が出る。入力は、他の表と同じ
+// タブ区切り(1行に1組)。フォーカスを外すと確定する(Tabキーで挿入したタブはchangeにならないので、onblur。commitTableDefaultと同じ)。
+// 確定では警告のダイアログを出さず(blurの中のalertは連続表示の原因になる)、使われない行は欄の下に知らせる
+const MATCH_MAP_PLACEHOLDER = 'タブ区切りで入力・貼り付け\n1行に1組。例:\n運動\t筋力\n隠密\t敏捷';
+// 条件の1件。表形式から参照は条件が1つだけ(match[0]、探す列は変えられる)、データリストの参照は列名(key)で引く
+function matchEntryOf(f, key){
+  const list = f.match || [];
+  return f.refType === 'setLookup' ? list[0] : list.find(m => m.key === key);
+}
+function matchMapToText(map){
+  return map.map(p => String(p[0] ?? '') + (String(p[1] ?? '') !== '' ? '\t' + p[1] : '')).join('\n');
+}
+// 空の行は捨てる。前後の空白は取り除き、3列目以降は使わない
+function parseMatchMapText(text){
+  return String(text).split(/\r\n|\r|\n/)
+    .map(line => line.split('\t').map(c => c.trim()))
+    .filter(cells => cells.some(c => c !== ''))
+    .map(cells => [cells[0] || '', cells[1] || '']);
+}
+function renderMatchMapEditor(f, m){
+  if(!m || !m.field) return '';
+  const args = `${jsArg(f.id)},${jsArg(m.key || '')}`;
+  const on = Array.isArray(m.map);
+  let html = checkboxToggleHtml(on, `onchange="toggleMatchMap(${args},this.checked)"`, '対応表を使う');
+  if(!on) return html;
+  html += `<label><span>対応表（左の値 → 右の値で探す）</span><textarea class="dl-tsv-input" rows="5" placeholder="${escAttr(MATCH_MAP_PLACEHOLDER)}" onkeydown="handleDataListTsvTabKey(event)" onblur="commitMatchMap(${args},this)">\n${esc(matchMapToText(m.map))}</textarea></label>`;
+  html += `<div class="tsv-default-tools">${tsvTabCopyButtonHtml()}</div>`;
+  const unusable = m.map.filter(p => !isFilledMapPair(p)).length;
+  if(unusable) html += `<p class="muted small term-warning">⚠ タブで区切った左の値と右の値がそろっていない行（${unusable}行）は、使いません。</p>`;
+  const lefts = m.map.filter(isFilledMapPair).map(p => String(p[0]));
+  const repeated = [...new Set(lefts.filter((v, i) => lefts.indexOf(v) !== i))];
+  if(repeated.length) html += `<p class="muted small term-warning">⚠ 左の値が同じ行が複数あります。上の行を使います: ${repeated.map(v => `「${esc(v)}」`).join('')}</p>`;
+  html += `<p class="muted small">表に無い値は、そのままの値で探します。</p>`;
+  return html;
+}
+function hasMatchMapContent(m){ return !!(m && Array.isArray(m.map) && m.map.length); }
+// 参照先を選び直すと、条件(対応表を含む)が消える。中身のある対応表がある時だけ、先に確認する
+function confirmDiscardMatchMaps(f){
+  return confirmDelete('この変更で、対応表の内容が削除されます。変更しますか？', (f.match || []).some(hasMatchMapContent));
+}
+function toggleMatchMap(id, key, checked){
+  const f = findFrame('field', id); if(!f) return;
+  const m = matchEntryOf(f, key); if(!m) return;
+  if(checked){ if(!Array.isArray(m.map)) m.map = []; }
+  else if(confirmDelete('対応表を削除しますか？', hasMatchMapContent(m))) delete m.map;
+  render(); // 削除をやめた時も、描き直してチェックを戻す
+}
+function commitMatchMap(id, key, textareaEl){
+  const f = findFrame('field', id); if(!f) return;
+  const m = matchEntryOf(f, key); if(!m || !Array.isArray(m.map)) return;
+  const next = parseMatchMapText(textareaEl.value);
+  if(JSON.stringify(next) === JSON.stringify(m.map)) return;
+  m.map = next;
+  render();
+}
 function setLookupDataList(id, dlId){
   const f = findFrame('field', id); if(!f) return;
+  if(!confirmDiscardMatchMaps(f)){ render(); return; }
   // 出力する列が「この行の見出しと同じ名前の列」なら、特定の列ではなく出し方の選択なので、データリストを選び直しても保つ(表示条件の設定だけ消す)
   f.dataList = dlId; f.match = []; f.output = f.output === ROW_LABEL_REF ? ROW_LABEL_REF : '';
   render();
@@ -7016,6 +7199,111 @@ function setLookupMatch(id, key, fieldId){
   if(!f.match) f.match = [];
   const existing = f.match.find(m => m.key === key);
   if(existing) existing.field = fieldId; else f.match.push({ key, field: fieldId });
+  render();
+}
+// 「表形式から参照」の設定欄(2026-11-27)。参照する表形式→行の指定(直接選ぶ/条件で探す)→出力する列。
+// すでに選んでいる「行の見出し」が、行数固定をやめて使えなくなった時は、選択肢に残して、使えない旨を添える(lookupと同じ)
+function renderSetLookupEditor(f){
+  const sets = [];
+  for(const s of state.template.sections) for(const st of s.sets) sets.push(st);
+  const option = (value, label, selected) => `<option value="${escAttr(value)}" ${selected ? 'selected' : ''}>${esc(label)}</option>`;
+  const select = (title, handler, options) => `<label><span>${title}</span><select onchange="${handler}(${jsArg(f.id)},this.value)">${options}</select></label>`;
+  let html = select('参照する表形式', 'setSetLookupSet', option('', '(選択)', false) + sets.map(s => option(s.id, s.label, f.set === s.id)).join(''));
+  const st = sets.find(s => s.id === f.set);
+  if(!st) return html;
+  const matchMode = f.rowMode === 'match';
+  html += select('行の指定', 'setSetLookupMode', option('select', '直接選ぶ', !matchMode) + option('match', '条件で探す', matchMode));
+  const columns = setInputFields(st.id, SET_LOOKUP_COLUMN_TYPES).filter(c => c.id !== f.id);
+  const columnOptions = selected => columns.map(c => option(c.id, c.label, selected === c.id)).join('');
+  const rowLabelOk = canUseRowLabelRef(f);
+  const sameNameOption = selected => (rowLabelOk || selected)
+    ? option(ROW_LABEL_REF, `行の見出しと同名${rowLabelOk ? '' : '（行数が固定の表形式の中でだけ使えます）'}`, selected)
+    : '';
+  if(!matchMode){
+    if(st.fixedRows){
+      const rowOptions = Array.from({ length: fixedRowCountOf(st) }, (_, i) => {
+        const label = rowLabelOf(st, i);
+        return option(String(i), `${i + 1}行目${label ? `（${label}）` : ''}`, f.rowIndex === i);
+      }).join('');
+      html += select('参照する行', 'setSetLookupRow', option('', '(選択)', false) + rowOptions);
+    } else {
+      // 整数だけを埋め込む(未選択は空欄。numAttr()は空文字を0にするので使わない)
+      const shown = Number.isInteger(f.rowIndex) ? f.rowIndex + 1 : '';
+      html += `<label><span>参照する行（上から何行目か）</span><input type="number" min="1" step="1" value="${shown}" onchange="setSetLookupRow(${jsArg(f.id)},this.value === '' ? '' : String(Math.max(1, parseInt(this.value) || 1) - 1))"></label>`;
+    }
+  } else {
+    const m = (f.match || [])[0] || { key: '', field: '' };
+    const keyIsHeading = m.key === ROW_LABEL_REF;
+    const headingKeyOption = (st.fixedRows || keyIsHeading)
+      ? option(ROW_LABEL_REF, `行の見出し${st.fixedRows ? '' : '（行数が固定の表形式を参照する時だけ使えます）'}`, keyIsHeading)
+      : '';
+    html += select('探す列', 'setSetLookupKey', option('', '(選択)', false) + headingKeyOption + columnOptions(m.key));
+    const candidates = referenceableFieldsFor(f.id).filter(c => c.id !== f.id);
+    html += select('対応する項目', 'setSetLookupField',
+      option('', '(選択)', false) + sameNameOption(m.field === ROW_LABEL_REF) + candidates.map(c => option(c.id, c.label, m.field === c.id)).join(''));
+    html += renderMatchMapEditor(f, m);
+  }
+  const outputIsRowLabel = f.output === ROW_LABEL_REF;
+  html += select('出力する列', 'setSetLookupOutput', option('', '(選択)', false) + sameNameOption(outputIsRowLabel) + columnOptions(f.output));
+  if(matchMode){
+    html += `<p class="muted small">条件に合う行が複数ある時は、最初の行の値を出力します。合う行が無い時や、対応する項目が空欄の時は、空欄になります。</p>`;
+    html += setLookupHeadingWarningsHtml(f, st);
+  }
+  if(outputIsRowLabel){
+    html += `<p class="muted small">参照する表形式の、この項目がある行の見出しと同じ名前の列の値を出力します。</p>`;
+    html += rowLabelColumnWarningsHtml(f, { contentColumns: columns.map(c => c.label) }, '空欄', '参照する表形式');
+  }
+  return html;
+}
+// 見出しどうしで探す時(探す列=行の見出し、対応する項目=行の見出しと同名)に、相手の表形式に無い見出しを知らせる
+function setLookupHeadingWarningsHtml(f, st){
+  const m = (f.match || [])[0];
+  const own = isFieldInsideSet(f.id);
+  if(!(m && m.key === ROW_LABEL_REF && m.field === ROW_LABEL_REF && st.fixedRows && own && own.fixedRows)) return '';
+  const labelsOf = s => Array.from({ length: fixedRowCountOf(s) }, (_, i) => rowLabelOf(s, i)).filter(l => l.trim() !== '');
+  const target = new Set(labelsOf(st));
+  // 対応表を使う時は、読み替えた後の値で照らす
+  const searched = l => String(mapMatchValue(m, l));
+  const unmatched = [...new Set(labelsOf(own).filter(l => !target.has(searched(l))))];
+  const describe = l => `「${esc(l)}」${searched(l) === l ? '' : `（対応表で「${esc(searched(l))}」）`}`;
+  return unmatched.length
+    ? `<p class="muted small term-warning">⚠ 次の見出しは、参照する表形式の行の見出しに無いので、空欄になります: ${unmatched.map(describe).join('')}</p>`
+    : '';
+}
+function setSetLookupSet(id, setId){
+  const f = findFrame('field', id); if(!f) return;
+  if(!confirmDiscardMatchMaps(f)){ render(); return; }
+  // 行と列は表形式ごとのものなので選び直し。「行の見出しと同名」は出し方の選択なので保つ
+  f.set = setId; delete f.rowIndex; f.match = []; f.output = f.output === ROW_LABEL_REF ? ROW_LABEL_REF : '';
+  render();
+}
+function setSetLookupMode(id, mode){
+  const f = findFrame('field', id); if(!f) return;
+  if(mode === 'match'){ f.rowMode = 'match'; delete f.rowIndex; if(!f.match) f.match = []; }
+  else {
+    if(!confirmDiscardMatchMaps(f)){ render(); return; }
+    delete f.rowMode; delete f.match;
+  }
+  render();
+}
+function setSetLookupRow(id, value){
+  const f = findFrame('field', id); if(!f) return;
+  if(value === '') delete f.rowIndex; else f.rowIndex = parseInt(value);
+  render();
+}
+function setSetLookupKey(id, key){
+  const f = findFrame('field', id); if(!f) return;
+  f.match = [Object.assign({ field: '' }, (f.match || [])[0], { key })]; // 対応表は残す
+  render();
+}
+function setSetLookupField(id, fieldId){
+  const f = findFrame('field', id); if(!f) return;
+  f.match = [Object.assign({ key: '' }, (f.match || [])[0], { field: fieldId })];
+  render();
+}
+function setSetLookupOutput(id, columnId){
+  const f = findFrame('field', id); if(!f) return;
+  f.output = columnId;
   render();
 }
 function renderListFilterEditor(f){
@@ -7034,7 +7322,7 @@ function renderListFilterEditor(f){
       const rowLabelOpt = (rowLabelOk || rowLabelSelected)
         ? `<option value="${ROW_LABEL_REF}" ${rowLabelSelected ? 'selected' : ''}>行の見出しと同名${rowLabelOk ? '' : '（行数が固定の表形式の中でだけ使えます）'}</option>`
         : '';
-      return `<label><span>表示条件「${esc(key)}」に対応する項目</span><select onchange="setListFilterMatch(${jsArg(f.id)},${jsArg(key)},this.value)"><option value="">(選択)</option>${rowLabelOpt}${candidates.map(c => `<option value="${c.id}" ${m.field === c.id ? 'selected' : ''}>${esc(c.label)}</option>`).join('')}</select></label>`;
+      return `<label><span>表示条件「${esc(key)}」に対応する項目</span><select onchange="setListFilterMatch(${jsArg(f.id)},${jsArg(key)},this.value)"><option value="">(選択)</option>${rowLabelOpt}${candidates.map(c => `<option value="${c.id}" ${m.field === c.id ? 'selected' : ''}>${esc(c.label)}</option>`).join('')}</select></label>` + renderMatchMapEditor(f, m);
     }).join('');
     const allCols = [...(dl.conditionColumns || []), ...(dl.contentColumns || [])];
     html += `<label><span>選択肢として表示する列</span><select onchange="applyPatch('field','${f.id}',{optionLabel:this.value})"><option value="">(選択)</option>${allCols.map(c => `<option value="${escAttr(c)}" ${f.optionLabel === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select></label>`;
@@ -7058,6 +7346,7 @@ function toggleListFilterCustomValue(id, checked){
 }
 function setListFilterDataList(id, dlId){
   const f = findFrame('field', id); if(!f) return;
+  if(!confirmDiscardMatchMaps(f)){ render(); return; }
   f.dataList = dlId; f.match = []; f.optionLabel = ''; delete f.optionValue; delete f.randomWeight;
   render();
 }
@@ -7105,6 +7394,7 @@ function renderAggregateEditor(f){
 }
 function setAggregateSet(id, setId){
   const f = findFrame('field', id); if(!f) return;
+  if(f.source === 'dataList' && !confirmDiscardMatchMaps(f)){ render(); return; }
   // 対象の表形式を選んだら、「各行の計算式」の項を最初から1つ出しておく(2026-11-05。
   // 以前は0個で、毎回「+ 項を追加」を押す必要があった)。
   f.set = setId; f.terms = [{ op: null, field: '' }];
@@ -7133,7 +7423,7 @@ function renderAggregateDataListEditor(f, st){
     const candidateOptions = fieldId => candidates.map(c => `<option value="${escAttr(c.id)}" ${fieldId === c.id ? 'selected' : ''}>${esc(c.label)}</option>`).join('');
     html += (dl.conditionColumns || []).map(key => {
       const m = (f.match || []).find(mm => mm.key === key) || { key, field: '' };
-      return `<label><span>表示条件「${esc(key)}」に対応する項目</span><select onchange="setLookupMatch(${jsArg(f.id)},${jsArg(key)},this.value)"><option value="">(選択)</option>${candidateOptions(m.field)}</select></label>`;
+      return `<label><span>表示条件「${esc(key)}」に対応する項目</span><select onchange="setLookupMatch(${jsArg(f.id)},${jsArg(key)},this.value)"><option value="">(選択)</option>${candidateOptions(m.field)}</select></label>` + renderMatchMapEditor(f, m);
     }).join('');
     // 「集計する列」に「この行の見出しと同じ名前の列」を選べる(2026-11-25、利用者の依頼)。表形式(行数固定)の中に置いた集計は、
     // 行ごとに、その行の見出しと同じ名前のデータリストの列を集計する(見出しAの行は列A、見出しBの行は列Bの合計)。
@@ -7165,6 +7455,7 @@ function setAggregateSource(id, fromDataList){
     if(!f.match) f.match = [];
     if(!f.output) f.output = '';
   } else {
+    if(!confirmDiscardMatchMaps(f)){ render(); return; }
     delete f.source; delete f.dataList; delete f.match; delete f.output; delete f.countField;
     if(!Array.isArray(f.terms)) f.terms = [{ op: null, field: '' }];
   }
@@ -7178,7 +7469,7 @@ function setAggregateSource(id, fromDataList){
 // 見た読み取り専用のビューで、値の計算経路には一切関与しない。
 function refKindLabel(f){
   if(f.kind === 'ref'){
-    return { formula: '計算式', lookup: 'データリストから参照', listFilter: 'データリストから選択', aggregateSum: (f.source === 'dataList' ? '集計(データリスト)' : '集計') }[f.refType] || f.refType;
+    return { formula: '計算式', lookup: 'データリストから参照', setLookup: '表形式から参照', listFilter: 'データリストから選択', aggregateSum: (f.source === 'dataList' ? '集計(データリスト)' : '集計') }[f.refType] || f.refType;
   }
   return '';
 }
@@ -7186,13 +7477,16 @@ function collectReferenceRows(){
   const rows = [];
   const describe = (f, location) => {
     const deps = fieldDirectRefs(f);
-    const usesRowLabel = (f.refType === 'listFilter' || f.refType === 'lookup' || f.refType === 'aggregateSum')
-      && ((f.match || []).some(m => m.field === ROW_LABEL_REF) || ((f.refType === 'lookup' || f.refType === 'aggregateSum') && f.output === ROW_LABEL_REF));
-    if(!deps.length && !usesRowLabel) return;
+    const usesRowLabel = ['listFilter', 'lookup', 'aggregateSum', 'setLookup'].includes(f.refType)
+      && ((f.match || []).some(m => m.field === ROW_LABEL_REF) || (f.refType !== 'listFilter' && f.output === ROW_LABEL_REF));
+    // 表形式から参照で、探す列が「行の見出し」(参照する表形式の見出し)
+    const headingSet = (f.refType === 'setLookup' && (f.match || []).some(m => m.key === ROW_LABEL_REF)) ? findFrame('set', f.set) : null;
+    if(!deps.length && !usesRowLabel && !headingSet) return;
     const depLabels = deps.map(depId => {
       const df = findFrame('field', depId);
       return df ? df.label : `(不明:${depId})`;
     });
+    if(headingSet) depLabels.push(`${headingSet.label}の行の見出し`);
     if(usesRowLabel) depLabels.push('行の見出しと同名');
     rows.push({ label: f.label, location, kindLabel: refKindLabel(f), depLabels, errors: getFieldReferenceErrors(f) });
   };
