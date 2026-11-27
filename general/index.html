@@ -4613,6 +4613,8 @@ function renderSetRow(set, row, idx, rowCount){
  * ルールと同様に非技術者でも扱える形にしている。出てくるのはラベル名
  * ではなく値そのものなので、2026-09-19に[ラベル名#N]から[#N]という
  * 表記に変更した)。
+ * 表形式の中の項目では[見出し]も使え、その行の見出し(行数を固定した表形式の
+ * rowLabels)に置き換わる(2026-11-27、利用者の依頼)。
  *
  * チャットパレットの並び順は、テンプレート内の枠の並び順(カテゴリー→
  * インプットセットの順)から独立させ、state.template.chatOrder(対象
@@ -5124,6 +5126,9 @@ function resolveChatText(f, rowScope, st){
       const tv = getEffectiveValue(target, rowScope);
       return tv === DIV_BY_ZERO_ERROR ? 'ゼロで割っています' : String(tv ?? '');
     });
+    // [見出し]: この行の見出し。シートに見出しを表示しない設定(hideRowLabels)でも出す。行数が固定でない表形式と、
+    // 見出しが空の行は空欄。見出しの文字を別のトークンとして読み直さないよう、最後に置き換える
+    text = text.replaceAll('[見出し]', () => rowLabelOf(st, rowScope.rowIndex));
   }
   return text;
 }
@@ -6791,8 +6796,10 @@ function renderChatPaletteEditor(f){
   // 半角スペース区切り(ダイス+固定値 コメント)が想定書式だが、無くても
   // 確定はブロックしない(データリストTSVの列数不一致と同じ、警告のみの方針)。
   const spaceWarning = tpl.includes(' ') ? '' : `<p class="muted small term-warning">⚠ 半角スペースが入っていません(コメント部分が区切れずに出力されます)</p>`;
+  // [見出し]は、見出しを持てる(行数を固定した)表形式の時だけ案内する
+  const headingHint = st && st.fixedRows ? '[見出し]=この行の見出しに置き換わります。' : '';
   const hint = st
-    ? `<p class="muted small">[この値]=この項目の現在の値、[ラベル名]=この項目の現在の名称に置き換わります。[#1]のように書くと、同じ行の先頭から数えて1番目の項目の値に置き換わります(列の並び順で指定します)。[#0]と書くと、何行目かを数字にした値となります(一番上を1とします)。</p>`
+    ? `<p class="muted small">[この値]=この項目の現在の値、[ラベル名]=この項目の現在の名称に置き換わります。${headingHint}[#1]のように書くと、同じ行の先頭から数えて1番目の項目の値に置き換わります(列の並び順で指定します)。[#0]と書くと、何行目かを数字にした値となります(一番上を1とします)。</p>`
     : `<p class="muted small">[この値]=この項目の現在の値、[ラベル名]=この項目の現在の名称に置き換わります。</p>`;
   return checkbox
     + `<label><span>出力形式</span><input type="text" value="${escAttr(tpl)}" onchange="updateChatTemplate('${f.id}',this.value)"></label>`
