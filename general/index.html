@@ -2157,6 +2157,8 @@ function referenceableFieldsFor(fieldId, typeFilter){
   return globals;
 }
 // 「この行の見出し」(2026-11-21、利用者の依頼)。行数を固定した表形式(fixedRows)の各行には見出し(rowLabels)をつけられる。
+// 画面での名称は、表示条件・出力する列・集計する列のどれも「行の見出しと同名」(2026-11-27、利用者の指示で表記ブレを統一。
+// コメントには、以前の呼び方「この行の見出し」「この行の見出しと同じ名前の列」が残る。読み替える)。
 // 「リストから選ぶ」(listFilter)の項目が、その表形式の中にある時、データリストの表示条件に、他の項目の値の代わりに
 // 「その行の見出し」を使える。f.match[].field に、項目のIDの代わりにこの固定の文字列を入れる(項目のIDは、必ずuid()が作る
 // 英数字+_-だけで、'@'は含まれないので、IDとは絶対に重ならない)。この文字列は比較に使うだけで、コード・ID・HTMLには
@@ -3774,7 +3776,7 @@ function getFieldReferenceErrors(f){
     const dl = findDataList(f.dataList);
     if(!dl){ missing(f.dataList); return errors; }
     const allCols = [...(dl.conditionColumns || []), ...(dl.contentColumns || [])];
-    const rowLabelError = '「この行の見出し」は、行数を固定した表形式の中の項目でだけ使えます';
+    const rowLabelError = '「行の見出しと同名」は、行数を固定した表形式の中の項目でだけ使えます';
     if(f.refType === 'lookup' && f.output === ROW_LABEL_REF){
       if(!canUseRowLabelRef(f)) errors.push(rowLabelError);
     } else if(f.refType === 'lookup' && f.output && !allCols.includes(f.output)) missing(f.output);
@@ -3801,7 +3803,7 @@ function getFieldReferenceErrors(f){
       // 「集計する列」が「この行の見出しと同じ名前の列」(2026-11-25)の時は、データリストの列にあるかの検査をせず、
       // 集計の項目が行数を固定した表形式の中に無ければエラーにする(見出しを引く行が無いため)
       if(f.output === ROW_LABEL_REF){
-        if(!canUseRowLabelRef(f)) errors.push('「この行の見出し」は、行数を固定した表形式の中の項目でだけ使えます');
+        if(!canUseRowLabelRef(f)) errors.push('「行の見出しと同名」は、行数を固定した表形式の中の項目でだけ使えます');
       } else if(f.output && !allCols.includes(f.output)) missing(f.output);
       (f.match || []).forEach(m => {
         if(!isValidReferenceTarget(m.field)) missing(m.field);
@@ -6596,7 +6598,7 @@ function renderPanelBody(kind, f){
         + `<p class="muted small">行数は変わらず、利用者は行を追加・削除・並べ替えできません。各行の見出しは、中央の表の左端の入力欄に書き込みます（空欄の行は見出しなし）。</p>`
         + checkboxToggleHtml(!!f.hideRowLabels, `onchange="setSetHideRowLabels(${jsArg(f.id)},this.checked)"`, '見出しをシートに表示しない')
         + `<p class="muted small">${f.hideRowLabels
-          ? '見出しは内部に持ったまま、シートには表示しません。「この行の見出しと同じ名前の列」やココフォリアに送るラベルには、これまでどおり使われます。見出しは、このテンプレート編集画面の表の左端でだけ書き込めます。'
+          ? '見出しは内部に持ったまま、シートには表示しません。「行の見出しと同名」やココフォリアに送るラベルには、これまでどおり使われます。見出しは、このテンプレート編集画面の表の左端でだけ書き込めます。'
           : '見出しは表の左端に表示されます。'}</p>`;
     }
     return labelInput + rowsMode
@@ -6962,7 +6964,7 @@ function renderLookupEditor(f){
       const m = (f.match || []).find(mm => mm.key === key) || { key, field: '' };
       const rowLabelSelected = m.field === ROW_LABEL_REF;
       const rowLabelOpt = (rowLabelOk || rowLabelSelected)
-        ? `<option value="${ROW_LABEL_REF}" ${rowLabelSelected ? 'selected' : ''}>この行の見出し${rowLabelNote}</option>`
+        ? `<option value="${ROW_LABEL_REF}" ${rowLabelSelected ? 'selected' : ''}>行の見出しと同名${rowLabelNote}</option>`
         : '';
       return `<label><span>表示条件「${esc(key)}」に対応する項目</span>
         <select onchange="setLookupMatch(${jsArg(f.id)},${jsArg(key)},this.value)">
@@ -6972,7 +6974,7 @@ function renderLookupEditor(f){
     }).join('');
     // 出力する列に「この行の見出しと同じ名前の列」を選ぶと、行ごとに、その行の見出しと同じ名前の表示内容列の値を出す
     const rowLabelOutputOpt = (rowLabelOk || outputIsRowLabel)
-      ? `<option value="${ROW_LABEL_REF}" ${outputIsRowLabel ? 'selected' : ''}>この行の見出しと同じ名前の列${rowLabelNote}</option>`
+      ? `<option value="${ROW_LABEL_REF}" ${outputIsRowLabel ? 'selected' : ''}>行の見出しと同名${rowLabelNote}</option>`
       : '';
     const valOptions = (dl.contentColumns || []).map(v => `<option value="${escAttr(v)}" ${f.output === v ? 'selected' : ''}>${esc(v)}</option>`).join('');
     html += `<label><span>出力する列</span><select onchange="applyPatch('field','${f.id}',{output:this.value})"><option value="">(選択)</option>${rowLabelOutputOpt}${valOptions}</select></label>`;
@@ -7030,7 +7032,7 @@ function renderListFilterEditor(f){
       const m = (f.match || []).find(mm => mm.key === key) || { key, field: '' };
       const rowLabelSelected = m.field === ROW_LABEL_REF;
       const rowLabelOpt = (rowLabelOk || rowLabelSelected)
-        ? `<option value="${ROW_LABEL_REF}" ${rowLabelSelected ? 'selected' : ''}>この行の見出し${rowLabelOk ? '' : '（行数が固定の表形式の中でだけ使えます）'}</option>`
+        ? `<option value="${ROW_LABEL_REF}" ${rowLabelSelected ? 'selected' : ''}>行の見出しと同名${rowLabelOk ? '' : '（行数が固定の表形式の中でだけ使えます）'}</option>`
         : '';
       return `<label><span>表示条件「${esc(key)}」に対応する項目</span><select onchange="setListFilterMatch(${jsArg(f.id)},${jsArg(key)},this.value)"><option value="">(選択)</option>${rowLabelOpt}${candidates.map(c => `<option value="${c.id}" ${m.field === c.id ? 'selected' : ''}>${esc(c.label)}</option>`).join('')}</select></label>`;
     }).join('');
@@ -7139,7 +7141,7 @@ function renderAggregateDataListEditor(f, st){
     const rowLabelOk = canUseRowLabelRef(f);
     const outputIsRowLabel = f.output === ROW_LABEL_REF;
     const rowLabelOutputOpt = (rowLabelOk || outputIsRowLabel)
-      ? `<option value="${ROW_LABEL_REF}" ${outputIsRowLabel ? 'selected' : ''}>この行の見出しと同じ名前の列${rowLabelOk ? '' : '（行数が固定の表形式の中でだけ使えます）'}</option>`
+      ? `<option value="${ROW_LABEL_REF}" ${outputIsRowLabel ? 'selected' : ''}>行の見出しと同名${rowLabelOk ? '' : '（行数が固定の表形式の中でだけ使えます）'}</option>`
       : '';
     const valOptions = (dl.contentColumns || []).map(v => `<option value="${escAttr(v)}" ${f.output === v ? 'selected' : ''}>${esc(v)}</option>`).join('');
     html += `<label><span>集計する列</span><select onchange="applyPatch('field',${jsArg(f.id)},{output:this.value})"><option value="">(選択)</option>${rowLabelOutputOpt}${valOptions}</select></label>`;
@@ -7191,7 +7193,7 @@ function collectReferenceRows(){
       const df = findFrame('field', depId);
       return df ? df.label : `(不明:${depId})`;
     });
-    if(usesRowLabel) depLabels.push('この行の見出し');
+    if(usesRowLabel) depLabels.push('行の見出しと同名');
     rows.push({ label: f.label, location, kindLabel: refKindLabel(f), depLabels, errors: getFieldReferenceErrors(f) });
   };
   for(const s of state.template.sections){
